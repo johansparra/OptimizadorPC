@@ -44,7 +44,7 @@ $Glyphs = @{
     Back = 0xE72B; Filter = 0xE71C; StarFill = 0xE735; Star = 0xE734
     Grid = 0xE80A; Sliders = 0xE9E9; Bolt = 0xE945; Sun = 0xE706
     Moon = 0xE708; Help = 0xE897; Heart = 0xEB51; Check = 0xE73E
-    Info = 0xE946; Bulb = 0xEA80; Lock = 0xE72E
+    Info = 0xE946; Bulb = 0xEA80; Lock = 0xE72E; Apps = 0xF0E2
 }
 
 function Glyph {
@@ -655,6 +655,69 @@ $CategoryIndex = @(
 )
 
 # ---- fin incluido: ui/CategoryIndex.ps1 ----
+
+# ---- Índice del menú lateral: botones, orden, visibilidad y bloqueo ----
+# ---- inicio incluido: ui/NavigationIndex.ps1 ----
+# ============================================================
+# NavigationIndex.ps1
+#
+#   *** ARCHIVO PRINCIPAL DEL MENÚ LATERAL ***
+#
+# Mismo planteamiento que ui/CategoryIndex.ps1, pero para los
+# botones de la barra de la izquierda. Antes estaban escritos a
+# mano dentro de MainWindow.xaml; ahora son datos y los dibuja
+# ui/Components/Sidebar.ps1.
+#
+#   ORDEN      El de esta lista, dentro de cada grupo.
+#              Mover un botón = mover su línea.
+#
+#   Group      'Top'    -> arriba del todo
+#              'Bottom' -> pegado abajo, tras la línea separadora
+#
+#   Visible    $true  -> se muestra
+#              $false -> se oculta (no se pierde nada)
+#
+#   Locked     $false -> normal
+#              $true  -> se muestra en gris con candado y no
+#                        responde al clic
+#
+#   Default    $true en el botón que sale marcado al arrancar.
+#
+#   Icon       Nombre de glifo del catálogo de ui/Theme.ps1.
+# ============================================================
+
+$NavigationIndex = @(
+
+    #  Id             Icono        Etiqueta       Grupo      Visible  Bloqueado
+    @{ Id = 'software';  Icon = 'Apps';    Label = 'Software';  Group = 'Top';    Visible = $true; Locked = $false }
+    @{ Id = 'optimize';  Icon = 'Gauge';   Label = 'Optimize';  Group = 'Top';    Visible = $true; Locked = $false; Default = $true }
+    @{ Id = 'customize'; Icon = 'Palette'; Label = 'Customize'; Group = 'Top';    Visible = $true; Locked = $false }
+
+    @{ Id = 'advanced';  Icon = 'Wrench';  Label = 'Advanced';  Group = 'Bottom'; Visible = $true; Locked = $false }
+    @{ Id = 'settings';  Icon = 'Gear';    Label = 'Settings';  Group = 'Bottom'; Visible = $true; Locked = $false }
+    @{ Id = 'more';      Icon = 'More';    Label = 'More';      Group = 'Bottom'; Visible = $true; Locked = $false }
+
+)
+
+# Devuelve los botones visibles, opcionalmente los de un grupo.
+function Get-NavigationItems {
+    param([string]$Group)
+
+    $items = $NavigationIndex | Where-Object {
+        -not ($_.ContainsKey('Visible')) -or $_.Visible
+    }
+    if ($Group) { $items = $items | Where-Object { $_.Group -eq $Group } }
+    $items
+}
+
+# Nombre con el que se registra cada botón en la ventana, para
+# que $Window.FindName('NavSettings') siga funcionando.
+function Get-NavElementName {
+    param([string]$Id)
+    'Nav' + $Id.Substring(0, 1).ToUpper() + $Id.Substring(1)
+}
+
+# ---- fin incluido: ui/NavigationIndex.ps1 ----
 
 # ---- Carpetas que se cargan enteras ----
 # Todo archivo .ps1 que haya dentro entra solo, por orden de nombre.
@@ -1350,6 +1413,172 @@ function New-SettingControl {
 }
 
 # ---- fin incluido: ui/Components/SettingCard.ps1 ----
+# ---- inicio incluido: ui/Components/Sidebar.ps1 ----
+# ============================================================
+# Componente: barra de navegación lateral
+#
+# Construye los botones a partir de ui/NavigationIndex.ps1 y
+# gestiona el plegado animado.
+#
+# El XAML solo aporta dos contenedores vacíos (NavTop y
+# NavBottom) dentro del Border llamado Sidebar; todo lo demás
+# se crea aquí.
+# ============================================================
+
+# Ancho del panel desplegado. Al plegarse se anima hasta 0.
+$SidebarWidth = 88.0
+$SidebarExpanded = $true
+
+# ---- Construcción -------------------------------------------
+
+function Build-Sidebar {
+    param($Window)
+
+    $top    = $Window.FindName('NavTop')
+    $bottom = $Window.FindName('NavBottom')
+    $top.Children.Clear()
+    $bottom.Children.Clear()
+
+    foreach ($item in Get-NavigationItems) {
+        $button = New-NavButton -Window $Window -Item $item
+        if ($item.Group -eq 'Bottom') {
+            $bottom.Children.Add($button) | Out-Null
+        } else {
+            $top.Children.Add($button) | Out-Null
+        }
+    }
+
+    Update-NavColors $Window
+}
+
+function New-NavButton {
+    param($Window, $Item)
+
+    $button = New-Object System.Windows.Controls.Button
+    $button.Style = $Window.FindResource('NavButtonStyle')
+
+    $stack = New-Object System.Windows.Controls.StackPanel
+
+    $icon = New-Object System.Windows.Controls.TextBlock
+    $icon.FontFamily = $Window.FindResource('IconFont')
+    $icon.Text = Glyph $Item.Icon
+    $icon.FontSize = 19
+    $icon.HorizontalAlignment = 'Center'
+    Set-TextFg $icon 'TextMuted'
+    $stack.Children.Add($icon) | Out-Null
+
+    $label = New-Object System.Windows.Controls.TextBlock
+    $label.Text = $Item.Label
+    $label.FontSize = 9.5
+    $label.HorizontalAlignment = 'Center'
+    $label.Margin = New-Object System.Windows.Thickness 0, 5, 0, 0
+    Set-TextFg $label 'TextMuted'
+    $stack.Children.Add($label) | Out-Null
+
+    $button.Content = $stack
+
+    if ($Item.Locked) {
+        $button.IsEnabled = $false
+        $button.Opacity = 0.4
+        $button.ToolTip = "$($Item.Label): bloqueado"
+        $icon.Text = Glyph 'Lock'
+    }
+    elseif ($Item.Default) {
+        $button.Tag = 'sel'
+    }
+
+    $button.Add_Click({ param($s, $e) Set-NavSelection $s })
+
+    # Se registra con su nombre para que $Window.FindName siga
+    # encontrándolo aunque el botón ya no exista en el XAML.
+    $name = Get-NavElementName $Item.Id
+    try { $Window.UnregisterName($name) } catch { }
+    $Window.RegisterName($name, $button)
+
+    $button
+}
+
+# ---- Selección ----------------------------------------------
+
+function Set-NavSelection {
+    param($Button)
+
+    $window = [System.Windows.Window]::GetWindow($Button)
+    foreach ($item in Get-NavigationItems) {
+        $window.FindName((Get-NavElementName $item.Id)).Tag = $null
+    }
+    $Button.Tag = 'sel'
+    Update-NavColors $window
+
+    # Todas las entradas llevan de momento a la misma vista.
+    Show-OptimizationsListView -Window $window
+}
+
+# El estilo del XAML pinta el fondo del botón seleccionado; el
+# color del icono y de la etiqueta se ajusta aquí.
+function Update-NavColors {
+    param($Window)
+
+    foreach ($item in Get-NavigationItems) {
+        $button = $Window.FindName((Get-NavElementName $item.Id))
+        if (-not $button) { continue }
+
+        if ($button.Tag -eq 'sel') { $key = 'Accent'; $weight = 'SemiBold' }
+        else                       { $key = 'TextMuted'; $weight = 'Normal' }
+
+        $icon  = $button.Content.Children[0]
+        $label = $button.Content.Children[1]
+        Set-TextFg $icon  $key
+        Set-TextFg $label $key
+        $label.FontWeight = $weight
+    }
+}
+
+# ---- Plegado animado ----------------------------------------
+
+function Set-SidebarExpanded {
+    param($Window, [bool]$Expanded, [int]$Ms = 220)
+
+    $sidebar = $Window.FindName('Sidebar')
+    $button  = $Window.FindName('BtnMenu')
+
+    if ($Expanded) { $to = $SidebarWidth } else { $to = 0.0 }
+
+    # El borde derecho de 1px impide que el ancho llegue de verdad
+    # a cero: se quita al plegar y se repone al desplegar.
+    if ($Expanded) {
+        $sidebar.BorderThickness = New-Object System.Windows.Thickness 0, 1, 1, 0
+    } else {
+        $sidebar.BorderThickness = New-Object System.Windows.Thickness 0
+    }
+
+    # Se anima el ancho del Border, no la columna del Grid: la
+    # columna es Auto, así que sigue al Border sola. Animar un
+    # GridLength requiere una animación propia que WPF no trae.
+    $sidebar.BeginAnimation(
+        [System.Windows.FrameworkElement]::WidthProperty,
+        (New-Anim $sidebar.ActualWidth $to $Ms))
+
+    # El contenido se desvanece un poco antes de terminar de
+    # plegarse, para que no se vea recortado a media animación.
+    if ($Expanded) { $fade = New-Anim 0 1 $Ms } else { $fade = New-Anim 1 0 ([int]($Ms * 0.6)) }
+    $sidebar.Child.BeginAnimation([System.Windows.UIElement]::OpacityProperty, $fade)
+
+    if ($button) {
+        if ($Expanded) { $button.ToolTip = 'Ocultar el menú' } else { $button.ToolTip = 'Mostrar el menú' }
+    }
+
+    $script:SidebarExpanded = $Expanded
+}
+
+function Switch-Sidebar {
+    param($Window)
+    Set-SidebarExpanded -Window $Window -Expanded (-not $SidebarExpanded)
+}
+
+function Get-SidebarExpanded { $script:SidebarExpanded }
+
+# ---- fin incluido: ui/Components/Sidebar.ps1 ----
 
 # ---- inicio incluido: ui/Views/CategoryDetailView.ps1 ----
 # ============================================================
@@ -1905,8 +2134,11 @@ $xamlString = @'
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
 
-                <!-- marca -->
-                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="16,0,0,0">
+                <!-- menú + marca -->
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="8,0,0,0">
+                    <Button x:Name="BtnMenu" Style="{StaticResource GlyphButtonStyle}"
+                            Content="&#xE700;" FontSize="15" ToolTip="Ocultar el menú"
+                            Margin="0,0,8,0"/>
                     <Border Width="26" Height="26" CornerRadius="8">
                         <Border.Background>
                             <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
@@ -1967,73 +2199,31 @@ $xamlString = @'
             <!-- ===== CUERPO: navegacion + contenido ===== -->
             <Grid Grid.Row="2">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="88"/>
+                    <!-- Auto: la columna sigue al ancho del Border, que es lo
+                         que se anima al plegar (ver ui/Components/Sidebar.ps1) -->
+                    <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
 
-                <!-- NAVEGACION LATERAL -->
-                <Border Grid.Column="0" Background="{DynamicResource Bg1}"
+                <!-- NAVEGACION LATERAL
+                     Solo el contenedor: los botones los construye
+                     ui/Components/Sidebar.ps1 a partir de ui/NavigationIndex.ps1 -->
+                <Border x:Name="Sidebar" Grid.Column="0" Width="88" MinWidth="0"
+                        ClipToBounds="True"
+                        Background="{DynamicResource Bg1}"
                         BorderBrush="{DynamicResource Stroke}" BorderThickness="0,1,1,0"
                         CornerRadius="0,16,0,0">
-                    <Grid>
+                    <Grid Width="88" HorizontalAlignment="Left">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="*"/>
                             <RowDefinition Height="Auto"/>
                         </Grid.RowDefinitions>
 
-                        <StackPanel Grid.Row="0" Margin="0,14,0,0">
-                            <Button x:Name="NavSoftware" Style="{StaticResource NavButtonStyle}">
-                                <StackPanel>
-                                    <TextBlock Text="&#xF0E2;" FontFamily="{StaticResource IconFont}" FontSize="19"
-                                               HorizontalAlignment="Center" Foreground="{DynamicResource TextMuted}"/>
-                                    <TextBlock Text="Software" FontSize="9.5" HorizontalAlignment="Center"
-                                               Margin="0,5,0,0" Foreground="{DynamicResource TextMuted}"/>
-                                </StackPanel>
-                            </Button>
-                            <Button x:Name="NavOptimize" Style="{StaticResource NavButtonStyle}" Tag="sel">
-                                <StackPanel>
-                                    <TextBlock Text="&#xEC4A;" FontFamily="{StaticResource IconFont}" FontSize="19"
-                                               HorizontalAlignment="Center" Foreground="{DynamicResource Accent}"/>
-                                    <TextBlock Text="Optimize" FontSize="9.5" FontWeight="SemiBold" HorizontalAlignment="Center"
-                                               Margin="0,5,0,0" Foreground="{DynamicResource Accent}"/>
-                                </StackPanel>
-                            </Button>
-                            <Button x:Name="NavCustomize" Style="{StaticResource NavButtonStyle}">
-                                <StackPanel>
-                                    <TextBlock Text="&#xE790;" FontFamily="{StaticResource IconFont}" FontSize="19"
-                                               HorizontalAlignment="Center" Foreground="{DynamicResource TextMuted}"/>
-                                    <TextBlock Text="Customize" FontSize="9.5" HorizontalAlignment="Center"
-                                               Margin="0,5,0,0" Foreground="{DynamicResource TextMuted}"/>
-                                </StackPanel>
-                            </Button>
-                        </StackPanel>
+                        <StackPanel x:Name="NavTop" Grid.Row="0" Margin="0,14,0,0"/>
 
                         <StackPanel Grid.Row="1" Margin="0,0,0,16">
                             <Border Height="1" Background="{DynamicResource Stroke}" Margin="18,0,18,10"/>
-                            <Button x:Name="NavAdvanced" Style="{StaticResource NavButtonStyle}">
-                                <StackPanel>
-                                    <TextBlock Text="&#xE90F;" FontFamily="{StaticResource IconFont}" FontSize="17"
-                                               HorizontalAlignment="Center" Foreground="{DynamicResource TextMuted}"/>
-                                    <TextBlock Text="Advanced" FontSize="9" HorizontalAlignment="Center"
-                                               Margin="0,5,0,0" Foreground="{DynamicResource TextMuted}"/>
-                                </StackPanel>
-                            </Button>
-                            <Button x:Name="NavSettings" Style="{StaticResource NavButtonStyle}">
-                                <StackPanel>
-                                    <TextBlock Text="&#xE713;" FontFamily="{StaticResource IconFont}" FontSize="17"
-                                               HorizontalAlignment="Center" Foreground="{DynamicResource TextMuted}"/>
-                                    <TextBlock Text="Settings" FontSize="9" HorizontalAlignment="Center"
-                                               Margin="0,5,0,0" Foreground="{DynamicResource TextMuted}"/>
-                                </StackPanel>
-                            </Button>
-                            <Button x:Name="NavMore" Style="{StaticResource NavButtonStyle}">
-                                <StackPanel>
-                                    <TextBlock Text="&#xE712;" FontFamily="{StaticResource IconFont}" FontSize="17"
-                                               HorizontalAlignment="Center" Foreground="{DynamicResource TextMuted}"/>
-                                    <TextBlock Text="More" FontSize="9" HorizontalAlignment="Center"
-                                               Margin="0,5,0,0" Foreground="{DynamicResource TextMuted}"/>
-                                </StackPanel>
-                            </Button>
+                            <StackPanel x:Name="NavBottom"/>
                         </StackPanel>
                     </Grid>
                 </Border>
@@ -2119,20 +2309,15 @@ function Set-ModeSelection {
     $Button.Tag = 'sel'
 }
 
-# ---- Sidebar: por ahora todas las entradas llevan a la misma vista ----
-function Set-NavSelection {
-    param($Button)
-    $win = [System.Windows.Window]::GetWindow($Button)
-    foreach ($name in @('NavSoftware', 'NavOptimize', 'NavCustomize', 'NavAdvanced', 'NavSettings', 'NavMore')) {
-        $win.FindName($name).Tag = $null
-    }
-    $Button.Tag = 'sel'
-    Show-OptimizationsListView -Window $win
-}
+# ---- Menú lateral ----
+# Los botones se construyen a partir de ui/NavigationIndex.ps1;
+# la selección y el plegado los gestiona ui/Components/Sidebar.ps1.
+Build-Sidebar -Window $Window
 
-foreach ($name in @('NavSoftware', 'NavOptimize', 'NavCustomize', 'NavAdvanced', 'NavSettings', 'NavMore')) {
-    $Window.FindName($name).Add_Click({ param($s, $e) Set-NavSelection $s })
-}
+$Window.FindName('BtnMenu').Add_Click({
+    param($s, $e)
+    Switch-Sidebar ([System.Windows.Window]::GetWindow($s))
+})
 
 # ---- Vista inicial ----
 Show-OptimizationsListView -Window $Window

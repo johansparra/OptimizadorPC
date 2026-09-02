@@ -18,14 +18,15 @@ Proyecto/
 ├── OptimizadorPC.exe        Binario portable generado
 │
 ├── ui/
-│   ├── MainWindow.xaml      ESQUELETO + ESTILOS: barra de título, sidebar,
-│   │                        zonas de contenido y todas las plantillas visuales
+│   ├── MainWindow.xaml      ESQUELETO + ESTILOS: barra de título, contenedores
+│   │                        vacíos y todas las plantillas visuales
 │   ├── Theme.ps1            Paletas claro/oscuro, catálogo de iconos, animaciones
 │   ├── UiKit.ps1            Piezas genéricas: icono, píldora, etiqueta,
 │   │                        interruptor, buscador, botón chip, rejillas
 │   │
-│   ├── CategoryIndex.ps1    ← EL PRINCIPAL. Qué secciones se ven, en qué orden
+│   ├── CategoryIndex.ps1    ← PRINCIPAL: qué secciones se ven, en qué orden
 │   │                          y cuáles están bloqueadas
+│   ├── NavigationIndex.ps1  ← PRINCIPAL: los botones del menú lateral
 │   ├── CategoryRegistry.ps1 Mecanismo para declarar secciones (sin datos)
 │   │
 │   ├── Categories/          ← LOS DATOS. Un archivo por sección.
@@ -40,7 +41,8 @@ Proyecto/
 │   │   ├── PageHeader.ps1       cabecera: título, breadcrumb, acciones
 │   │   ├── CategoryCard.ps1     fila de la pantalla principal
 │   │   ├── SettingCard.ps1      fila de la pantalla de detalle
-│   │   └── Banner.ps1           avisos (p. ej. "sección bloqueada")
+│   │   ├── Banner.ps1           avisos (p. ej. "sección bloqueada")
+│   │   └── Sidebar.ps1          menú lateral: botones y plegado animado
 │   │
 │   └── Views/               ← LAS PANTALLAS. Solo ensamblan piezas.
 │       ├── OptimizationsListView.ps1
@@ -54,7 +56,9 @@ Proyecto/
 
 | Quiero... | Voy a... |
 | --------- | -------- |
-| Reordenar, ocultar o bloquear secciones | `ui/CategoryIndex.ps1` — **el archivo principal** |
+| Reordenar, ocultar o bloquear secciones | `ui/CategoryIndex.ps1` — **el principal de las secciones** |
+| Reordenar, ocultar o bloquear botones del menú | `ui/NavigationIndex.ps1` — **el principal del menú** |
+| Cambiar el plegado del menú o su animación | `ui/Components/Sidebar.ps1` |
 | Añadir una sección (Network, Storage...) | Crear un archivo en `ui/Categories/` (y colocarlo en el índice) |
 | Quitar una sección del todo | Borrar su archivo y su línea del índice |
 | Añadir/quitar un ajuste dentro de una sección | Editar el array `Items` de ese archivo |
@@ -111,6 +115,51 @@ los controles llevan `IsEnabled = $false`, así que WPF no les entrega el ratón
 la lista y desbloqueado. Así añadir una sección sigue siendo crear un archivo y ya;
 el índice solo hace falta cuando quieres colocarla, ocultarla o bloquearla.
 `Get-UnlistedCategories` devuelve las que están en ese caso.
+
+### El menú lateral
+
+`ui/NavigationIndex.ps1` hace con los botones de la izquierda lo mismo que
+`CategoryIndex.ps1` con las secciones. Antes estaban escritos a mano en el XAML;
+ahora son datos y los dibuja `ui/Components/Sidebar.ps1`.
+
+```powershell
+$NavigationIndex = @(
+
+    #  Id             Icono        Etiqueta       Grupo      Visible  Bloqueado
+    @{ Id = 'software';  Icon = 'Apps';    Label = 'Software';  Group = 'Top';    Visible = $true; Locked = $false }
+    @{ Id = 'optimize';  Icon = 'Gauge';   Label = 'Optimize';  Group = 'Top';    Visible = $true; Locked = $false; Default = $true }
+    @{ Id = 'customize'; Icon = 'Palette'; Label = 'Customize'; Group = 'Top';    Visible = $true; Locked = $false }
+
+    @{ Id = 'advanced';  Icon = 'Wrench';  Label = 'Advanced';  Group = 'Bottom'; Visible = $true; Locked = $false }
+    @{ Id = 'settings';  Icon = 'Gear';    Label = 'Settings';  Group = 'Bottom'; Visible = $true; Locked = $false }
+    @{ Id = 'more';      Icon = 'More';    Label = 'More';      Group = 'Bottom'; Visible = $true; Locked = $false }
+
+)
+```
+
+| Campo | Para qué |
+| ----- | -------- |
+| Orden de la lista | El orden en que salen los botones, dentro de cada grupo |
+| `Group` | `'Top'` arriba, `'Bottom'` pegado abajo tras la línea separadora |
+| `Visible` | `$false` lo oculta sin borrar nada |
+| `Locked` | `$true` lo muestra con candado, en gris y sin responder al clic |
+| `Default` | El botón que sale marcado al arrancar |
+| `Icon` | Nombre de glifo del catálogo de `ui/Theme.ps1` |
+
+Añadir una entrada al menú es añadir una línea aquí. Aunque los botones ya no estén
+en el XAML, siguen registrados con su nombre, así que `$Window.FindName('NavSettings')`
+funciona igual que antes.
+
+### Plegar el menú
+
+El botón de las tres líneas de la barra de título pliega y despliega el panel con una
+animación de 220 ms (`CubicEase`): el ancho baja de 88 px a 0 y el contenido se
+desvanece un poco antes para que no se vea recortado a medio camino.
+
+Se anima el **ancho del `Border`**, no la columna del `Grid`: la columna es `Auto` y
+sigue al `Border` sola. Animar un `GridLength` directamente requeriría una animación
+propia, porque WPF no trae ninguna. El borde derecho de 1 px se retira al plegar,
+que si no el ancho nunca llegaría a cero del todo.
 
 ### Cómo se declara una sección
 

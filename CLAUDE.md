@@ -14,10 +14,10 @@ Cuatro capas, de datos a pantalla. **Nunca saltes una capa hacia abajo.**
 
 | Capa | Archivo / carpeta | Regla |
 | ---- | ----------------- | ----- |
-| Política | `ui/CategoryIndex.ps1` | **El archivo principal.** Orden, `Visible` y `Locked`. Nada de contenido. |
+| Política | `ui/CategoryIndex.ps1`<br>`ui/NavigationIndex.ps1` | **Los archivos principales.** Orden, `Visible` y `Locked` de secciones y de botones del menú. Nada de contenido. |
 | Datos | `ui/Categories/` | Un archivo por sección. Solo declaraciones, cero código de UI. |
 | Mecanismo | `ui/CategoryRegistry.ps1` | `Register-Category` / `New-Setting` / `Get-OptimizationCategories`. Sin datos. |
-| Piezas | `ui/Components/` | Construyen controles concretos (tarjeta, cabecera, aviso). No conocen las vistas. |
+| Piezas | `ui/Components/` | Construyen controles concretos (tarjeta, cabecera, aviso, menú lateral). No conocen las vistas. |
 | Pantallas | `ui/Views/` | Solo ensamblan piezas. Sin `New-Object` de controles sueltos. |
 
 `ui/UiKit.ps1` (piezas genéricas) y `ui/Theme.ps1` (colores, iconos, animación) están
@@ -76,6 +76,9 @@ No hay tests ni linter.
 10. **Pinceles congelados.** WPF congela al cargar el XAML los `SolidColorBrush` que considera compartibles, y un `Freezable` congelado no se puede mutar. Por eso `Set-AppTheme` intenta primero `$brush.Color = ...` y solo si está congelado lo sustituye. Al sustituir usa `Resources.Add()`, **no** el indexador `Resources[$k] = ...`: el indexador guarda el `PSObject` que envuelve al pincel y WPF lo rechaza al resolver el `DynamicResource` con *"'#FF59616F' no es un valor válido para la propiedad 'Foreground'"* (el mensaje engaña: el `ToString()` de un `SolidColorBrush` es su color).
 11. **Nunca declares un `Freezable` dentro de un `Setter` de estilo si vas a animarlo.** `RenderTransform` y `Effect` puestos en un `Setter` se comparten entre todos los controles del estilo y WPF no permite animar una instancia compartida. Créalos por control en código (ver `Add-HoverLift`).
 12. **Iconos: `Glyph 'Nombre'` del catálogo de `Theme.ps1`** (fuente *Segoe Fluent Icons*, nativa de Windows 11), nunca emoji. Antes de usar un codepoint nuevo, comprueba que existe con `GlyphTypeface.CharacterToGlyphMap` y míralo renderizado: varios glifos parecidos tienen significados distintos (p. ej. `E7ED` es una campana **tachada**, la campana normal es `EA8F`).
+
+13. **El menú lateral se construye por código, no en el XAML.** `MainWindow.xaml` solo aporta el `Border` llamado `Sidebar` con dos `StackPanel` vacíos (`NavTop` y `NavBottom`); los botones los crea `Build-Sidebar` a partir de `ui/NavigationIndex.ps1`. Cada botón se registra con `$Window.RegisterName('Nav<Id>', ...)`, así que `FindName('NavSettings')` sigue funcionando — si añades uno nuevo, respeta ese nombrado.
+14. **Al plegar el menú se anima el ancho del `Border`, nunca la columna del `Grid`.** La columna es `Auto` y sigue al `Border` sola; animar un `GridLength` exigiría escribir una animación propia porque WPF no trae ninguna. El borde derecho de 1px se pone a 0 al plegar, o el ancho nunca llegaría a cero.
 
 ## Al implementar tweaks reales (aún no hecho)
 

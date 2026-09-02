@@ -26,6 +26,9 @@ Add-Type -AssemblyName System.Xaml
 # reordenar secciones sin abrir ninguna otra cosa.
 . (Join-Path $ScriptRoot 'ui\CategoryIndex.ps1')
 
+# ---- Índice del menú lateral: botones, orden, visibilidad y bloqueo ----
+. (Join-Path $ScriptRoot 'ui\NavigationIndex.ps1')
+
 # ---- Carpetas que se cargan enteras ----
 # Todo archivo .ps1 que haya dentro entra solo, por orden de nombre.
 # Añadir una categoría, un componente o una vista = crear su archivo;
@@ -118,20 +121,15 @@ function Set-ModeSelection {
     $Button.Tag = 'sel'
 }
 
-# ---- Sidebar: por ahora todas las entradas llevan a la misma vista ----
-function Set-NavSelection {
-    param($Button)
-    $win = [System.Windows.Window]::GetWindow($Button)
-    foreach ($name in @('NavSoftware', 'NavOptimize', 'NavCustomize', 'NavAdvanced', 'NavSettings', 'NavMore')) {
-        $win.FindName($name).Tag = $null
-    }
-    $Button.Tag = 'sel'
-    Show-OptimizationsListView -Window $win
-}
+# ---- Menú lateral ----
+# Los botones se construyen a partir de ui/NavigationIndex.ps1;
+# la selección y el plegado los gestiona ui/Components/Sidebar.ps1.
+Build-Sidebar -Window $Window
 
-foreach ($name in @('NavSoftware', 'NavOptimize', 'NavCustomize', 'NavAdvanced', 'NavSettings', 'NavMore')) {
-    $Window.FindName($name).Add_Click({ param($s, $e) Set-NavSelection $s })
-}
+$Window.FindName('BtnMenu').Add_Click({
+    param($s, $e)
+    Switch-Sidebar ([System.Windows.Window]::GetWindow($s))
+})
 
 # ---- Vista inicial ----
 Show-OptimizationsListView -Window $Window

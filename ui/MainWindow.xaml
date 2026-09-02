@@ -463,8 +463,11 @@
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
 
-                <!-- marca -->
-                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="16,0,0,0">
+                <!-- menú + marca -->
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="8,0,0,0">
+                    <Button x:Name="BtnMenu" Style="{StaticResource GlyphButtonStyle}"
+                            Content="&#xE700;" FontSize="15" ToolTip="Ocultar el menú"
+                            Margin="0,0,8,0"/>
                     <Border Width="26" Height="26" CornerRadius="8">
                         <Border.Background>
                             <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
@@ -525,73 +528,31 @@
             <!-- ===== CUERPO: navegacion + contenido ===== -->
             <Grid Grid.Row="2">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="88"/>
+                    <!-- Auto: la columna sigue al ancho del Border, que es lo
+                         que se anima al plegar (ver ui/Components/Sidebar.ps1) -->
+                    <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
 
-                <!-- NAVEGACION LATERAL -->
-                <Border Grid.Column="0" Background="{DynamicResource Bg1}"
+                <!-- NAVEGACION LATERAL
+                     Solo el contenedor: los botones los construye
+                     ui/Components/Sidebar.ps1 a partir de ui/NavigationIndex.ps1 -->
+                <Border x:Name="Sidebar" Grid.Column="0" Width="88" MinWidth="0"
+                        ClipToBounds="True"
+                        Background="{DynamicResource Bg1}"
                         BorderBrush="{DynamicResource Stroke}" BorderThickness="0,1,1,0"
                         CornerRadius="0,16,0,0">
-                    <Grid>
+                    <Grid Width="88" HorizontalAlignment="Left">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="*"/>
                             <RowDefinition Height="Auto"/>
                         </Grid.RowDefinitions>
 
-                        <StackPanel Grid.Row="0" Margin="0,14,0,0">
-                            <Button x:Name="NavSoftware" Style="{StaticResource NavButtonStyle}">
-                                <StackPanel>
-                                    <TextBlock Text="&#xF0E2;" FontFamily="{StaticResource IconFont}" FontSize="19"
-                                               HorizontalAlignment="Center" Foreground="{DynamicResource TextMuted}"/>
-                                    <TextBlock Text="Software" FontSize="9.5" HorizontalAlignment="Center"
-                                               Margin="0,5,0,0" Foreground="{DynamicResource TextMuted}"/>
-                                </StackPanel>
-                            </Button>
-                            <Button x:Name="NavOptimize" Style="{StaticResource NavButtonStyle}" Tag="sel">
-                                <StackPanel>
-                                    <TextBlock Text="&#xEC4A;" FontFamily="{StaticResource IconFont}" FontSize="19"
-                                               HorizontalAlignment="Center" Foreground="{DynamicResource Accent}"/>
-                                    <TextBlock Text="Optimize" FontSize="9.5" FontWeight="SemiBold" HorizontalAlignment="Center"
-                                               Margin="0,5,0,0" Foreground="{DynamicResource Accent}"/>
-                                </StackPanel>
-                            </Button>
-                            <Button x:Name="NavCustomize" Style="{StaticResource NavButtonStyle}">
-                                <StackPanel>
-                                    <TextBlock Text="&#xE790;" FontFamily="{StaticResource IconFont}" FontSize="19"
-                                               HorizontalAlignment="Center" Foreground="{DynamicResource TextMuted}"/>
-                                    <TextBlock Text="Customize" FontSize="9.5" HorizontalAlignment="Center"
-                                               Margin="0,5,0,0" Foreground="{DynamicResource TextMuted}"/>
-                                </StackPanel>
-                            </Button>
-                        </StackPanel>
+                        <StackPanel x:Name="NavTop" Grid.Row="0" Margin="0,14,0,0"/>
 
                         <StackPanel Grid.Row="1" Margin="0,0,0,16">
                             <Border Height="1" Background="{DynamicResource Stroke}" Margin="18,0,18,10"/>
-                            <Button x:Name="NavAdvanced" Style="{StaticResource NavButtonStyle}">
-                                <StackPanel>
-                                    <TextBlock Text="&#xE90F;" FontFamily="{StaticResource IconFont}" FontSize="17"
-                                               HorizontalAlignment="Center" Foreground="{DynamicResource TextMuted}"/>
-                                    <TextBlock Text="Advanced" FontSize="9" HorizontalAlignment="Center"
-                                               Margin="0,5,0,0" Foreground="{DynamicResource TextMuted}"/>
-                                </StackPanel>
-                            </Button>
-                            <Button x:Name="NavSettings" Style="{StaticResource NavButtonStyle}">
-                                <StackPanel>
-                                    <TextBlock Text="&#xE713;" FontFamily="{StaticResource IconFont}" FontSize="17"
-                                               HorizontalAlignment="Center" Foreground="{DynamicResource TextMuted}"/>
-                                    <TextBlock Text="Settings" FontSize="9" HorizontalAlignment="Center"
-                                               Margin="0,5,0,0" Foreground="{DynamicResource TextMuted}"/>
-                                </StackPanel>
-                            </Button>
-                            <Button x:Name="NavMore" Style="{StaticResource NavButtonStyle}">
-                                <StackPanel>
-                                    <TextBlock Text="&#xE712;" FontFamily="{StaticResource IconFont}" FontSize="17"
-                                               HorizontalAlignment="Center" Foreground="{DynamicResource TextMuted}"/>
-                                    <TextBlock Text="More" FontSize="9" HorizontalAlignment="Center"
-                                               Margin="0,5,0,0" Foreground="{DynamicResource TextMuted}"/>
-                                </StackPanel>
-                            </Button>
+                            <StackPanel x:Name="NavBottom"/>
                         </StackPanel>
                     </Grid>
                 </Border>
