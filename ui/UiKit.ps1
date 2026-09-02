@@ -7,6 +7,28 @@
 
 $IconFont = New-Object System.Windows.Media.FontFamily 'Segoe Fluent Icons, Segoe MDL2 Assets'
 
+# ---- Ayudantes de rejilla -----------------------------------
+# Declara las columnas de un Grid de una sola línea:
+#     Add-GridColumns $grid 'Auto', '*', 'Auto'
+# Acepta 'Auto', '*' o un ancho fijo en píxeles ('120').
+function Add-GridColumns {
+    param($Grid, [string[]]$Widths)
+    foreach ($w in $Widths) {
+        $cd = New-Object System.Windows.Controls.ColumnDefinition
+        if ($w -eq '*')         { $cd.Width = [System.Windows.GridLength]::new(1, 'Star') }
+        elseif ($w -eq 'Auto')  { $cd.Width = [System.Windows.GridLength]::Auto }
+        else                    { $cd.Width = [System.Windows.GridLength]::new([double]$w) }
+        $Grid.ColumnDefinitions.Add($cd)
+    }
+}
+
+# Coloca un elemento en una columna del Grid.
+function Add-ToColumn {
+    param($Grid, $Element, [int]$Column)
+    [System.Windows.Controls.Grid]::SetColumn($Element, $Column)
+    $Grid.Children.Add($Element) | Out-Null
+}
+
 function New-Icon {
     param([string]$Name, [double]$Size = 16, [string]$Fg = 'Text')
     $t = New-Object System.Windows.Controls.TextBlock

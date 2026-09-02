@@ -37,6 +37,31 @@ while ($i -lt $mainLines.Count) {
         continue
     }
 
+    # Carpeta completa: se insertan todos los .ps1 que contenga, por
+    # orden de nombre. Es lo que permite que añadir una categoria, un
+    # componente o una vista no obligue a tocar main.ps1 ni este script.
+    if ($line -match '^\s*# @@EMBED_DIR:(.+)@@\s*$') {
+        $dirRel = $Matches[1]
+        $dirPath = Join-Path $root ($dirRel -replace '/', '\')
+        if (-not (Test-Path $dirPath)) { throw "build.ps1: no existe la carpeta '$dirRel' referenciada en main.ps1" }
+
+        $files = Get-ChildItem -Path $dirPath -Filter '*.ps1' | Sort-Object Name
+        if ($files.Count -eq 0) { Write-Host "  aviso: la carpeta $dirRel no tiene ningun .ps1" -ForegroundColor Yellow }
+
+        foreach ($file in $files) {
+            $rel = "$dirRel/$($file.Name)"
+            $output.Add("# ---- inicio incluido: $rel ----")
+            $output.Add((Get-Content -Path $file.FullName -Raw))
+            $output.Add("# ---- fin incluido: $rel ----")
+        }
+        Write-Host ("  {0,-16} {1} archivo(s)" -f $dirRel, $files.Count) -ForegroundColor DarkGray
+
+        # saltar el foreach original que recorria la carpeta en desarrollo
+        while ($i -lt $mainLines.Count -and $mainLines[$i] -notmatch '^\s*# @@ENDEMBED@@\s*$') { $i++ }
+        $i++
+        continue
+    }
+
     if ($line -match '^\s*# @@EMBED_XAML:(.+)@@\s*$') {
         $xamlRel = $Matches[1]
         $xamlContent = Get-IncludedContent $xamlRel

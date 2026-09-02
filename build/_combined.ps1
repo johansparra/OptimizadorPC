@@ -16,7 +16,7 @@ Add-Type -AssemblyName PresentationCore
 Add-Type -AssemblyName WindowsBase
 Add-Type -AssemblyName System.Xaml
 
-# ---- sistema de diseño, componentes, datos y vistas ----
+# ---- Base: sistema de diseño y componentes genéricos ----
 # ---- inicio incluido: ui/Theme.ps1 ----
 # ============================================================
 # Theme.ps1
@@ -44,7 +44,7 @@ $Glyphs = @{
     Back = 0xE72B; Filter = 0xE71C; StarFill = 0xE735; Star = 0xE734
     Grid = 0xE80A; Sliders = 0xE9E9; Bolt = 0xE945; Sun = 0xE706
     Moon = 0xE708; Help = 0xE897; Heart = 0xEB51; Check = 0xE73E
-    Info = 0xE946; Bulb = 0xEA80
+    Info = 0xE946; Bulb = 0xEA80; Lock = 0xE72E
 }
 
 function Glyph {
@@ -201,6 +201,28 @@ function Add-HoverLift {
 # ============================================================
 
 $IconFont = New-Object System.Windows.Media.FontFamily 'Segoe Fluent Icons, Segoe MDL2 Assets'
+
+# ---- Ayudantes de rejilla -----------------------------------
+# Declara las columnas de un Grid de una sola línea:
+#     Add-GridColumns $grid 'Auto', '*', 'Auto'
+# Acepta 'Auto', '*' o un ancho fijo en píxeles ('120').
+function Add-GridColumns {
+    param($Grid, [string[]]$Widths)
+    foreach ($w in $Widths) {
+        $cd = New-Object System.Windows.Controls.ColumnDefinition
+        if ($w -eq '*')         { $cd.Width = [System.Windows.GridLength]::new(1, 'Star') }
+        elseif ($w -eq 'Auto')  { $cd.Width = [System.Windows.GridLength]::Auto }
+        else                    { $cd.Width = [System.Windows.GridLength]::new([double]$w) }
+        $Grid.ColumnDefinitions.Add($cd)
+    }
+}
+
+# Coloca un elemento en una columna del Grid.
+function Add-ToColumn {
+    param($Grid, $Element, [int]$Column)
+    [System.Windows.Controls.Grid]::SetColumn($Element, $Column)
+    $Grid.Children.Add($Element) | Out-Null
+}
 
 function New-Icon {
     param([string]$Name, [double]$Size = 16, [string]$Fg = 'Text')
@@ -435,105 +457,526 @@ function New-ChipButton {
 }
 
 # ---- fin incluido: ui/UiKit.ps1 ----
-# ---- inicio incluido: ui/CategoryData.ps1 ----
+# ---- inicio incluido: ui/CategoryRegistry.ps1 ----
 # ============================================================
-# CategoryData.ps1
-# Datos de las categorías del menú principal y de sus ítems de
-# detalle. Solo datos: la UI se construye en ui/Views/*.
-# El icono de cada categoría NO vive aquí: lo asigna $CategoryLook
-# en ui/Views/OptimizationsListView.ps1 (fuente Segoe Fluent Icons).
+# CategoryRegistry.ps1
+# Registro de categorías.
+#
+# NO contiene datos ni decide qué se ve: solo el mecanismo.
+#
+#   ui/Categories/<Nombre>.ps1  ->  QUÉ tiene cada sección
+#   ui/CategoryIndex.ps1        ->  CUÁLES se ven, en qué orden
+#                                   y cuáles están bloqueadas
+#
+#   -> Añadir una sección  = crear su archivo en ui/Categories/
+#                            (aparece al final) y, si quieres
+#                            colocarla, añadir su línea al índice
+#   -> Ocultar una sección = Visible = $false en el índice
+#   -> Bloquear una sección= Locked  = $true  en el índice
+#   -> Reordenar           = mover su línea en el índice
 # ============================================================
 
+# Lista donde se van acumulando las categorías al cargarse.
+$CategoryList = New-Object System.Collections.Generic.List[object]
+
+<#
+    Da de alta una categoría. Campos de la definición:
+
+    Id           (string) Identificador corto y único: 'privacy', 'power'...
+                          Es la clave con la que ui/CategoryIndex.ps1 la coloca.
+    Name         (string) Título visible.
+    Icon         (string) Nombre de glifo del catálogo de Theme.ps1 ('Shield', 'Power'...).
+    Accent       (string) Clave de color del tema para el icono ('Accent', 'Success', 'Warn').
+    AccentSoft   (string) Clave de color del tema para el fondo del icono.
+    Badge        (string) Distintivo rojo opcional: 'NEW 45'. $null para ocultarlo.
+    Description  (string) Línea gris bajo el título.
+    Recommended / Default / Custom / Total  (int)  Contadores de las píldoras.
+    Items        (array)  Ajustes, creados con New-Setting.
+#>
+function Register-Category {
+    param([Parameter(Mandatory)][hashtable]$Definition)
+
+    # Valores por defecto: así una categoría mínima solo necesita
+    # Id, Name, Icon, Description e Items.
+    # Locked lo rellena el índice; aquí solo se reserva el campo.
+    $defaults = @{
+        Badge = $null; Accent = 'Accent'; AccentSoft = 'AccentSoft'
+        Recommended = 0; Default = 0; Custom = 0; Total = 0
+        Items = @(); Locked = $false
+    }
+    foreach ($key in $defaults.Keys) {
+        if (-not $Definition.ContainsKey($key)) { $Definition[$key] = $defaults[$key] }
+    }
+
+    foreach ($required in @('Id', 'Name', 'Icon', 'Description')) {
+        if (-not $Definition[$required]) {
+            throw "Register-Category: falta el campo obligatorio '$required'."
+        }
+    }
+
+    $CategoryList.Add([PSCustomObject]$Definition)
+}
+
+<#
+    Devuelve las categorías que debe pintar la interfaz, ya
+    ordenadas y filtradas según ui/CategoryIndex.ps1:
+
+      1. Recorre el índice en orden. De cada entrada:
+           - si no existe el archivo de esa Id, la salta
+           - si Visible = $false, la salta
+           - copia Locked a la categoría
+      2. Añade al final las categorías registradas que todavía
+         no aparecen en el índice (visibles y desbloqueadas),
+         para que crear un archivo nuevo funcione sin tocar nada.
+#>
 function Get-OptimizationCategories {
+    $result = New-Object System.Collections.Generic.List[object]
+    $placed = @{}
 
-    @(
-        [PSCustomObject]@{
-            Id = 'privacy'; Name = 'Privacy & Security'
-            Badge = 'NEW 45'
-            Description = 'Security, Content Delivery & Advertising, Lock Screen, General, ...'
-            Recommended = 29; Default = 59; Custom = 0; Total = 88
-            Items = @(
-                [PSCustomObject]@{ Name='User Account Control Level'; Description='Controls UAC notification level and secure desktop behavior'; Tags=@('Preference','Recommended','Default','Custom'); Type='Dropdown'; Options=@('Always notify','Notify when apps try to make changes','Notify me only (no dim)','Never notify'); Value='Notify when apps try to make changes' }
-                [PSCustomObject]@{ Name='Workplace Join Message Prompts'; Description="Show 'Allow my organization to manage my device' prompts throughout Windows"; Tags=@('Recommended','Default','Custom'); Type='Toggle'; Value=$true }
-                [PSCustomObject]@{ Name='BitLocker Auto Encryption'; Description='Controls whether Windows can automatically encrypt drives with BitLocker. Has no effect if BitLocker encryption is already active on your device'; Tags=@('Preference','Recommended','Default','Custom'); Type='Toggle'; Value=$false }
-                [PSCustomObject]@{ Name='WiFi-Sense'; Description='Allow sharing WiFi passwords with contacts and automatically connecting to suggested open hotspots'; Tags=@('Recommended','Custom'); Type='Toggle'; Value=$true }
-                [PSCustomObject]@{ Name='Automatic Maintenance'; Description='Choose if Windows should run automatic system maintenance tasks during idle time'; Tags=@('Recommended','Default','Custom'); Type='Toggle'; Value=$false }
-                [PSCustomObject]@{ Name='Windows Error Reporting'; Description='Choose if Windows should collect and send crash reports and error information to Microsoft'; Tags=@('Recommended','Default','Custom'); Type='Toggle'; Value=$false }
-            )
+    foreach ($entry in $CategoryIndex) {
+        $category = $CategoryList | Where-Object { $_.Id -eq $entry.Id } | Select-Object -First 1
+        if (-not $category) { continue }
+
+        $placed[$entry.Id] = $true
+
+        # Visible por defecto: solo se oculta si se pide explícitamente.
+        if ($entry.ContainsKey('Visible') -and -not $entry.Visible) { continue }
+
+        $category.Locked = [bool]$entry.Locked
+        $result.Add($category)
+    }
+
+    foreach ($category in $CategoryList) {
+        if (-not $placed.ContainsKey($category.Id)) {
+            $category.Locked = $false
+            $result.Add($category)
         }
-        [PSCustomObject]@{
-            Id = 'power'; Name = 'Power'
-            Badge = $null
-            Description = 'Display, Hard Disk, Internet Explorer, Desktop Background Settings, ...'
-            Recommended = 18; Default = 23; Custom = 2; Total = 34
-            Items = @(
-                [PSCustomObject]@{ Name='High Performance Power Plan'; Description='Switch to the High Performance / Ultimate Performance power scheme'; Tags=@('Recommended','Default'); Type='Toggle'; Value=$true }
-                [PSCustomObject]@{ Name='USB Selective Suspend'; Description='Allow Windows to power down idle USB devices to save energy'; Tags=@('Recommended','Default','Custom'); Type='Toggle'; Value=$false }
-                [PSCustomObject]@{ Name='Hibernation'; Description='Enable or disable hibernate mode and the hiberfil.sys reserved space'; Tags=@('Preference','Default'); Type='Toggle'; Value=$true }
-            )
-        }
-        [PSCustomObject]@{
-            Id = 'gaming'; Name = 'Gaming & Performance'
-            Badge = 'NEW 16'
-            Description = 'Processor, Graphics, Network, Security, ...'
-            Recommended = 65; Default = 47; Custom = 2; Total = 112
-            Items = @(
-                [PSCustomObject]@{ Name='Game Mode'; Description='Optimize your PC for play by turning things off in the background'; Tags=@('Recommended','Default'); Type='Toggle'; Value=$true }
-                [PSCustomObject]@{ Name='Enhance Pointer Precision'; Description='Adjust cursor speed based on movement velocity (mouse acceleration). Most competitive gamers disable this for consistent aiming in FPS games'; Tags=@('Preference','Recommended'); Type='Toggle'; Value=$false }
-                [PSCustomObject]@{ Name='Mouse Hover Time'; Description='Controls how long you must hover over an element before it activates (in milliseconds). Lower values make tooltips, menus, and hover effects appear faster. Default is 400ms'; Tags=@('Preference','Recommended','Default','Custom'); Type='Dropdown'; Options=@('100ms','200ms','400ms (Default)','600ms'); Value='400ms (Default)'; Badge='NEW' }
-                [PSCustomObject]@{ Name='Startup Delay for Apps'; Description='Delay startup applications by 10 seconds after boot to improve initial system responsiveness. Windows becomes usable faster, but your startup apps take longer to load'; Tags=@('Preference','Recommended','Default','Custom'); Type='Toggle'; Value=$false }
-                [PSCustomObject]@{ Name='Background App Permissions'; Description='Control whether apps can run in the background via Group Policy. Force Deny removes per-app background settings from Windows Settings. Use User in Control if you need apps like Teams, Zoom, or WhatsApp'; Tags=@('Preference','Recommended','Default','Custom'); Type='Dropdown'; Options=@('User in Control','Force Allow','Force Deny'); Value='Force Deny'; Badge='NEW' }
-            )
-        }
-        [PSCustomObject]@{
-            Id = 'update'; Name = 'Update'
-            Badge = 'NEW 1'
-            Description = 'Update Policy, Delivery & Store, Update Behavior'
-            Recommended = 5; Default = 8; Custom = 1; Total = 12
-            Items = @(
-                [PSCustomObject]@{ Name='Delivery Optimization (P2P)'; Description='Allow Windows to download/upload updates to and from other PCs on the internet'; Tags=@('Recommended','Default'); Type='Toggle'; Value=$false }
-                [PSCustomObject]@{ Name='Auto-Restart With Active Sessions'; Description='Allow Windows Update to restart the PC automatically while you are logged in'; Tags=@('Recommended','Default','Custom'); Type='Toggle'; Value=$false }
-            )
-        }
-        [PSCustomObject]@{
-            Id = 'notifications'; Name = 'Notifications'
-            Badge = $null
-            Description = 'Additional Settings, System Notifications, Privacy Notifications, Security Notifications'
-            Recommended = 7; Default = 9; Custom = 0; Total = 15
-            Items = @(
-                [PSCustomObject]@{ Name='Windows Tips & Suggestions'; Description='Show occasional tips, tricks, and suggestions as you use Windows'; Tags=@('Recommended','Default'); Type='Toggle'; Value=$false }
-                [PSCustomObject]@{ Name='Lock Screen Suggestions'; Description='Show fun facts, tips, and other suggestions on the lock screen'; Tags=@('Recommended','Default','Custom'); Type='Toggle'; Value=$false }
-            )
-        }
-        [PSCustomObject]@{
-            Id = 'sound'; Name = 'Sound'
-            Badge = $null
-            Description = 'System Sounds'
-            Recommended = 0; Default = 7; Custom = 0; Total = 7
-            Items = @(
-                [PSCustomObject]@{ Name='Startup Sound'; Description='Play the Windows startup sound when signing in'; Tags=@('Default'); Type='Toggle'; Value=$true }
-            )
-        }
+    }
+
+    $result
+}
+
+# Categorías que existen en disco pero nadie ha colocado en el
+# índice. Útil para depurar por qué algo aparece al final.
+function Get-UnlistedCategories {
+    $listed = @{}
+    foreach ($entry in $CategoryIndex) { $listed[$entry.Id] = $true }
+    $CategoryList | Where-Object { -not $listed.ContainsKey($_.Id) }
+}
+
+# Busca una categoría concreta por su Id (esté visible o no).
+function Get-CategoryById {
+    param([string]$Id)
+    $CategoryList | Where-Object { $_.Id -eq $Id } | Select-Object -First 1
+}
+
+<#
+    Crea un ajuste para el array Items de una categoría.
+
+    El tipo de control se deduce solo:
+      - con -Options  -> desplegable
+      - sin -Options  -> interruptor (el -Value debe ser $true / $false)
+
+    Ejemplos:
+        New-Setting -Name 'Game Mode' -Description '...' `
+                    -Tags 'Recommended','Default' -Value $true
+
+        New-Setting -Name 'Mouse Hover Time' -Description '...' `
+                    -Tags 'Preference' -Options '100ms','200ms' `
+                    -Value '200ms' -Badge 'NEW'
+#>
+function New-Setting {
+    param(
+        [Parameter(Mandatory)][string]$Name,
+        [Parameter(Mandatory)][string]$Description,
+        [string[]]$Tags = @(),
+        [string[]]$Options,
+        [Parameter(Mandatory)]$Value,
+        [string]$Badge
+    )
+
+    if ($Options) { $type = 'Dropdown' } else { $type = 'Toggle' }
+
+    [PSCustomObject]@{
+        Name        = $Name
+        Description = $Description
+        Tags        = $Tags
+        Type        = $type
+        Options     = $Options
+        Value       = $Value
+        Badge       = $Badge
+    }
+}
+
+# ---- fin incluido: ui/CategoryRegistry.ps1 ----
+
+# ---- Índice de secciones: orden, visibilidad y bloqueo ----
+# Es el archivo que se toca para mostrar, ocultar, bloquear o
+# reordenar secciones sin abrir ninguna otra cosa.
+# ---- inicio incluido: ui/CategoryIndex.ps1 ----
+# ============================================================
+# CategoryIndex.ps1
+#
+#   *** ESTE ES EL ARCHIVO PRINCIPAL DE LAS SECCIONES ***
+#
+# Manda sobre qué secciones se ven, en qué orden y cuáles están
+# bloqueadas. El contenido de cada una sigue viviendo en su
+# propio archivo dentro de ui/Categories/.
+#
+#   ORDEN      El de esta lista, de arriba abajo.
+#              Mover una sección = mover su línea.
+#
+#   Visible    $true  -> se muestra
+#              $false -> se oculta por completo (sigue en el
+#                        disco, no se pierde nada)
+#
+#   Locked     $false -> normal
+#              $true  -> se muestra con un candado y se puede
+#                        abrir, pero sus ajustes salen en gris
+#                        y no se pueden tocar
+#
+# Quitar una sección de la lista NO borra su archivo: si la
+# comentas con # deja de aparecer, y la recuperas quitando el #.
+#
+# Una sección que exista en ui/Categories/ pero no esté aquí se
+# añade al final, visible y desbloqueada.
+# ============================================================
+
+$CategoryIndex = @(
+
+    #  Id                    Visible          Bloqueada
+    @{ Id = 'privacy';       Visible = $true;  Locked = $false }
+    @{ Id = 'power';         Visible = $true;  Locked = $false }
+    @{ Id = 'gaming';        Visible = $true;  Locked = $false }
+    @{ Id = 'update';        Visible = $true;  Locked = $false }
+    @{ Id = 'notifications'; Visible = $true;  Locked = $false }
+    @{ Id = 'sound';         Visible = $true;  Locked = $false }
+
+)
+
+# ---- fin incluido: ui/CategoryIndex.ps1 ----
+
+# ---- Carpetas que se cargan enteras ----
+# Todo archivo .ps1 que haya dentro entra solo, por orden de nombre.
+# Añadir una categoría, un componente o una vista = crear su archivo;
+# quitarla = borrarlo. No hay que tocar este archivo.
+# build.ps1 sustituye cada bloque por el contenido de la carpeta.
+
+# ---- inicio incluido: ui/Categories/Gaming.ps1 ----
+# ------------------------------------------------------------
+# Categoría: Gaming & Performance
+# ------------------------------------------------------------
+
+Register-Category @{
+    Id          = 'gaming'
+    Name        = 'Gaming & Performance'
+    Icon        = 'Game'
+    Accent      = 'Warn'
+    AccentSoft  = 'WarnSoft'
+    Badge       = 'NEW 16'
+    Description = 'Processor, Graphics, Network, Security, ...'
+
+    Recommended = 65
+    Default     = 47
+    Custom      = 2
+    Total       = 112
+
+    Items = @(
+        New-Setting -Name 'Game Mode' `
+            -Description 'Optimize your PC for play by turning things off in the background' `
+            -Tags 'Recommended', 'Default' `
+            -Value $true
+
+        New-Setting -Name 'Enhance Pointer Precision' `
+            -Description 'Adjust cursor speed based on movement velocity (mouse acceleration). Most competitive gamers disable this for consistent aiming in FPS games' `
+            -Tags 'Preference', 'Recommended' `
+            -Value $false
+
+        New-Setting -Name 'Mouse Hover Time' `
+            -Description 'Controls how long you must hover over an element before it activates (in milliseconds). Lower values make tooltips, menus, and hover effects appear faster. Default is 400ms' `
+            -Tags 'Preference', 'Recommended', 'Default', 'Custom' `
+            -Options '100ms', '200ms', '400ms (Default)', '600ms' `
+            -Value '400ms (Default)' `
+            -Badge 'NEW'
+
+        New-Setting -Name 'Startup Delay for Apps' `
+            -Description 'Delay startup applications by 10 seconds after boot to improve initial system responsiveness. Windows becomes usable faster, but your startup apps take longer to load' `
+            -Tags 'Preference', 'Recommended', 'Default', 'Custom' `
+            -Value $false
+
+        New-Setting -Name 'Background App Permissions' `
+            -Description 'Control whether apps can run in the background via Group Policy. Force Deny removes per-app background settings from Windows Settings. Use User in Control if you need apps like Teams, Zoom, or WhatsApp' `
+            -Tags 'Preference', 'Recommended', 'Default', 'Custom' `
+            -Options 'User in Control', 'Force Allow', 'Force Deny' `
+            -Value 'Force Deny' `
+            -Badge 'NEW'
     )
 }
 
-# ---- fin incluido: ui/CategoryData.ps1 ----
-# ---- inicio incluido: ui/Views/OptimizationsListView.ps1 ----
+# ---- fin incluido: ui/Categories/Gaming.ps1 ----
+# ---- inicio incluido: ui/Categories/Notifications.ps1 ----
+# ------------------------------------------------------------
+# Categoría: Notifications
+# ------------------------------------------------------------
+
+Register-Category @{
+    Id          = 'notifications'
+    Name        = 'Notifications'
+    Icon        = 'Bell'
+    Accent      = 'Warn'
+    AccentSoft  = 'WarnSoft'
+    Badge       = $null
+    Description = 'Additional Settings, System Notifications, Privacy Notifications, Security Notifications'
+
+    Recommended = 7
+    Default     = 9
+    Custom      = 0
+    Total       = 15
+
+    Items = @(
+        New-Setting -Name 'Windows Tips & Suggestions' `
+            -Description 'Show occasional tips, tricks, and suggestions as you use Windows' `
+            -Tags 'Recommended', 'Default' `
+            -Value $false
+
+        New-Setting -Name 'Lock Screen Suggestions' `
+            -Description 'Show fun facts, tips, and other suggestions on the lock screen' `
+            -Tags 'Recommended', 'Default', 'Custom' `
+            -Value $false
+    )
+}
+
+# ---- fin incluido: ui/Categories/Notifications.ps1 ----
+# ---- inicio incluido: ui/Categories/Power.ps1 ----
+# ------------------------------------------------------------
+# Categoría: Power
+# ------------------------------------------------------------
+
+Register-Category @{
+    Id          = 'power'
+    Name        = 'Power'
+    Icon        = 'Power'
+    Accent      = 'Success'
+    AccentSoft  = 'SuccessSoft'
+    Badge       = $null
+    Description = 'Display, Hard Disk, Internet Explorer, Desktop Background Settings, ...'
+
+    Recommended = 18
+    Default     = 23
+    Custom      = 2
+    Total       = 34
+
+    Items = @(
+        New-Setting -Name 'High Performance Power Plan' `
+            -Description 'Switch to the High Performance / Ultimate Performance power scheme' `
+            -Tags 'Recommended', 'Default' `
+            -Value $true
+
+        New-Setting -Name 'USB Selective Suspend' `
+            -Description 'Allow Windows to power down idle USB devices to save energy' `
+            -Tags 'Recommended', 'Default', 'Custom' `
+            -Value $false
+
+        New-Setting -Name 'Hibernation' `
+            -Description 'Enable or disable hibernate mode and the hiberfil.sys reserved space' `
+            -Tags 'Preference', 'Default' `
+            -Value $true
+    )
+}
+
+# ---- fin incluido: ui/Categories/Power.ps1 ----
+# ---- inicio incluido: ui/Categories/Privacy.ps1 ----
+# ------------------------------------------------------------
+# Categoría: Privacy & Security
+# Todo lo de esta sección vive aquí. Para quitarla del programa,
+# borra este archivo. Ver ui/CategoryRegistry.ps1 para el formato.
+# ------------------------------------------------------------
+
+Register-Category @{
+    Id          = 'privacy'
+    Name        = 'Privacy & Security'
+    Icon        = 'Shield'
+    Accent      = 'Accent'
+    AccentSoft  = 'AccentSoft'
+    Badge       = 'NEW 45'
+    Description = 'Security, Content Delivery & Advertising, Lock Screen, General, ...'
+
+    Recommended = 29
+    Default     = 59
+    Custom      = 0
+    Total       = 88
+
+    Items = @(
+        New-Setting -Name 'User Account Control Level' `
+            -Description 'Controls UAC notification level and secure desktop behavior' `
+            -Tags 'Preference', 'Recommended', 'Default', 'Custom' `
+            -Options 'Always notify', 'Notify when apps try to make changes', 'Notify me only (no dim)', 'Never notify' `
+            -Value 'Notify when apps try to make changes'
+
+        New-Setting -Name 'Workplace Join Message Prompts' `
+            -Description "Show 'Allow my organization to manage my device' prompts throughout Windows" `
+            -Tags 'Recommended', 'Default', 'Custom' `
+            -Value $true
+
+        New-Setting -Name 'BitLocker Auto Encryption' `
+            -Description 'Controls whether Windows can automatically encrypt drives with BitLocker. Has no effect if BitLocker encryption is already active on your device' `
+            -Tags 'Preference', 'Recommended', 'Default', 'Custom' `
+            -Value $false
+
+        New-Setting -Name 'WiFi-Sense' `
+            -Description 'Allow sharing WiFi passwords with contacts and automatically connecting to suggested open hotspots' `
+            -Tags 'Recommended', 'Custom' `
+            -Value $true
+
+        New-Setting -Name 'Automatic Maintenance' `
+            -Description 'Choose if Windows should run automatic system maintenance tasks during idle time' `
+            -Tags 'Recommended', 'Default', 'Custom' `
+            -Value $false
+
+        New-Setting -Name 'Windows Error Reporting' `
+            -Description 'Choose if Windows should collect and send crash reports and error information to Microsoft' `
+            -Tags 'Recommended', 'Default', 'Custom' `
+            -Value $false
+    )
+}
+
+# ---- fin incluido: ui/Categories/Privacy.ps1 ----
+# ---- inicio incluido: ui/Categories/Sound.ps1 ----
+# ------------------------------------------------------------
+# Categoría: Sound
+# Ejemplo de categoría mínima: un solo ajuste y sin distintivo.
+# ------------------------------------------------------------
+
+Register-Category @{
+    Id          = 'sound'
+    Name        = 'Sound'
+    Icon        = 'Volume'
+    Accent      = 'Success'
+    AccentSoft  = 'SuccessSoft'
+    Description = 'System Sounds'
+
+    Default     = 7
+    Total       = 7
+
+    Items = @(
+        New-Setting -Name 'Startup Sound' `
+            -Description 'Play the Windows startup sound when signing in' `
+            -Tags 'Default' `
+            -Value $true
+    )
+}
+
+# ---- fin incluido: ui/Categories/Sound.ps1 ----
+# ---- inicio incluido: ui/Categories/Update.ps1 ----
+# ------------------------------------------------------------
+# Categoría: Update
+# ------------------------------------------------------------
+
+Register-Category @{
+    Id          = 'update'
+    Name        = 'Update'
+    Icon        = 'Sync'
+    Accent      = 'Accent'
+    AccentSoft  = 'AccentSoft'
+    Badge       = 'NEW 1'
+    Description = 'Update Policy, Delivery & Store, Update Behavior'
+
+    Recommended = 5
+    Default     = 8
+    Custom      = 1
+    Total       = 12
+
+    Items = @(
+        New-Setting -Name 'Delivery Optimization (P2P)' `
+            -Description 'Allow Windows to download/upload updates to and from other PCs on the internet' `
+            -Tags 'Recommended', 'Default' `
+            -Value $false
+
+        New-Setting -Name 'Auto-Restart With Active Sessions' `
+            -Description 'Allow Windows Update to restart the PC automatically while you are logged in' `
+            -Tags 'Recommended', 'Default', 'Custom' `
+            -Value $false
+    )
+}
+
+# ---- fin incluido: ui/Categories/Update.ps1 ----
+
+# ---- inicio incluido: ui/Components/Banner.ps1 ----
 # ============================================================
-# OptimizationsListView.ps1
-# Pantalla principal: tarjetas de categoría con icono, badge,
-# estadísticas y elevación al pasar el ratón.
+# Componente: aviso
+#
+# Franja informativa que se coloca encima del contenido de una
+# pantalla. Ahora mismo la usa el detalle para avisar de que la
+# sección está bloqueada.
 # ============================================================
 
-# Icono y color de acento por categoría.
-$CategoryLook = @{
-    privacy       = @{ Icon = 'Shield'; Fg = 'Accent';  Bg = 'AccentSoft' }
-    power         = @{ Icon = 'Power';  Fg = 'Success'; Bg = 'SuccessSoft' }
-    gaming        = @{ Icon = 'Game';   Fg = 'Warn';    Bg = 'WarnSoft' }
-    update        = @{ Icon = 'Sync';   Fg = 'Accent';  Bg = 'AccentSoft' }
-    notifications = @{ Icon = 'Bell';   Fg = 'Warn';    Bg = 'WarnSoft' }
-    sound         = @{ Icon = 'Volume'; Fg = 'Success'; Bg = 'SuccessSoft' }
+function New-Banner {
+    param(
+        [string]$Icon,
+        [string]$Title,
+        [string]$Message,
+        [string]$Fg = 'Warn',
+        [string]$Bg = 'WarnSoft'
+    )
+
+    $banner = New-Object System.Windows.Controls.Border
+    $banner.CornerRadius = New-Object System.Windows.CornerRadius 12
+    $banner.Padding = New-Object System.Windows.Thickness 16, 13, 18, 14
+    $banner.Margin = New-Object System.Windows.Thickness 0, 0, 0, 14
+    Set-BoxBg $banner $Bg
+
+    $row = New-Object System.Windows.Controls.StackPanel
+    $row.Orientation = 'Horizontal'
+
+    $ic = New-Icon $Icon 17 $Fg
+    $ic.VerticalAlignment = 'Center'
+    $ic.Margin = New-Object System.Windows.Thickness 0, 0, 13, 0
+    $row.Children.Add($ic) | Out-Null
+
+    $texts = New-Object System.Windows.Controls.StackPanel
+    $texts.VerticalAlignment = 'Center'
+
+    $t = New-Object System.Windows.Controls.TextBlock
+    $t.Text = $Title
+    $t.FontSize = 12.5
+    $t.FontWeight = 'SemiBold'
+    Set-TextFg $t $Fg
+    $texts.Children.Add($t) | Out-Null
+
+    if ($Message) {
+        $m = New-Object System.Windows.Controls.TextBlock
+        $m.Text = $Message
+        $m.FontSize = 11.5
+        $m.TextWrapping = 'Wrap'
+        $m.Margin = New-Object System.Windows.Thickness 0, 2, 0, 0
+        Set-TextFg $m 'TextMuted'
+        $texts.Children.Add($m) | Out-Null
+    }
+
+    $row.Children.Add($texts) | Out-Null
+    $banner.Child = $row
+    $banner
 }
+
+# Aviso concreto de sección bloqueada.
+function New-LockedBanner {
+    New-Banner -Icon 'Lock' `
+        -Title 'Sección bloqueada' `
+        -Message 'Sus ajustes se muestran solo como consulta: no se pueden modificar. Para desbloquearla, pon Locked = $false en ui/CategoryIndex.ps1.'
+}
+
+# ---- fin incluido: ui/Components/Banner.ps1 ----
+# ---- inicio incluido: ui/Components/CategoryCard.ps1 ----
+# ============================================================
+# Componente: tarjeta de categoría
+#
+# Es cada una de las filas de la pantalla principal. Estructura
+# en 4 columnas:
+#
+#   [icono] [nombre + badge + descripción] [píldoras] [ >]
+#
+# Al hacer clic abre el detalle de esa categoría.
+# ============================================================
 
 function New-CategoryCard {
     param($Window, $Category)
@@ -545,21 +988,14 @@ function New-CategoryCard {
     Add-HoverLift $card
 
     $grid = New-Object System.Windows.Controls.Grid
-    foreach ($width in @('Auto', '*', 'Auto', 'Auto')) {
-        $cd = New-Object System.Windows.Controls.ColumnDefinition
-        $cd.Width = [System.Windows.GridLength]::new(1, $(if ($width -eq '*') { 'Star' } else { 'Auto' }))
-        $grid.ColumnDefinitions.Add($cd)
-    }
+    Add-GridColumns $grid 'Auto', '*', 'Auto', 'Auto'
 
-    # --- icono ---
-    $look = $CategoryLook[$Category.Id]
-    if (-not $look) { $look = @{ Icon = 'Sliders'; Fg = 'Accent'; Bg = 'AccentSoft' } }
-    $tile = New-IconTile $look.Icon $look.Fg $look.Bg 44
+    # --- columna 0: icono ---
+    $tile = New-IconTile $Category.Icon $Category.Accent $Category.AccentSoft 44
     $tile.Margin = New-Object System.Windows.Thickness 0, 0, 16, 0
-    [System.Windows.Controls.Grid]::SetColumn($tile, 0)
-    $grid.Children.Add($tile) | Out-Null
+    Add-ToColumn $grid $tile 0
 
-    # --- nombre, badge y descripción ---
+    # --- columna 1: nombre, badge y descripción ---
     $text = New-Object System.Windows.Controls.StackPanel
     $text.VerticalAlignment = 'Center'
 
@@ -575,6 +1011,15 @@ function New-CategoryCard {
     $nameRow.Children.Add($name) | Out-Null
 
     if ($Category.Badge) { $nameRow.Children.Add((New-Badge $Category.Badge)) | Out-Null }
+
+    # Candado si la sección está bloqueada en ui/CategoryIndex.ps1.
+    if ($Category.Locked) {
+        $lock = New-Icon 'Lock' 12 'TextFaint'
+        $lock.Margin = New-Object System.Windows.Thickness 9, 1, 0, 0
+        $lock.ToolTip = 'Sección bloqueada: se puede consultar, no modificar'
+        $nameRow.Children.Add($lock) | Out-Null
+    }
+
     $text.Children.Add($nameRow) | Out-Null
 
     $desc = New-Object System.Windows.Controls.TextBlock
@@ -585,33 +1030,15 @@ function New-CategoryCard {
     Set-TextFg $desc 'TextMuted'
     $text.Children.Add($desc) | Out-Null
 
-    [System.Windows.Controls.Grid]::SetColumn($text, 1)
-    $grid.Children.Add($text) | Out-Null
+    Add-ToColumn $grid $text 1
 
-    # --- píldoras de estadísticas ---
-    $stats = New-Object System.Windows.Controls.StackPanel
-    $stats.Orientation = 'Horizontal'
-    $stats.VerticalAlignment = 'Center'
+    # --- columna 2: píldoras de estadísticas ---
+    Add-ToColumn $grid (New-CategoryStats $Category) 2
 
-    $total = $Category.Total
-    if ($Category.Recommended -gt 0) {
-        $stats.Children.Add((New-Pill 'StarFill' "$($Category.Recommended)/$total" 'Success' 'SuccessSoft' "Recommended: $($Category.Recommended) de $total")) | Out-Null
-    } else {
-        $stats.Children.Add((New-Pill 'Star' "0/$total" 'TextFaint' 'SurfaceSunken' 'Sin ajustes recomendados')) | Out-Null
-    }
-    $stats.Children.Add((New-Pill 'Grid' "$($Category.Default)/$total" 'TextMuted' 'SurfaceSunken' "Default: $($Category.Default) de $total")) | Out-Null
-    if ($Category.Custom -gt 0) {
-        $stats.Children.Add((New-Pill 'Sliders' "$($Category.Custom)/$total" 'Warn' 'WarnSoft' "Custom: $($Category.Custom) de $total")) | Out-Null
-    }
-
-    [System.Windows.Controls.Grid]::SetColumn($stats, 2)
-    $grid.Children.Add($stats) | Out-Null
-
-    # --- chevron ---
+    # --- columna 3: chevron ---
     $chev = New-Icon 'ChevronRight' 12 'TextFaint'
     $chev.Margin = New-Object System.Windows.Thickness 16, 0, 2, 0
-    [System.Windows.Controls.Grid]::SetColumn($chev, 3)
-    $grid.Children.Add($chev) | Out-Null
+    Add-ToColumn $grid $chev 3
 
     $card.Child = $grid
 
@@ -625,76 +1052,220 @@ function New-CategoryCard {
     $card
 }
 
-function Show-OptimizationsListView {
-    param($Window)
+# Las tres píldoras de la derecha: Recommended / Default / Custom.
+function New-CategoryStats {
+    param($Category)
 
-    $categories  = Get-OptimizationCategories
-    $titleArea   = $Window.FindName('HeaderTitleArea')
-    $actionsArea = $Window.FindName('HeaderActionsArea')
-    $mainContent = $Window.FindName('MainContent')
+    $stats = New-Object System.Windows.Controls.StackPanel
+    $stats.Orientation = 'Horizontal'
+    $stats.VerticalAlignment = 'Center'
 
-    # ---- Cabecera: título + subtítulo ----
-    $titleArea.Children.Clear()
-    $stack = New-Object System.Windows.Controls.StackPanel
+    $total = $Category.Total
 
-    $title = New-Object System.Windows.Controls.TextBlock
-    $title.Text = 'Optimizations'
-    $title.FontFamily = $Window.FindResource('DisplayFont')
-    $title.FontSize = 27
-    $title.FontWeight = 'Bold'
-    Set-TextFg $title 'Text'
-    $stack.Children.Add($title) | Out-Null
-
-    $sub = New-Object System.Windows.Controls.TextBlock
-    $sub.Text = 'Optimize your Windows system performance, privacy and power usage'
-    $sub.FontSize = 12.5
-    $sub.Margin = New-Object System.Windows.Thickness 0, 3, 0, 0
-    Set-TextFg $sub 'TextMuted'
-    $stack.Children.Add($sub) | Out-Null
-
-    $titleArea.Children.Add($stack) | Out-Null
-
-    # ---- Cabecera: acciones ----
-    $actionsArea.Children.Clear()
-    $search = New-SearchBox $Window
-    $actionsArea.Children.Add($search.Root) | Out-Null
-    $actionsArea.Children.Add((New-ChipButton $Window 'Quick Actions' 'Bolt' -Chevron)) | Out-Null
-    $actionsArea.Children.Add((New-ChipButton $Window 'View' 'Filter' -Chevron)) | Out-Null
-
-    # ---- Contenido ----
-    $list = New-Object System.Windows.Controls.StackPanel
-    foreach ($cat in $categories) {
-        $list.Children.Add((New-CategoryCard -Window $Window -Category $cat)) | Out-Null
+    if ($Category.Recommended -gt 0) {
+        $stats.Children.Add((New-Pill 'StarFill' "$($Category.Recommended)/$total" 'Success' 'SuccessSoft' `
+            "Recommended: $($Category.Recommended) de $total")) | Out-Null
+    } else {
+        $stats.Children.Add((New-Pill 'Star' "0/$total" 'TextFaint' 'SurfaceSunken' `
+            'Sin ajustes recomendados')) | Out-Null
     }
 
-    $mainContent.Content = $list
-    Start-EnterTransition $list
+    $stats.Children.Add((New-Pill 'Grid' "$($Category.Default)/$total" 'TextMuted' 'SurfaceSunken' `
+        "Default: $($Category.Default) de $total")) | Out-Null
+
+    if ($Category.Custom -gt 0) {
+        $stats.Children.Add((New-Pill 'Sliders' "$($Category.Custom)/$total" 'Warn' 'WarnSoft' `
+            "Custom: $($Category.Custom) de $total")) | Out-Null
+    }
+
+    $stats
 }
 
-# ---- fin incluido: ui/Views/OptimizationsListView.ps1 ----
-# ---- inicio incluido: ui/Views/CategoryDetailView.ps1 ----
+# ---- fin incluido: ui/Components/CategoryCard.ps1 ----
+# ---- inicio incluido: ui/Components/PageHeader.ps1 ----
 # ============================================================
-# CategoryDetailView.ps1
-# Pantalla de detalle: breadcrumb + tarjetas de cada ítem con
-# etiquetas, interruptor animado o desplegable.
+# Componente: cabecera de página
+#
+# La franja superior del contenido, con dos zonas definidas en
+# MainWindow.xaml:
+#     HeaderTitleArea    -> izquierda: título o breadcrumb
+#     HeaderActionsArea  -> derecha:   buscador y botones
+#
+# Las vistas no tocan esas zonas directamente: usan estas
+# funciones. Así todas las pantallas comparten el mismo aspecto.
 # ============================================================
 
-function New-ItemCard {
-    param($Window, $Item)
+# Vacía las dos zonas. Toda vista debe llamarla antes de pintar.
+function Clear-PageHeader {
+    param($Window)
+    $Window.FindName('HeaderTitleArea').Children.Clear()
+    $Window.FindName('HeaderActionsArea').Children.Clear()
+}
+
+# Título grande + subtítulo gris (pantalla principal).
+function Set-PageTitle {
+    param($Window, [string]$Title, [string]$Subtitle)
+
+    $stack = New-Object System.Windows.Controls.StackPanel
+
+    $big = New-Object System.Windows.Controls.TextBlock
+    $big.Text = $Title
+    $big.FontFamily = $Window.FindResource('DisplayFont')
+    $big.FontSize = 27
+    $big.FontWeight = 'Bold'
+    Set-TextFg $big 'Text'
+    $stack.Children.Add($big) | Out-Null
+
+    if ($Subtitle) {
+        $sub = New-Object System.Windows.Controls.TextBlock
+        $sub.Text = $Subtitle
+        $sub.FontSize = 12.5
+        $sub.Margin = New-Object System.Windows.Thickness 0, 3, 0, 0
+        Set-TextFg $sub 'TextMuted'
+        $stack.Children.Add($sub) | Out-Null
+    }
+
+    $Window.FindName('HeaderTitleArea').Children.Add($stack) | Out-Null
+}
+
+# Breadcrumb de una categoría: botón atrás + icono + ruta + título.
+# $OnBack es el nombre de la función a la que vuelve el botón.
+function Set-PageBreadcrumb {
+    param($Window, $Category, [string]$RootLabel = 'Optimizations')
+
+    $row = New-Object System.Windows.Controls.StackPanel
+    $row.Orientation = 'Horizontal'
+
+    # --- botón atrás ---
+    $back = New-Object System.Windows.Controls.Border
+    $back.Width = 34; $back.Height = 34
+    $back.CornerRadius = New-Object System.Windows.CornerRadius 9
+    $back.BorderThickness = New-Object System.Windows.Thickness 1
+    $back.Margin = New-Object System.Windows.Thickness 0, 0, 14, 0
+    $back.VerticalAlignment = 'Center'
+    $back.Cursor = 'Hand'
+    $back.ToolTip = 'Volver a la lista'
+    Set-BoxBg $back 'Surface'
+    Set-BoxLine $back 'Stroke'
+    $back.Child = (New-Icon 'Back' 13 'TextMuted')
+    $back.Add_MouseLeftButtonUp({
+        param($s, $e)
+        Show-OptimizationsListView -Window ([System.Windows.Window]::GetWindow($s))
+    })
+    $row.Children.Add($back) | Out-Null
+
+    # --- icono de la categoría ---
+    $tile = New-IconTile $Category.Icon $Category.Accent $Category.AccentSoft 38
+    $tile.Margin = New-Object System.Windows.Thickness 0, 0, 13, 0
+    $row.Children.Add($tile) | Out-Null
+
+    # --- ruta pequeña + título ---
+    $texts = New-Object System.Windows.Controls.StackPanel
+    $texts.VerticalAlignment = 'Center'
+
+    $trail = New-Object System.Windows.Controls.StackPanel
+    $trail.Orientation = 'Horizontal'
+
+    $rootLink = New-Object System.Windows.Controls.TextBlock
+    $rootLink.Text = $RootLabel
+    $rootLink.FontSize = 11
+    $rootLink.Cursor = 'Hand'
+    Set-TextFg $rootLink 'TextFaint'
+    $rootLink.Add_MouseLeftButtonUp({
+        param($s, $e)
+        Show-OptimizationsListView -Window ([System.Windows.Window]::GetWindow($s))
+    })
+    $trail.Children.Add($rootLink) | Out-Null
+
+    $sep = New-Icon 'ChevronRight' 8 'TextFaint'
+    $sep.Margin = New-Object System.Windows.Thickness 6, 1, 6, 0
+    $trail.Children.Add($sep) | Out-Null
+
+    $leaf = New-Object System.Windows.Controls.TextBlock
+    $leaf.Text = $Category.Name
+    $leaf.FontSize = 11
+    Set-TextFg $leaf 'TextMuted'
+    $trail.Children.Add($leaf) | Out-Null
+
+    $texts.Children.Add($trail) | Out-Null
+
+    $title = New-Object System.Windows.Controls.TextBlock
+    $title.Text = $Category.Name
+    $title.FontFamily = $Window.FindResource('DisplayFont')
+    $title.FontSize = 21
+    $title.FontWeight = 'Bold'
+    $title.Margin = New-Object System.Windows.Thickness 0, 1, 0, 0
+    Set-TextFg $title 'Text'
+    $texts.Children.Add($title) | Out-Null
+
+    $row.Children.Add($texts) | Out-Null
+    $Window.FindName('HeaderTitleArea').Children.Add($row) | Out-Null
+}
+
+# Añade un control a la zona de acciones (derecha).
+function Add-PageAction {
+    param($Window, $Element)
+    $Window.FindName('HeaderActionsArea').Children.Add($Element) | Out-Null
+}
+
+# Texto gris suelto en la zona de acciones ("6 settings").
+function Add-PageActionLabel {
+    param($Window, [string]$Text)
+    $t = New-Object System.Windows.Controls.TextBlock
+    $t.Text = $Text
+    $t.FontSize = 12
+    $t.VerticalAlignment = 'Center'
+    $t.Margin = New-Object System.Windows.Thickness 0, 0, 4, 0
+    Set-TextFg $t 'TextFaint'
+    Add-PageAction $Window $t
+}
+
+# ---- fin incluido: ui/Components/PageHeader.ps1 ----
+# ---- inicio incluido: ui/Components/SettingCard.ps1 ----
+# ============================================================
+# Componente: tarjeta de ajuste
+#
+# Es cada una de las filas de la pantalla de detalle. Estructura
+# en 2 columnas:
+#
+#   [nombre + badge / descripción / etiquetas]  [indicadores + control]
+#
+# El control de la derecha lo decide el campo Type del ajuste,
+# que New-Setting deduce solo (ver ui/CategoryRegistry.ps1):
+#     Toggle    -> interruptor animado
+#     Dropdown  -> desplegable
+# ============================================================
+
+function New-SettingCard {
+    param($Window, $Setting, [switch]$Locked)
 
     $card = New-Object System.Windows.Controls.Border
     $card.Style = $Window.FindResource('StaticCardStyle')
     $card.Padding = New-Object System.Windows.Thickness 20, 15, 20, 16
 
     $grid = New-Object System.Windows.Controls.Grid
-    $c1 = New-Object System.Windows.Controls.ColumnDefinition
-    $c1.Width = [System.Windows.GridLength]::new(1, 'Star')
-    $c2 = New-Object System.Windows.Controls.ColumnDefinition
-    $c2.Width = [System.Windows.GridLength]::Auto
-    $grid.ColumnDefinitions.Add($c1)
-    $grid.ColumnDefinitions.Add($c2)
+    Add-GridColumns $grid '*', 'Auto'
 
-    # ---- izquierda: nombre, descripción, etiquetas ----
+    Add-ToColumn $grid (New-SettingInfo $Window $Setting) 0
+
+    $control = New-SettingControl $Window $Setting
+    if ($Locked) {
+        # IsEnabled = $false corta la entrada de todo el subárbol,
+        # así que el interruptor deja de responder al ratón.
+        $control.IsEnabled = $false
+        $control.Opacity = 0.45
+        $card.ToolTip = 'Sección bloqueada'
+    }
+    Add-ToColumn $grid $control 1
+
+    $card.Child = $grid
+    $card
+}
+
+# Columna izquierda: nombre, descripción y etiquetas.
+function New-SettingInfo {
+    param($Window, $Setting)
+
     $left = New-Object System.Windows.Controls.StackPanel
     $left.VerticalAlignment = 'Center'
 
@@ -702,18 +1273,18 @@ function New-ItemCard {
     $nameRow.Orientation = 'Horizontal'
 
     $name = New-Object System.Windows.Controls.TextBlock
-    $name.Text = $Item.Name
+    $name.Text = $Setting.Name
     $name.FontFamily = $Window.FindResource('DisplayFont')
     $name.FontWeight = 'SemiBold'
     $name.FontSize = 13.5
     Set-TextFg $name 'Text'
     $nameRow.Children.Add($name) | Out-Null
 
-    if ($Item.Badge) { $nameRow.Children.Add((New-Badge $Item.Badge)) | Out-Null }
+    if ($Setting.Badge) { $nameRow.Children.Add((New-Badge $Setting.Badge)) | Out-Null }
     $left.Children.Add($nameRow) | Out-Null
 
     $desc = New-Object System.Windows.Controls.TextBlock
-    $desc.Text = $Item.Description
+    $desc.Text = $Setting.Description
     $desc.FontSize = 11.5
     $desc.TextWrapping = 'Wrap'
     $desc.LineHeight = 17
@@ -723,150 +1294,150 @@ function New-ItemCard {
 
     $tags = New-Object System.Windows.Controls.StackPanel
     $tags.Orientation = 'Horizontal'
-    foreach ($tag in $Item.Tags) { $tags.Children.Add((New-Tag $tag)) | Out-Null }
+    foreach ($tag in $Setting.Tags) { $tags.Children.Add((New-Tag $tag)) | Out-Null }
     $left.Children.Add($tags) | Out-Null
 
-    [System.Windows.Controls.Grid]::SetColumn($left, 0)
-    $grid.Children.Add($left) | Out-Null
+    $left
+}
 
-    # ---- derecha: indicadores + control ----
+# Columna derecha: indicadores y el control que corresponda.
+function New-SettingControl {
+    param($Window, $Setting)
+
     $right = New-Object System.Windows.Controls.StackPanel
     $right.Orientation = 'Horizontal'
     $right.VerticalAlignment = 'Center'
 
-    if ($Item.Tags -contains 'Recommended') {
+    # Indicadores: el valor actual coincide con el recomendado / el de fábrica.
+    if ($Setting.Tags -contains 'Recommended') {
         $star = New-Icon 'StarFill' 13 'Success'
         $star.Margin = New-Object System.Windows.Thickness 0, 0, 10, 0
+        $star.ToolTip = 'Valor recomendado'
         $right.Children.Add($star) | Out-Null
     }
-    if ($Item.Tags -contains 'Default') {
-        $gr = New-Icon 'Grid' 13 'TextFaint'
-        $gr.Margin = New-Object System.Windows.Thickness 0, 0, 14, 0
-        $right.Children.Add($gr) | Out-Null
+    if ($Setting.Tags -contains 'Default') {
+        $grid = New-Icon 'Grid' 13 'TextFaint'
+        $grid.Margin = New-Object System.Windows.Thickness 0, 0, 14, 0
+        $grid.ToolTip = 'Valor de fábrica de Windows'
+        $right.Children.Add($grid) | Out-Null
     }
 
-    if ($Item.Type -eq 'Toggle') {
-        $state = New-Object System.Windows.Controls.TextBlock
-        if ($Item.Value) { $state.Text = 'On' } else { $state.Text = 'Off' }
-        $state.FontSize = 11.5
-        $state.FontWeight = 'SemiBold'
-        $state.Width = 24
-        $state.TextAlignment = 'Right'
-        $state.VerticalAlignment = 'Center'
-        $state.Margin = New-Object System.Windows.Thickness 0, 0, 10, 0
-        Set-TextFg $state 'TextMuted'
-        $right.Children.Add($state) | Out-Null
-        $right.Children.Add((New-ToggleSwitch -Window $Window -InitialState $Item.Value -Label $state)) | Out-Null
-    }
-    elseif ($Item.Type -eq 'Dropdown') {
-        $combo = New-Object System.Windows.Controls.ComboBox
-        $combo.Style = $Window.FindResource('ModernComboStyle')
-        $combo.Width = 262
-        foreach ($opt in $Item.Options) { $combo.Items.Add($opt) | Out-Null }
-        $combo.SelectedItem = $Item.Value
-        $right.Children.Add($combo) | Out-Null
+    switch ($Setting.Type) {
+        'Toggle' {
+            $state = New-Object System.Windows.Controls.TextBlock
+            if ($Setting.Value) { $state.Text = 'On' } else { $state.Text = 'Off' }
+            $state.FontSize = 11.5
+            $state.FontWeight = 'SemiBold'
+            $state.Width = 24
+            $state.TextAlignment = 'Right'
+            $state.VerticalAlignment = 'Center'
+            $state.Margin = New-Object System.Windows.Thickness 0, 0, 10, 0
+            Set-TextFg $state 'TextMuted'
+            $right.Children.Add($state) | Out-Null
+            $right.Children.Add((New-ToggleSwitch -Window $Window -InitialState $Setting.Value -Label $state)) | Out-Null
+        }
+        'Dropdown' {
+            $combo = New-Object System.Windows.Controls.ComboBox
+            $combo.Style = $Window.FindResource('ModernComboStyle')
+            $combo.Width = 262
+            foreach ($opt in $Setting.Options) { $combo.Items.Add($opt) | Out-Null }
+            $combo.SelectedItem = $Setting.Value
+            $right.Children.Add($combo) | Out-Null
+        }
     }
 
-    [System.Windows.Controls.Grid]::SetColumn($right, 1)
-    $grid.Children.Add($right) | Out-Null
-
-    $card.Child = $grid
-    $card
+    $right
 }
+
+# ---- fin incluido: ui/Components/SettingCard.ps1 ----
+
+# ---- inicio incluido: ui/Views/CategoryDetailView.ps1 ----
+# ============================================================
+# Vista: detalle de una categoría
+#
+# Misma idea que la lista: solo ensambla. La cabecera la pone
+# ui/Components/PageHeader.ps1 y cada fila la construye
+# ui/Components/SettingCard.ps1.
+#
+# Sirve para cualquier categoría sin saber nada de ella: recorre
+# su array Items y ya está.
+#
+# Si la sección está bloqueada en ui/CategoryIndex.ps1, se pinta
+# igual pero con un aviso arriba y los controles deshabilitados.
+# ============================================================
 
 function Show-CategoryDetailView {
     param($Window, $Category)
 
-    $titleArea   = $Window.FindName('HeaderTitleArea')
-    $actionsArea = $Window.FindName('HeaderActionsArea')
-    $mainContent = $Window.FindName('MainContent')
+    $locked = [bool]$Category.Locked
 
-    # ---- Breadcrumb ----
-    $titleArea.Children.Clear()
-    $crumb = New-Object System.Windows.Controls.StackPanel
-    $crumb.Orientation = 'Horizontal'
+    # ---- 1. Cabecera ----
+    Clear-PageHeader $Window
+    Set-PageBreadcrumb -Window $Window -Category $Category
 
-    $back = New-Object System.Windows.Controls.Border
-    $back.CornerRadius = New-Object System.Windows.CornerRadius 9
-    $back.Width = 34; $back.Height = 34
-    $back.Cursor = 'Hand'
-    $back.BorderThickness = New-Object System.Windows.Thickness 1
-    $back.Margin = New-Object System.Windows.Thickness 0, 0, 14, 0
-    $back.VerticalAlignment = 'Center'
-    Set-BoxBg $back 'Surface'
-    Set-BoxLine $back 'Stroke'
-    $back.Child = (New-Icon 'Back' 13 'TextMuted')
-    $back.Add_MouseLeftButtonUp({
-        param($s, $e)
-        Show-OptimizationsListView -Window ([System.Windows.Window]::GetWindow($s))
-    })
-    $crumb.Children.Add($back) | Out-Null
+    Add-PageActionLabel $Window "$($Category.Items.Count) settings"
 
-    $look = $CategoryLook[$Category.Id]
-    if (-not $look) { $look = @{ Icon = 'Sliders'; Fg = 'Accent'; Bg = 'AccentSoft' } }
-    $tile = New-IconTile $look.Icon $look.Fg $look.Bg 38
-    $tile.Margin = New-Object System.Windows.Thickness 0, 0, 13, 0
-    $crumb.Children.Add($tile) | Out-Null
+    $reset = New-ChipButton $Window 'Reset' 'Sync'
+    if ($locked) {
+        $reset.IsEnabled = $false
+        $reset.Opacity = 0.45
+        $reset.ToolTip = 'No disponible: la sección está bloqueada'
+    }
+    Add-PageAction $Window $reset
 
-    $texts = New-Object System.Windows.Controls.StackPanel
-    $texts.VerticalAlignment = 'Center'
-
-    $trail = New-Object System.Windows.Controls.StackPanel
-    $trail.Orientation = 'Horizontal'
-    $root = New-Object System.Windows.Controls.TextBlock
-    $root.Text = 'Optimizations'
-    $root.FontSize = 11
-    $root.Cursor = 'Hand'
-    Set-TextFg $root 'TextFaint'
-    $root.Add_MouseLeftButtonUp({
-        param($s, $e)
-        Show-OptimizationsListView -Window ([System.Windows.Window]::GetWindow($s))
-    })
-    $trail.Children.Add($root) | Out-Null
-    $sep = New-Icon 'ChevronRight' 8 'TextFaint'
-    $sep.Margin = New-Object System.Windows.Thickness 6, 1, 6, 0
-    $trail.Children.Add($sep) | Out-Null
-    $leaf = New-Object System.Windows.Controls.TextBlock
-    $leaf.Text = $Category.Name
-    $leaf.FontSize = 11
-    Set-TextFg $leaf 'TextMuted'
-    $trail.Children.Add($leaf) | Out-Null
-    $texts.Children.Add($trail) | Out-Null
-
-    $curr = New-Object System.Windows.Controls.TextBlock
-    $curr.Text = $Category.Name
-    $curr.FontFamily = $Window.FindResource('DisplayFont')
-    $curr.FontSize = 21
-    $curr.FontWeight = 'Bold'
-    $curr.Margin = New-Object System.Windows.Thickness 0, 1, 0, 0
-    Set-TextFg $curr 'Text'
-    $texts.Children.Add($curr) | Out-Null
-
-    $crumb.Children.Add($texts) | Out-Null
-    $titleArea.Children.Add($crumb) | Out-Null
-
-    # ---- Acciones ----
-    $actionsArea.Children.Clear()
-    $count = New-Object System.Windows.Controls.TextBlock
-    $count.Text = "$($Category.Items.Count) settings"
-    $count.FontSize = 12
-    $count.VerticalAlignment = 'Center'
-    $count.Margin = New-Object System.Windows.Thickness 0, 0, 4, 0
-    Set-TextFg $count 'TextFaint'
-    $actionsArea.Children.Add($count) | Out-Null
-    $actionsArea.Children.Add((New-ChipButton $Window 'Reset' 'Sync')) | Out-Null
-
-    # ---- Lista de ítems ----
+    # ---- 2. Cuerpo ----
     $list = New-Object System.Windows.Controls.StackPanel
-    foreach ($item in $Category.Items) {
-        $list.Children.Add((New-ItemCard -Window $Window -Item $item)) | Out-Null
+
+    if ($locked) { $list.Children.Add((New-LockedBanner)) | Out-Null }
+
+    foreach ($setting in $Category.Items) {
+        $list.Children.Add((New-SettingCard -Window $Window -Setting $setting -Locked:$locked)) | Out-Null
     }
 
-    $mainContent.Content = $list
+    # ---- 3. Pintar con transición de entrada ----
+    $Window.FindName('MainContent').Content = $list
     Start-EnterTransition $list
 }
 
 # ---- fin incluido: ui/Views/CategoryDetailView.ps1 ----
+# ---- inicio incluido: ui/Views/OptimizationsListView.ps1 ----
+# ============================================================
+# Vista: lista de optimizaciones (pantalla principal)
+#
+# Una vista solo ENSAMBLA, no dibuja: pide la cabecera a
+# ui/Components/PageHeader.ps1 y una tarjeta por categoría a
+# ui/Components/CategoryCard.ps1.
+#
+# Las categorías salen del registro, así que esta pantalla se
+# adapta sola a las que haya en ui/Categories/.
+# ============================================================
+
+function Show-OptimizationsListView {
+    param($Window)
+
+    # ---- 1. Cabecera ----
+    Clear-PageHeader $Window
+    Set-PageTitle -Window $Window `
+        -Title 'Optimizations' `
+        -Subtitle 'Optimize your Windows system performance, privacy and power usage'
+
+    $search = New-SearchBox $Window
+    Add-PageAction $Window $search.Root
+    Add-PageAction $Window (New-ChipButton $Window 'Quick Actions' 'Bolt' -Chevron)
+    Add-PageAction $Window (New-ChipButton $Window 'View' 'Filter' -Chevron)
+
+    # ---- 2. Cuerpo: una tarjeta por categoría ----
+    $list = New-Object System.Windows.Controls.StackPanel
+    foreach ($category in Get-OptimizationCategories) {
+        $list.Children.Add((New-CategoryCard -Window $Window -Category $category)) | Out-Null
+    }
+
+    # ---- 3. Pintar con transición de entrada ----
+    $Window.FindName('MainContent').Content = $list
+    Start-EnterTransition $list
+}
+
+# ---- fin incluido: ui/Views/OptimizationsListView.ps1 ----
 
 $xamlString = @'
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"

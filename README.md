@@ -2,66 +2,188 @@
 
 Aplicación de escritorio para optimizar Windows 11 Pro. Interfaz **WPF** escrita íntegramente en **PowerShell 5.1** y empaquetada como un **`.exe` portable de un solo archivo** con [ps2exe](https://github.com/MScholtes/PS2EXE).
 
-> **Estado: maqueta de interfaz.** La navegación, las tarjetas, los toggles y los dropdowns funcionan visualmente, pero **ningún control aplica cambios reales al sistema todavía**. Los datos de `ui/CategoryData.ps1` son estáticos.
+> **Estado: maqueta de interfaz.** La navegación, las tarjetas, los toggles y los dropdowns funcionan visualmente, pero **ningún control aplica cambios reales al sistema todavía**. Los datos de `ui/Categories/` son estáticos.
 
 ---
 
 ## Estructura del proyecto
 
+Cada archivo tiene **una sola responsabilidad**. La regla general: para cambiar algo,
+solo deberías tener que abrir un archivo.
+
 ```
 Proyecto/
-├── main.ps1                 Punto de entrada: XAML, tema y eventos
+├── main.ps1                 Arranque: carga todo, aplica tema, conecta la ventana
 ├── build.ps1                Empaquetador (inline) + compilador a .exe
 ├── OptimizadorPC.exe        Binario portable generado
-├── CLAUDE.md                Contexto y reglas para asistentes de IA
-├── README.md                Este archivo
 │
 ├── ui/
-│   ├── MainWindow.xaml      Shell + sistema de diseño (estilos, plantillas)
-│   ├── Theme.ps1            Paletas claro/oscuro, iconos Fluent, animación
-│   ├── UiKit.ps1            Componentes: iconos, píldoras, toggle, buscador
-│   ├── CategoryData.ps1     Datos de categorías e ítems (solo datos)
-│   └── Views/
-│       ├── OptimizationsListView.ps1   Pantalla 1: tarjetas de categorías
-│       └── CategoryDetailView.ps1      Pantalla 2: ítems con toggles/dropdowns
-│
-├── assets/
-│   └── icons/               (vacía — los iconos son la fuente Segoe Fluent Icons)
+│   ├── MainWindow.xaml      ESQUELETO + ESTILOS: barra de título, sidebar,
+│   │                        zonas de contenido y todas las plantillas visuales
+│   ├── Theme.ps1            Paletas claro/oscuro, catálogo de iconos, animaciones
+│   ├── UiKit.ps1            Piezas genéricas: icono, píldora, etiqueta,
+│   │                        interruptor, buscador, botón chip, rejillas
+│   │
+│   ├── CategoryIndex.ps1    ← EL PRINCIPAL. Qué secciones se ven, en qué orden
+│   │                          y cuáles están bloqueadas
+│   ├── CategoryRegistry.ps1 Mecanismo para declarar secciones (sin datos)
+│   │
+│   ├── Categories/          ← LOS DATOS. Un archivo por sección.
+│   │   ├── Privacy.ps1
+│   │   ├── Power.ps1
+│   │   ├── Gaming.ps1
+│   │   ├── Update.ps1
+│   │   ├── Notifications.ps1
+│   │   └── Sound.ps1
+│   │
+│   ├── Components/          ← LAS PIEZAS. Cómo se dibuja cada cosa.
+│   │   ├── PageHeader.ps1       cabecera: título, breadcrumb, acciones
+│   │   ├── CategoryCard.ps1     fila de la pantalla principal
+│   │   ├── SettingCard.ps1      fila de la pantalla de detalle
+│   │   └── Banner.ps1           avisos (p. ej. "sección bloqueada")
+│   │
+│   └── Views/               ← LAS PANTALLAS. Solo ensamblan piezas.
+│       ├── OptimizationsListView.ps1
+│       └── CategoryDetailView.ps1
 │
 └── build/
     └── _combined.ps1        GENERADO: todo el proyecto en un solo script
 ```
 
+### ¿Dónde toco qué?
+
+| Quiero... | Voy a... |
+| --------- | -------- |
+| Reordenar, ocultar o bloquear secciones | `ui/CategoryIndex.ps1` — **el archivo principal** |
+| Añadir una sección (Network, Storage...) | Crear un archivo en `ui/Categories/` (y colocarlo en el índice) |
+| Quitar una sección del todo | Borrar su archivo y su línea del índice |
+| Añadir/quitar un ajuste dentro de una sección | Editar el array `Items` de ese archivo |
+| Cambiar el icono o el color de una sección | Campos `Icon` / `Accent` de ese archivo |
+| Cambiar cómo se ve una fila de la lista | `ui/Components/CategoryCard.ps1` |
+| Cambiar cómo se ve una fila del detalle | `ui/Components/SettingCard.ps1` |
+| Cambiar el título o los botones de la cabecera | `ui/Components/PageHeader.ps1` |
+| Cambiar los avisos | `ui/Components/Banner.ps1` |
+| Cambiar colores, tipografías o iconos globales | `ui/Theme.ps1` |
+| Cambiar bordes, sombras o plantillas de controles | `ui/MainWindow.xaml` |
+| Añadir una pantalla nueva | Crear un archivo en `ui/Views/` |
+
+**Las carpetas `Categories/`, `Components/` y `Views/` se cargan enteras.** Un `.ps1`
+nuevo dentro de ellas entra solo, por orden alfabético — no hay que registrarlo en
+`main.ps1` ni en `build.ps1`.
+
+### El índice de secciones
+
+`ui/CategoryIndex.ps1` es **el archivo principal de las secciones**. Manda sobre
+cuáles se ven, en qué orden y cuáles están bloqueadas. El contenido de cada una
+sigue en su propio archivo de `ui/Categories/`.
+
+```powershell
+$CategoryIndex = @(
+
+    #  Id                    Visible          Bloqueada
+    @{ Id = 'privacy';       Visible = $true;  Locked = $false }
+    @{ Id = 'power';         Visible = $true;  Locked = $false }
+    @{ Id = 'gaming';        Visible = $true;  Locked = $false }
+    @{ Id = 'update';        Visible = $true;  Locked = $false }
+    @{ Id = 'notifications'; Visible = $true;  Locked = $false }
+    @{ Id = 'sound';         Visible = $true;  Locked = $false }
+
+)
+```
+
+| Quiero... | Hago |
+| --------- | ---- |
+| Mover una sección arriba o al final | Mover su línea en la lista |
+| Ocultarla sin perderla | `Visible = $false` |
+| Mostrarla pero que no se pueda tocar | `Locked = $true` |
+| Quitarla temporalmente | Comentar su línea con `#` |
+| Volver a ponerla | Descomentar la línea |
+
+Ocultar o quitar del índice **no borra nada**: el archivo de `ui/Categories/` sigue
+intacto y la sección vuelve en cuanto la reactivas.
+
+**Qué hace `Locked = $true`:** la sección aparece en la lista con un candado, se puede
+abrir y consultar, pero dentro sale un aviso, los interruptores y desplegables quedan
+deshabilitados en gris y el botón *Reset* se apaga. No es solo un efecto visual —
+los controles llevan `IsEnabled = $false`, así que WPF no les entrega el ratón.
+
+**Y si creo un archivo y no lo pongo en el índice:** aparece igualmente, al final de
+la lista y desbloqueado. Así añadir una sección sigue siendo crear un archivo y ya;
+el índice solo hace falta cuando quieres colocarla, ocultarla o bloquearla.
+`Get-UnlistedCategories` devuelve las que están en ese caso.
+
+### Cómo se declara una sección
+
+```powershell
+Register-Category @{
+    Id          = 'network'             # identificador único
+    Name        = 'Network & Latency'   # título visible
+    Icon        = 'Bolt'                # glifo del catálogo de Theme.ps1
+    Accent      = 'Accent'              # color del icono (clave del tema)
+    AccentSoft  = 'AccentSoft'          # fondo del icono
+    Badge       = 'NEW 3'               # distintivo rojo ($null para ocultarlo)
+    Description = 'TCP tuning, Nagle, DNS, adapter power'
+
+    Recommended = 11; Default = 14; Custom = 1; Total = 26
+
+    Items = @(
+        New-Setting -Name 'Nagle Algorithm' `
+            -Description 'Disable packet coalescing to reduce input latency' `
+            -Tags 'Preference', 'Recommended' `
+            -Value $false
+
+        New-Setting -Name 'DNS Provider' `
+            -Description 'Choose which resolver Windows uses' `
+            -Tags 'Preference', 'Custom' `
+            -Options 'Automatic (DHCP)', 'Cloudflare 1.1.1.1', 'Google 8.8.8.8' `
+            -Value 'Cloudflare 1.1.1.1'
+    )
+}
+```
+
+`New-Setting` deduce el control solo: **con `-Options` es un desplegable, sin
+`-Options` es un interruptor** (y entonces `-Value` debe ser `$true` / `$false`).
+Solo `Id`, `Name`, `Icon`, `Description` e `Items` son obligatorios; el resto tiene
+valores por defecto.
+
 ### Diagrama de módulos
 
 ```mermaid
 graph TD
-    EXE["OptimizadorPC.exe"] -.->|ps2exe| COMB["build/_combined.ps1<br/><i>generado</i>"]
-    BUILD["build.ps1"] -->|inline + compila| COMB
+    subgraph BUILD["empaquetado"]
+        BLD["build.ps1"] -->|inline| COMB["build/_combined.ps1"]
+        COMB -.->|ps2exe| EXE["OptimizadorPC.exe"]
+    end
 
-    MAIN["main.ps1<br/><i>punto de entrada</i>"] -->|carga| XAML["ui/MainWindow.xaml<br/><i>shell + estilos</i>"]
-    MAIN -->|dot-source| THEME["ui/Theme.ps1<br/><i>paletas · iconos · animación</i>"]
-    MAIN -->|dot-source| KIT["ui/UiKit.ps1<br/><i>componentes</i>"]
-    MAIN -->|dot-source| DATA["ui/CategoryData.ps1<br/><i>datos</i>"]
-    MAIN -->|dot-source| LIST["ui/Views/<br/>OptimizationsListView.ps1"]
-    MAIN -->|dot-source| DET["ui/Views/<br/>CategoryDetailView.ps1"]
+    MAIN["main.ps1<br/><i>arranque</i>"] --> XAML["MainWindow.xaml<br/><i>esqueleto + estilos</i>"]
+    MAIN --> THEME["Theme.ps1<br/><i>paletas · iconos</i>"]
+    MAIN --> KIT["UiKit.ps1<br/><i>piezas genéricas</i>"]
+    MAIN --> REG["CategoryRegistry.ps1<br/><i>mecanismo</i>"]
+    MAIN --> IDX["CategoryIndex.ps1<br/><b>orden · visible · bloqueo</b>"]
 
+    MAIN -->|carga la carpeta| CATS["Categories/*.ps1<br/><i>LOS DATOS</i>"]
+    MAIN -->|carga la carpeta| COMPS["Components/*.ps1<br/><i>LAS PIEZAS</i>"]
+    MAIN -->|carga la carpeta| VIEWS["Views/*.ps1<br/><i>LAS PANTALLAS</i>"]
+
+    CATS -->|Register-Category| REG
+    IDX -->|ordena y filtra| REG
+    VIEWS -->|Get-OptimizationCategories| REG
+    VIEWS --> COMPS
+    COMPS --> KIT
     KIT --> THEME
-    LIST --> KIT
-    DET --> KIT
-    LIST -->|Get-OptimizationCategories| DATA
-    LIST -->|click en tarjeta| DET
-    DET -->|botón atrás| LIST
-    THEME -.->|reescribe pinceles<br/>DynamicResource| XAML
-    LIST -.->|inyecta en MainContent| XAML
-    DET -.->|inyecta en MainContent| XAML
+    THEME -.->|pinceles| XAML
+    VIEWS -.->|inyecta en MainContent| XAML
 
-    BUILD -->|lee| MAIN
+    BLD -->|lee| MAIN
 
+    classDef data fill:#E8F5E9,stroke:#2E7D32,color:#333
     classDef gen fill:#FFF3E0,stroke:#E67E22,color:#333
     classDef entry fill:#EAF2FF,stroke:#2D7DFB,color:#333
+    classDef main fill:#FDEAEF,stroke:#E11D48,color:#333
+    class CATS data
     class COMB,EXE gen
-    class MAIN,BUILD entry
+    class MAIN,BLD entry
+    class IDX main
 ```
 
 ### Sistema de diseño
@@ -96,8 +218,6 @@ flowchart LR
     style UI fill:#E8F5E9,stroke:#2E7D32
 ```
 
----
-
 ## Cómo funciona la interfaz
 
 `MainWindow.xaml` define un shell fijo (barra de título sin bordes, sidebar de navegación y cabecera). Las vistas **no** son archivos XAML: se construyen en código y se inyectan en tres contenedores nombrados.
@@ -108,7 +228,7 @@ flowchart LR
 | `HeaderActionsArea`  | Buscador, "Quick Actions", "View"              |
 | `MainContent`        | El cuerpo de la vista (lista de tarjetas)      |
 
-Cada vista limpia esos contenedores y los repuebla, así que **cambiar de pantalla no recrea la ventana**.
+Las vistas no tocan esas zonas directamente: pasan por `ui/Components/PageHeader.ps1`, que las limpia y las repuebla. Así **cambiar de pantalla no recrea la ventana** y todas las pantallas comparten el mismo aspecto de cabecera.
 
 ### Efectos y transiciones
 
@@ -143,18 +263,19 @@ flowchart LR
 
 ### Categorías definidas
 
-| Id              | Categoría              | Badge  | Ítems reales |
-| --------------- | ---------------------- | ------ | ------------ |
-| `privacy`       | Privacy & Security     | NEW 45 | 6            |
-| `power`         | Power                  | —      | 3            |
-| `gaming`        | Gaming & Performance   | NEW 16 | 5            |
-| `update`        | Update                 | NEW 1  | 2            |
-| `notifications` | Notifications          | —      | 2            |
-| `sound`         | Sound                  | —      | 1            |
+Una fila por archivo de `ui/Categories/`. El orden mostrado es el de `ui/CategoryIndex.ps1`:
 
-> Los contadores que muestran las tarjetas (`Recommended 29/88`, etc.) son **valores decorativos**, no cuentan los ítems reales de la lista.
+| Archivo | Id | Categoría | Icono | Badge | Ajustes |
+| ------- | -- | --------- | ----- | ----- | ------- |
+| `Privacy.ps1` | `privacy` | Privacy & Security | `Shield` | NEW 45 | 6 |
+| `Power.ps1` | `power` | Power | `Power` | — | 3 |
+| `Gaming.ps1` | `gaming` | Gaming & Performance | `Game` | NEW 16 | 5 |
+| `Update.ps1` | `update` | Update | `Sync` | NEW 1 | 2 |
+| `Notifications.ps1` | `notifications` | Notifications | `Bell` | — | 2 |
+| `Sound.ps1` | `sound` | Sound | `Volume` | — | 1 |
 
-Cada ítem tiene `Name`, `Description`, `Tags` (`Preference` / `Recommended` / `Default` / `Custom`) y un `Type` de control: `Toggle` o `Dropdown`.
+> Los contadores de las píldoras (`29/88`, etc.) y los badges son **valores fijos declarados a mano**, no cuentan los ajustes reales del archivo. Cuando haya lógica real conviene calcularlos.
+
 
 ---
 
@@ -218,7 +339,7 @@ powershell -ExecutionPolicy Bypass -File .\build.ps1
 ## Pendiente
 
 - [ ] Lógica real de tweaks (registro, servicios, planes de energía) en módulos separados de `ui/`
-- [ ] Leer el estado real del sistema en vez del `Value` estático de `CategoryData.ps1`
+- [ ] Leer el estado real del sistema en vez del `Value` estático de los archivos de `ui/Categories/`
 - [ ] Restauración / rollback por tweak
 - [ ] Diferenciar las 6 entradas del sidebar (hoy las seis abren la misma vista)
 - [ ] Funcionalidad de búsqueda, "Quick Actions", "View" y "Reset" (hoy son decorativos)

@@ -16,12 +16,33 @@ Add-Type -AssemblyName PresentationCore
 Add-Type -AssemblyName WindowsBase
 Add-Type -AssemblyName System.Xaml
 
-# ---- sistema de diseño, componentes, datos y vistas ----
+# ---- Base: sistema de diseño y componentes genéricos ----
 . (Join-Path $ScriptRoot 'ui\Theme.ps1')
 . (Join-Path $ScriptRoot 'ui\UiKit.ps1')
-. (Join-Path $ScriptRoot 'ui\CategoryData.ps1')
-. (Join-Path $ScriptRoot 'ui\Views\OptimizationsListView.ps1')
-. (Join-Path $ScriptRoot 'ui\Views\CategoryDetailView.ps1')
+. (Join-Path $ScriptRoot 'ui\CategoryRegistry.ps1')
+
+# ---- Índice de secciones: orden, visibilidad y bloqueo ----
+# Es el archivo que se toca para mostrar, ocultar, bloquear o
+# reordenar secciones sin abrir ninguna otra cosa.
+. (Join-Path $ScriptRoot 'ui\CategoryIndex.ps1')
+
+# ---- Carpetas que se cargan enteras ----
+# Todo archivo .ps1 que haya dentro entra solo, por orden de nombre.
+# Añadir una categoría, un componente o una vista = crear su archivo;
+# quitarla = borrarlo. No hay que tocar este archivo.
+# build.ps1 sustituye cada bloque por el contenido de la carpeta.
+
+# @@EMBED_DIR:ui/Categories@@
+foreach ($f in (Get-ChildItem (Join-Path $ScriptRoot 'ui\Categories') -Filter '*.ps1' | Sort-Object Name)) { . $f.FullName }
+# @@ENDEMBED@@
+
+# @@EMBED_DIR:ui/Components@@
+foreach ($f in (Get-ChildItem (Join-Path $ScriptRoot 'ui\Components') -Filter '*.ps1' | Sort-Object Name)) { . $f.FullName }
+# @@ENDEMBED@@
+
+# @@EMBED_DIR:ui/Views@@
+foreach ($f in (Get-ChildItem (Join-Path $ScriptRoot 'ui\Views') -Filter '*.ps1' | Sort-Object Name)) { . $f.FullName }
+# @@ENDEMBED@@
 
 # @@EMBED_XAML:ui/MainWindow.xaml@@
 $xamlPath = Join-Path $ScriptRoot 'ui\MainWindow.xaml'
