@@ -30,7 +30,7 @@ function New-SettingCard {
         # así que el interruptor deja de responder al ratón.
         $control.IsEnabled = $false
         $control.Opacity = 0.45
-        $card.ToolTip = 'Sección bloqueada'
+        $card.ToolTip = T 'Locked section'
     }
     Add-ToColumn $grid $control 1
 
@@ -49,7 +49,7 @@ function New-SettingInfo {
     $nameRow.Orientation = 'Horizontal'
 
     $name = New-Object System.Windows.Controls.TextBlock
-    $name.Text = $Setting.Name
+    $name.Text = T $Setting.Name
     $name.FontFamily = $Window.FindResource('DisplayFont')
     $name.FontWeight = 'SemiBold'
     $name.FontSize = 13.5
@@ -60,7 +60,7 @@ function New-SettingInfo {
     $left.Children.Add($nameRow) | Out-Null
 
     $desc = New-Object System.Windows.Controls.TextBlock
-    $desc.Text = $Setting.Description
+    $desc.Text = T $Setting.Description
     $desc.FontSize = 11.5
     $desc.TextWrapping = 'Wrap'
     $desc.LineHeight = 17
@@ -88,20 +88,20 @@ function New-SettingControl {
     if ($Setting.Tags -contains 'Recommended') {
         $star = New-Icon 'StarFill' 13 'Success'
         $star.Margin = New-Object System.Windows.Thickness 0, 0, 10, 0
-        $star.ToolTip = 'Valor recomendado'
+        $star.ToolTip = T 'Recommended value'
         $right.Children.Add($star) | Out-Null
     }
     if ($Setting.Tags -contains 'Default') {
         $grid = New-Icon 'Grid' 13 'TextFaint'
         $grid.Margin = New-Object System.Windows.Thickness 0, 0, 14, 0
-        $grid.ToolTip = 'Valor de fábrica de Windows'
+        $grid.ToolTip = T 'Windows factory value'
         $right.Children.Add($grid) | Out-Null
     }
 
     switch ($Setting.Type) {
         'Toggle' {
             $state = New-Object System.Windows.Controls.TextBlock
-            if ($Setting.Value) { $state.Text = 'On' } else { $state.Text = 'Off' }
+            if ($Setting.Value) { $state.Text = T 'On' } else { $state.Text = T 'Off' }
             $state.FontSize = 11.5
             $state.FontWeight = 'SemiBold'
             $state.Width = 24
@@ -116,8 +116,8 @@ function New-SettingControl {
             $combo = New-Object System.Windows.Controls.ComboBox
             $combo.Style = $Window.FindResource('ModernComboStyle')
             $combo.Width = 262
-            foreach ($opt in $Setting.Options) { $combo.Items.Add($opt) | Out-Null }
-            $combo.SelectedItem = $Setting.Value
+            foreach ($opt in $Setting.Options) { $combo.Items.Add((T $opt)) | Out-Null }
+            $combo.SelectedItem = T $Setting.Value
             $right.Children.Add($combo) | Out-Null
         }
     }

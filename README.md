@@ -13,7 +13,7 @@ solo deberías tener que abrir un archivo.
 
 ```
 Proyecto/
-├── main.ps1                 Arranque: carga todo, aplica tema, conecta la ventana
+├── main.ps1                 Arranque: carga todo, aplica preferencias, conecta la ventana
 ├── build.ps1                Empaquetador (inline) + compilador a .exe
 ├── OptimizadorPC.exe        Binario portable generado
 │
@@ -27,26 +27,38 @@ Proyecto/
 │   ├── CategoryIndex.ps1    ← PRINCIPAL: qué secciones se ven, en qué orden
 │   │                          y cuáles están bloqueadas
 │   ├── NavigationIndex.ps1  ← PRINCIPAL: los botones del menú lateral
-│   ├── CategoryRegistry.ps1 Mecanismo para declarar secciones (sin datos)
+│   ├── LanguageIndex.ps1    ← PRINCIPAL: los idiomas disponibles
+│   │
+│   ├── CategoryRegistry.ps1   Mecanismo para declarar secciones
+│   ├── PreferenceRegistry.ps1 Mecanismo para declarar opciones de Settings
+│   ├── Translation.ps1        Mecanismo de traducción (T, Register-Language)
+│   ├── AppSettings.ps1        Guardado en %APPDATA% entre sesiones
+│   ├── Router.ps1             Qué pantalla se ve y cómo repintarla
 │   │
 │   ├── Categories/          ← LOS DATOS. Un archivo por sección.
-│   │   ├── Privacy.ps1
-│   │   ├── Power.ps1
-│   │   ├── Gaming.ps1
-│   │   ├── Update.ps1
-│   │   ├── Notifications.ps1
-│   │   └── Sound.ps1
+│   │   ├── Privacy.ps1          Power.ps1        Gaming.ps1
+│   │   └── Update.ps1           Notifications.ps1  Sound.ps1
+│   │
+│   ├── Preferences/         ← LAS OPCIONES de Settings. Un archivo cada una.
+│   │   ├── 10-Language.ps1
+│   │   └── 20-Theme.ps1
+│   │
+│   ├── Lang/                ← LOS IDIOMAS. Un archivo cada uno.
+│   │   └── es.ps1               (el inglés es la fuente: no lleva archivo)
 │   │
 │   ├── Components/          ← LAS PIEZAS. Cómo se dibuja cada cosa.
 │   │   ├── PageHeader.ps1       cabecera: título, breadcrumb, acciones
 │   │   ├── CategoryCard.ps1     fila de la pantalla principal
 │   │   ├── SettingCard.ps1      fila de la pantalla de detalle
+│   │   ├── PreferenceCard.ps1   fila de la pantalla de Settings
 │   │   ├── Banner.ps1           avisos (p. ej. "sección bloqueada")
-│   │   └── Sidebar.ps1          menú lateral: botones y plegado animado
+│   │   ├── Sidebar.ps1          menú lateral: botones y plegado animado
+│   │   └── TitleBar.ps1         textos e iconos de la barra de título
 │   │
 │   └── Views/               ← LAS PANTALLAS. Solo ensamblan piezas.
 │       ├── OptimizationsListView.ps1
-│       └── CategoryDetailView.ps1
+│       ├── CategoryDetailView.ps1
+│       └── SettingsView.ps1
 │
 └── build/
     └── _combined.ps1        GENERADO: todo el proyecto en un solo script
@@ -58,18 +70,19 @@ Proyecto/
 | --------- | -------- |
 | Reordenar, ocultar o bloquear secciones | `ui/CategoryIndex.ps1` — **el principal de las secciones** |
 | Reordenar, ocultar o bloquear botones del menú | `ui/NavigationIndex.ps1` — **el principal del menú** |
-| Cambiar el plegado del menú o su animación | `ui/Components/Sidebar.ps1` |
-| Añadir una sección (Network, Storage...) | Crear un archivo en `ui/Categories/` (y colocarlo en el índice) |
-| Quitar una sección del todo | Borrar su archivo y su línea del índice |
+| Añadir o quitar un idioma | `ui/Lang/` + `ui/LanguageIndex.ps1` |
+| Añadir una opción a Settings | Crear un archivo en `ui/Preferences/` |
+| Traducir un texto | `ui/Lang/es.ps1` |
+| Añadir una sección (Network, Storage...) | Crear un archivo en `ui/Categories/` |
 | Añadir/quitar un ajuste dentro de una sección | Editar el array `Items` de ese archivo |
 | Cambiar el icono o el color de una sección | Campos `Icon` / `Accent` de ese archivo |
 | Cambiar cómo se ve una fila de la lista | `ui/Components/CategoryCard.ps1` |
 | Cambiar cómo se ve una fila del detalle | `ui/Components/SettingCard.ps1` |
 | Cambiar el título o los botones de la cabecera | `ui/Components/PageHeader.ps1` |
-| Cambiar los avisos | `ui/Components/Banner.ps1` |
+| Cambiar el plegado del menú o su animación | `ui/Components/Sidebar.ps1` |
 | Cambiar colores, tipografías o iconos globales | `ui/Theme.ps1` |
 | Cambiar bordes, sombras o plantillas de controles | `ui/MainWindow.xaml` |
-| Añadir una pantalla nueva | Crear un archivo en `ui/Views/` |
+| Añadir una pantalla nueva | Crear un archivo en `ui/Views/` y apuntarla desde `ui/NavigationIndex.ps1` |
 
 **Las carpetas `Categories/`, `Components/` y `Views/` se cargan enteras.** Un `.ps1`
 nuevo dentro de ellas entra solo, por orden alfabético — no hay que registrarlo en
@@ -160,6 +173,94 @@ Se anima el **ancho del `Border`**, no la columna del `Grid`: la columna es `Aut
 sigue al `Border` sola. Animar un `GridLength` directamente requeriría una animación
 propia, porque WPF no trae ninguna. El borde derecho de 1 px se retira al plegar,
 que si no el ancho nunca llegaría a cero del todo.
+
+### Idiomas
+
+La traducción es **por texto original**, no por clave: el inglés es el idioma fuente y
+cada archivo de `ui/Lang/` es un diccionario `"texto en inglés" -> "texto traducido"`.
+Gracias a eso los archivos de `ui/Categories/` **no se tocan**: siguen leyéndose en
+inglés claro, y aun así su contenido se traduce.
+
+```powershell
+# ui/Lang/es.ps1
+Register-Language 'es' @{
+    'Optimizations'      = 'Optimizaciones'
+    'Privacy & Security' = 'Privacidad y seguridad'
+    'Game Mode'          = 'Modo de juego'
+    '{0} settings'       = '{0} ajustes'
+}
+```
+
+En el código, cada texto visible pasa por `T`:
+
+```powershell
+$title.Text = T 'Optimizations'
+$count.Text = (T '{0} settings') -f $Category.Items.Count
+```
+
+Si falta una traducción sale el original en inglés, nunca un error. Para saber qué
+queda pendiente, navega por la aplicación y ejecuta `Get-MissingTranslations 'es'`:
+`T` va anotando todo lo que se le pide, así que devuelve exactamente lo que falta.
+
+**Para añadir un idioma:**
+
+1. copiar `ui/Lang/es.ps1` como `ui/Lang/<código>.ps1` y traducir
+2. añadir su línea en `ui/LanguageIndex.ps1`
+
+Nada más. La carpeta `ui/Lang/` se carga entera, y el desplegable de Settings se
+rellena solo desde el índice.
+
+> Los nombres de los idiomas (`English`, `Español`) **no** se traducen a propósito:
+> van siempre en su propio idioma, que es como los reconoce quien los busca. Eso lo
+> marca el campo `TranslateOptions = $false` de `ui/Preferences/10-Language.ps1`.
+
+**Por qué hace falta repintar:** el tema claro/oscuro se actualiza solo porque el XAML
+usa `DynamicResource`, pero para el texto no existe equivalente. Al cambiar de idioma,
+`Update-UiLanguage` reconstruye el menú y vuelve a dibujar la pantalla actual usando
+el enrutador (`ui/Router.ps1`), que recuerda en qué vista estás.
+
+### Preferencias
+
+La pantalla Settings **se dibuja sola** a partir de `ui/Preferences/`. Añadir una
+opción es crear un archivo ahí; la vista no se toca.
+
+```powershell
+# ui/Preferences/30-MiOpcion.ps1
+Register-Preference @{
+    Order       = 30
+    Id          = 'miopcion'
+    Group       = 'General'          # cabecera bajo la que se agrupa
+    Label       = 'My option'        # se traduce
+    Description = 'What it does'     # se traduce
+    Type        = 'Toggle'           # 'Toggle' o 'Choice'
+
+    Get = { Get-AppSetting 'MiOpcion' -Default $false }
+    Set = {
+        param($Value)
+        Set-AppSetting 'MiOpcion' $Value
+    }
+}
+```
+
+`Type = 'Choice'` añade un desplegable y necesita `Options`, que puede ser un array
+fijo o un scriptblock si la lista es dinámica (así se rellenan los idiomas).
+
+### Qué se recuerda entre sesiones
+
+Las preferencias se guardan en `%APPDATA%\OptimizadorPC\settings.json`:
+
+```json
+{
+    "Theme":  "Dark",
+    "Language":  "es"
+}
+```
+
+Ahí y no junto al `.exe` a propósito: el ejecutable es portable y puede acabar en una
+carpeta sin permisos de escritura. Si el archivo no existe o está corrupto, se ignora
+y se arranca con los valores por defecto — nunca impide abrir el programa.
+
+Guardar algo nuevo no requiere tocar nada: `Set-AppSetting 'Loquesea' $valor`.
 
 ### Cómo se declara una sección
 

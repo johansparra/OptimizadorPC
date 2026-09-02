@@ -295,7 +295,7 @@ function New-Tag {
     Set-BoxBg $b $c.Bg
 
     $t = New-Object System.Windows.Controls.TextBlock
-    $t.Text = $Text; $t.FontSize = 10.5; $t.FontWeight = 'SemiBold'
+    $t.Text = T $Text; $t.FontSize = 10.5; $t.FontWeight = 'SemiBold'
     Set-TextFg $t $c.Fg
     $b.Child = $t
     $b
@@ -378,7 +378,7 @@ function New-ToggleSwitch {
             (New-Anim $s.Child.RenderTransform.X $to 190))
 
         if ($info.Label) {
-            if ($new) { $info.Label.Text = 'On' } else { $info.Label.Text = 'Off' }
+            if ($new) { $info.Label.Text = T 'On' } else { $info.Label.Text = T 'Off' }
         }
     })
 
@@ -407,7 +407,7 @@ function New-SearchBox {
     $ph.Children.Add($ic) | Out-Null
 
     $t = New-Object System.Windows.Controls.TextBlock
-    $t.Text = $Placeholder; $t.FontSize = 12.5
+    $t.Text = T $Placeholder; $t.FontSize = 12.5
     $t.VerticalAlignment = 'Center'
     Set-TextFg $t 'TextFaint'
     $ph.Children.Add($t) | Out-Null
@@ -441,7 +441,7 @@ function New-ChipButton {
     }
 
     $t = New-Object System.Windows.Controls.TextBlock
-    $t.Text = $Text; $t.FontSize = 12.5; $t.FontWeight = 'SemiBold'
+    $t.Text = T $Text; $t.FontSize = 12.5; $t.FontWeight = 'SemiBold'
     $t.VerticalAlignment = 'Center'
     Set-TextFg $t 'Text'
     $sp.Children.Add($t) | Out-Null
@@ -457,6 +457,230 @@ function New-ChipButton {
 }
 
 # ---- fin incluido: ui/UiKit.ps1 ----
+
+# ---- Mecanismos (sin datos) ----
+# ---- inicio incluido: ui/Translation.ps1 ----
+# ============================================================
+# Translation.ps1
+# Mecanismo de idiomas. NO contiene textos.
+#
+# Se traduce POR TEXTO ORIGINAL, no por clave: el inglés es el
+# idioma fuente y cada archivo de ui/Lang/ es un diccionario
+# "texto en inglés" -> "texto traducido".
+#
+# Gracias a eso los archivos de ui/Categories/ no necesitan
+# tocarse: siguen leyéndose en inglés claro. Y si falta una
+# traducción, sale el original en vez de romperse.
+#
+#   -> Añadir un idioma = crear ui/Lang/<código>.ps1
+#                         y su línea en ui/LanguageIndex.ps1
+#   -> El inglés no necesita archivo: es la fuente.
+# ============================================================
+
+$Translations = @{}       # código -> tabla de textos
+$CurrentLanguage = 'en'
+$SeenStrings = @{}        # todo lo que ha pasado por T, para auditar
+
+function Register-Language {
+    param(
+        [Parameter(Mandatory)][string]$Code,
+        [Parameter(Mandatory)][hashtable]$Strings
+    )
+    if (-not $Translations.ContainsKey($Code)) { $Translations[$Code] = @{} }
+    foreach ($key in $Strings.Keys) { $Translations[$Code][$key] = $Strings[$key] }
+}
+
+function Set-AppLanguage {
+    param([Parameter(Mandatory)][string]$Code)
+    $script:CurrentLanguage = $Code
+}
+
+function Get-AppLanguage { $script:CurrentLanguage }
+
+<#
+    Traduce un texto al idioma activo.
+
+        $t.Text = T 'Optimizations'
+        $t.Text = (T '{0} settings') -f 6
+
+    Si el idioma activo es el fuente, o no hay traducción para
+    ese texto, devuelve el original tal cual.
+#>
+function T {
+    param([Parameter(Mandatory)][AllowEmptyString()][string]$Text)
+
+    if ([string]::IsNullOrEmpty($Text)) { return $Text }
+    $script:SeenStrings[$Text] = $true
+
+    $dict = $Translations[$script:CurrentLanguage]
+    if ($dict -and $dict.ContainsKey($Text)) { return $dict[$Text] }
+    $Text
+}
+
+<#
+    Textos que la interfaz ha pedido traducir y que faltan en el
+    idioma indicado. Sirve para saber qué queda por traducir tras
+    añadir ajustes nuevos:
+
+        Get-MissingTranslations 'es'
+
+    Solo ve lo que se haya mostrado en esta sesión, así que
+    conviene navegar por la aplicación antes de consultarlo.
+#>
+function Get-MissingTranslations {
+    param([string]$Code = $CurrentLanguage)
+
+    $dict = $Translations[$Code]
+    if (-not $dict) { return $SeenStrings.Keys }
+    $SeenStrings.Keys | Where-Object { -not $dict.ContainsKey($_) } | Sort-Object
+}
+
+# ---- fin incluido: ui/Translation.ps1 ----
+# ---- inicio incluido: ui/AppSettings.ps1 ----
+# ============================================================
+# AppSettings.ps1
+# Preferencias guardadas entre sesiones.
+#
+# Se escriben en un JSON dentro del perfil del usuario:
+#     %APPDATA%\OptimizadorPC\settings.json
+#
+# Ahí y no junto al .exe a propósito: el ejecutable es portable
+# y puede acabar en una carpeta sin permisos de escritura.
+#
+# Guardar una preferencia nueva no requiere tocar este archivo:
+#     Set-AppSetting 'MiOpcion' $valor
+#     Get-AppSetting 'MiOpcion' -Default 'algo'
+# ============================================================
+
+$AppSettingsPath = Join-Path $env:APPDATA 'OptimizadorPC\settings.json'
+$AppSettings = @{}
+
+# Lee el archivo si existe. Un JSON corrupto no debe impedir que
+# el programa arranque: se ignora y se usan los valores por defecto.
+function Import-AppSettings {
+    if (-not (Test-Path $AppSettingsPath)) { return }
+    try {
+        $json = Get-Content -Path $AppSettingsPath -Raw -ErrorAction Stop | ConvertFrom-Json
+        foreach ($property in $json.PSObject.Properties) {
+            $script:AppSettings[$property.Name] = $property.Value
+        }
+    }
+    catch {
+        $script:AppSettings = @{}
+    }
+}
+
+function Save-AppSettings {
+    try {
+        $folder = Split-Path -Parent $AppSettingsPath
+        if (-not (Test-Path $folder)) {
+            New-Item -ItemType Directory -Path $folder -Force | Out-Null
+        }
+        $AppSettings | ConvertTo-Json | Set-Content -Path $AppSettingsPath -Encoding UTF8
+        $true
+    }
+    catch {
+        # Sin permisos o disco lleno: la sesión sigue funcionando,
+        # simplemente no se recordará la preferencia.
+        $false
+    }
+}
+
+function Get-AppSetting {
+    param([Parameter(Mandatory)][string]$Name, $Default = $null)
+    if ($AppSettings.ContainsKey($Name)) { $AppSettings[$Name] } else { $Default }
+}
+
+function Set-AppSetting {
+    param([Parameter(Mandatory)][string]$Name, $Value)
+    $script:AppSettings[$Name] = $Value
+    Save-AppSettings | Out-Null
+}
+
+function Get-AppSettingsPath { $AppSettingsPath }
+
+# ---- fin incluido: ui/AppSettings.ps1 ----
+# ---- inicio incluido: ui/Router.ps1 ----
+# ============================================================
+# Router.ps1
+# Sabe qué pantalla se está viendo y cómo volver a dibujarla.
+#
+# Hace falta por dos motivos:
+#
+#   1. Cada botón del menú lateral lleva a una vista distinta
+#      (campo View de ui/NavigationIndex.ps1).
+#   2. Al cambiar de idioma hay que repintar la pantalla actual.
+#      Los colores se actualizan solos porque el XAML usa
+#      DynamicResource, pero para el texto no existe equivalente:
+#      hay que reconstruir la vista.
+#
+# Las vistas se invocan por nombre de función, así que añadir una
+# pantalla es crear su archivo en ui/Views/ y apuntar a ella
+# desde el índice de navegación. Nada que registrar aquí.
+# ============================================================
+
+$AppWindow = $null
+$CurrentView = @{ Name = 'Show-OptimizationsListView'; Arguments = @{} }
+
+# La ventana se guarda una vez al arrancar para que cualquier
+# capa pueda repintar sin ir pasándola de mano en mano.
+function Set-AppWindow {
+    param($Window)
+    $script:AppWindow = $Window
+}
+
+function Get-AppWindow { $script:AppWindow }
+
+<#
+    Muestra una vista y la recuerda.
+
+        Show-View 'Show-SettingsView'
+        Show-View 'Show-CategoryDetailView' @{ Category = $cat }
+#>
+function Show-View {
+    param(
+        [Parameter(Mandatory)][string]$Name,
+        [hashtable]$Arguments = @{}
+    )
+
+    if (-not (Get-Command $Name -ErrorAction SilentlyContinue)) {
+        throw "Router: la vista '$Name' no existe. Revisa el campo View de ui/NavigationIndex.ps1."
+    }
+
+    $script:CurrentView = @{ Name = $Name; Arguments = $Arguments }
+
+    $all = @{ Window = $AppWindow }
+    foreach ($key in $Arguments.Keys) { $all[$key] = $Arguments[$key] }
+    & $Name @all
+}
+
+# Vuelve a dibujar la pantalla actual con los mismos argumentos.
+function Show-CurrentView {
+    Show-View -Name $CurrentView.Name -Arguments $CurrentView.Arguments
+}
+
+function Get-CurrentViewName { $CurrentView.Name }
+
+# Repinta todo tras cambiar el idioma: el menú lateral (sus
+# etiquetas también se traducen) y la pantalla actual.
+#
+# Se aplaza al Dispatcher porque esto suele dispararse desde el
+# evento de un control que está dentro de la vista que vamos a
+# destruir; dejar que el evento termine primero evita sorpresas.
+function Update-UiLanguage {
+    $window = Get-AppWindow
+    if (-not $window) { return }
+
+    $window.Dispatcher.BeginInvoke(
+        [System.Windows.Threading.DispatcherPriority]::Background,
+        [action]{
+            Build-Sidebar -Window (Get-AppWindow)
+            Update-TitleBarTexts (Get-AppWindow)
+            Show-CurrentView
+        }) | Out-Null
+}
+
+# ---- fin incluido: ui/Router.ps1 ----
 # ---- inicio incluido: ui/CategoryRegistry.ps1 ----
 # ============================================================
 # CategoryRegistry.ps1
@@ -609,10 +833,95 @@ function New-Setting {
 }
 
 # ---- fin incluido: ui/CategoryRegistry.ps1 ----
+# ---- inicio incluido: ui/PreferenceRegistry.ps1 ----
+# ============================================================
+# PreferenceRegistry.ps1
+# Registro de las opciones de la pantalla Settings.
+#
+# NO contiene opciones: solo el mecanismo. Cada opción vive en
+# su propio archivo dentro de ui/Preferences/, igual que cada
+# sección vive en ui/Categories/.
+#
+#   -> Añadir una opción  = crear un archivo en ui/Preferences/
+#   -> Quitarla           = borrar ese archivo
+#   -> Reordenar          = cambiar su campo Order
+#
+# La pantalla Settings se dibuja sola a partir de lo que haya
+# registrado: no hay que tocar la vista para añadir opciones.
+# ============================================================
 
-# ---- Índice de secciones: orden, visibilidad y bloqueo ----
-# Es el archivo que se toca para mostrar, ocultar, bloquear o
-# reordenar secciones sin abrir ninguna otra cosa.
+$PreferenceList = New-Object System.Collections.Generic.List[object]
+
+<#
+    Da de alta una opción. Campos:
+
+    Id           (string)   Identificador único: 'language', 'theme'...
+    Order        (int)      Posición. 10, 20, 30... como las secciones.
+    Group        (string)   Cabecera bajo la que se agrupa. Se traduce.
+    Label        (string)   Título de la opción. Se traduce.
+    Description  (string)   Explicación gris debajo. Se traduce.
+    Type         (string)   'Choice'  -> desplegable
+                            'Toggle'  -> interruptor
+    Options      (array o scriptblock)
+                            Solo para 'Choice'. Cada opción es
+                            @{ Value = 'es'; Label = 'Español' }.
+                            Si es un scriptblock se evalúa al pintar,
+                            que es lo que permite listas dinámicas.
+    TranslateOptions (bool) $false si las etiquetas de las opciones NO
+                            deben traducirse. Es el caso de los nombres
+                            de idioma, que van siempre en su propio
+                            idioma. Por defecto $true.
+    Get          (scriptblock)  Devuelve el valor actual.
+    Set          (scriptblock)  param($Value) aplica el valor nuevo.
+                                Es responsable de guardarlo si procede.
+#>
+function Register-Preference {
+    param([Parameter(Mandatory)][hashtable]$Definition)
+
+    $defaults = @{
+        Order = 999; Group = 'General'; Description = ''
+        Type = 'Choice'; Options = @(); TranslateOptions = $true
+    }
+    foreach ($key in $defaults.Keys) {
+        if (-not $Definition.ContainsKey($key)) { $Definition[$key] = $defaults[$key] }
+    }
+
+    foreach ($required in @('Id', 'Label', 'Get', 'Set')) {
+        if (-not $Definition[$required]) {
+            throw "Register-Preference: falta el campo obligatorio '$required'."
+        }
+    }
+
+    $PreferenceList.Add([PSCustomObject]$Definition)
+}
+
+function Get-Preferences {
+    $PreferenceList | Sort-Object Order
+}
+
+# Los grupos, en el orden en que aparece su primera opción.
+function Get-PreferenceGroups {
+    $seen = New-Object System.Collections.Generic.List[string]
+    foreach ($preference in Get-Preferences) {
+        if (-not $seen.Contains($preference.Group)) { $seen.Add($preference.Group) }
+    }
+    $seen
+}
+
+# Resuelve las opciones, ya vengan como array o como scriptblock.
+function Get-PreferenceOptions {
+    param($Preference)
+    if ($Preference.Options -is [scriptblock]) { & $Preference.Options } else { $Preference.Options }
+}
+
+function Get-PreferenceById {
+    param([string]$Id)
+    $PreferenceList | Where-Object { $_.Id -eq $Id } | Select-Object -First 1
+}
+
+# ---- fin incluido: ui/PreferenceRegistry.ps1 ----
+
+# ---- Archivos principales: qué se ve y en qué orden ----
 # ---- inicio incluido: ui/CategoryIndex.ps1 ----
 # ============================================================
 # CategoryIndex.ps1
@@ -655,8 +964,6 @@ $CategoryIndex = @(
 )
 
 # ---- fin incluido: ui/CategoryIndex.ps1 ----
-
-# ---- Índice del menú lateral: botones, orden, visibilidad y bloqueo ----
 # ---- inicio incluido: ui/NavigationIndex.ps1 ----
 # ============================================================
 # NavigationIndex.ps1
@@ -683,19 +990,23 @@ $CategoryIndex = @(
 #
 #   Default    $true en el botón que sale marcado al arrancar.
 #
+#   View       Nombre de la función de vista a la que lleva. Crear
+#              una pantalla nueva es añadir su archivo a ui/Views/
+#              y apuntar aquí a su función.
+#
 #   Icon       Nombre de glifo del catálogo de ui/Theme.ps1.
 # ============================================================
 
 $NavigationIndex = @(
 
-    #  Id             Icono        Etiqueta       Grupo      Visible  Bloqueado
-    @{ Id = 'software';  Icon = 'Apps';    Label = 'Software';  Group = 'Top';    Visible = $true; Locked = $false }
-    @{ Id = 'optimize';  Icon = 'Gauge';   Label = 'Optimize';  Group = 'Top';    Visible = $true; Locked = $false; Default = $true }
-    @{ Id = 'customize'; Icon = 'Palette'; Label = 'Customize'; Group = 'Top';    Visible = $true; Locked = $false }
+    #  Id             Icono        Etiqueta       Grupo      Visible  Bloqueado   Vista
+    @{ Id = 'software';  Icon = 'Apps';    Label = 'Software';  Group = 'Top';    Visible = $true; Locked = $false; View = 'Show-OptimizationsListView' }
+    @{ Id = 'optimize';  Icon = 'Gauge';   Label = 'Optimize';  Group = 'Top';    Visible = $true; Locked = $false; View = 'Show-OptimizationsListView'; Default = $true }
+    @{ Id = 'customize'; Icon = 'Palette'; Label = 'Customize'; Group = 'Top';    Visible = $true; Locked = $false; View = 'Show-OptimizationsListView' }
 
-    @{ Id = 'advanced';  Icon = 'Wrench';  Label = 'Advanced';  Group = 'Bottom'; Visible = $true; Locked = $false }
-    @{ Id = 'settings';  Icon = 'Gear';    Label = 'Settings';  Group = 'Bottom'; Visible = $true; Locked = $false }
-    @{ Id = 'more';      Icon = 'More';    Label = 'More';      Group = 'Bottom'; Visible = $true; Locked = $false }
+    @{ Id = 'advanced';  Icon = 'Wrench';  Label = 'Advanced';  Group = 'Bottom'; Visible = $true; Locked = $false; View = 'Show-OptimizationsListView' }
+    @{ Id = 'settings';  Icon = 'Gear';    Label = 'Settings';  Group = 'Bottom'; Visible = $true; Locked = $false; View = 'Show-SettingsView' }
+    @{ Id = 'more';      Icon = 'More';    Label = 'More';      Group = 'Bottom'; Visible = $true; Locked = $false; View = 'Show-OptimizationsListView' }
 
 )
 
@@ -717,13 +1028,250 @@ function Get-NavElementName {
     'Nav' + $Id.Substring(0, 1).ToUpper() + $Id.Substring(1)
 }
 
+function Get-NavigationItem {
+    param([string]$Id)
+    $NavigationIndex | Where-Object { $_.Id -eq $Id } | Select-Object -First 1
+}
+
 # ---- fin incluido: ui/NavigationIndex.ps1 ----
+# ---- inicio incluido: ui/LanguageIndex.ps1 ----
+# ============================================================
+# LanguageIndex.ps1
+#
+#   *** ARCHIVO PRINCIPAL DE LOS IDIOMAS ***
+#
+# Qué idiomas ofrece el programa y en qué orden salen en el
+# desplegable de Settings.
+#
+#   Code     Código corto. Debe coincidir con el nombre del
+#            archivo de ui/Lang/ (es -> ui/Lang/es.ps1).
+#   Label    Cómo se llama el idioma EN SU PROPIO IDIOMA, que es
+#            lo que espera ver quien lo busca. No se traduce.
+#   Source   $true en el idioma en el que está escrito el código
+#            fuente. Ese no lleva archivo en ui/Lang/.
+#   Default  Idioma de arranque la primera vez. Después manda lo
+#            que haya guardado en %APPDATA% (ver AppSettings.ps1).
+#   Visible  $false lo esconde sin borrar su archivo.
+#
+# Para añadir un idioma:
+#   1. crear ui/Lang/<código>.ps1 copiando ui/Lang/es.ps1
+#   2. añadir su línea aquí
+# ============================================================
+
+$LanguageIndex = @(
+
+    @{ Code = 'en'; Label = 'English';  Visible = $true; Source = $true; Default = $true }
+    @{ Code = 'es'; Label = 'Español';  Visible = $true }
+
+)
+
+function Get-AvailableLanguages {
+    $LanguageIndex | Where-Object { -not $_.ContainsKey('Visible') -or $_.Visible }
+}
+
+function Get-DefaultLanguage {
+    $default = $LanguageIndex | Where-Object { $_.Default } | Select-Object -First 1
+    if ($default) { $default.Code } else { 'en' }
+}
+
+function Get-LanguageLabel {
+    param([string]$Code)
+    $found = $LanguageIndex | Where-Object { $_.Code -eq $Code } | Select-Object -First 1
+    if ($found) { $found.Label } else { $Code }
+}
+
+# ---- fin incluido: ui/LanguageIndex.ps1 ----
 
 # ---- Carpetas que se cargan enteras ----
 # Todo archivo .ps1 que haya dentro entra solo, por orden de nombre.
 # Añadir una categoría, un componente o una vista = crear su archivo;
 # quitarla = borrarlo. No hay que tocar este archivo.
 # build.ps1 sustituye cada bloque por el contenido de la carpeta.
+
+# ---- inicio incluido: ui/Lang/es.ps1 ----
+# ------------------------------------------------------------
+# Español
+#
+# Diccionario "texto en inglés" -> "texto en español".
+# La clave es el texto tal cual aparece en el código fuente; si
+# falta una entrada, se muestra el inglés en vez de fallar.
+#
+# Para saber qué queda por traducir, navega por la aplicación y
+# después ejecuta:  Get-MissingTranslations 'es'
+#
+# Para crear otro idioma, copia este archivo con otro código y
+# añade su línea en ui/LanguageIndex.ps1.
+# ------------------------------------------------------------
+
+Register-Language 'es' @{
+
+    # ---- Menú lateral ----
+    'Software'   = 'Programas'
+    'Optimize'   = 'Optimizar'
+    'Customize'  = 'Personalizar'
+    'Advanced'   = 'Avanzado'
+    'Settings'   = 'Ajustes'
+    'More'       = 'Más'
+
+    # ---- Barra de título ----
+    'Normal'         = 'Normal'
+    'Builder'        = 'Constructor'
+    'Config Review'  = 'Revisar configuración'
+    'Change theme'   = 'Cambiar tema'
+    'Help'           = 'Ayuda'
+    'Hide the menu'  = 'Ocultar el menú'
+    'Show the menu'  = 'Mostrar el menú'
+
+    # ---- Pantalla principal ----
+    'Optimizations' = 'Optimizaciones'
+    'Optimize your Windows system performance, privacy and power usage' = 'Ajusta el rendimiento, la privacidad y el consumo de tu sistema'
+    'Search optimizations...' = 'Buscar optimizaciones...'
+    'Quick Actions' = 'Acciones rápidas'
+    'View'          = 'Vista'
+
+    # ---- Pantalla de detalle ----
+    '{0} settings' = '{0} ajustes'
+    'Reset'        = 'Restablecer'
+    'Back to the list' = 'Volver a la lista'
+
+    # ---- Etiquetas de clasificación ----
+    'Preference'  = 'Preferencia'
+    'Recommended' = 'Recomendado'
+    'Default'     = 'De fábrica'
+    'Custom'      = 'Personalizado'
+
+    # ---- Indicadores ----
+    'On'  = 'Sí'
+    'Off' = 'No'
+    'Recommended value'         = 'Valor recomendado'
+    'Windows factory value'     = 'Valor de fábrica de Windows'
+    'Recommended: {0} of {1}'   = 'Recomendados: {0} de {1}'
+    'Factory defaults: {0} of {1}' = 'De fábrica: {0} de {1}'
+    'Customised: {0} of {1}'    = 'Personalizados: {0} de {1}'
+    'No recommended settings'   = 'Sin ajustes recomendados'
+
+    # ---- Bloqueo ----
+    'Locked section' = 'Sección bloqueada'
+    'Its settings are shown for reference only: they cannot be changed. To unlock it, set Locked = $false in ui/CategoryIndex.ps1.' = 'Sus ajustes se muestran solo como consulta: no se pueden modificar. Para desbloquearla, pon Locked = $false en ui/CategoryIndex.ps1.'
+    'Locked section: you can look, not change' = 'Sección bloqueada: se puede consultar, no modificar'
+    'Not available: the section is locked'     = 'No disponible: la sección está bloqueada'
+    '{0}: locked' = '{0}: bloqueado'
+
+    # ---- Pantalla de Settings ----
+    'Preferences for the application itself' = 'Preferencias del propio programa'
+    'Saved automatically' = 'Se guarda solo'
+    'General'    = 'General'
+    'Appearance' = 'Apariencia'
+    'Language'   = 'Idioma'
+    'Language used across the whole interface' = 'Idioma de toda la interfaz'
+    'Theme'      = 'Tema'
+    'Light or dark colour scheme' = 'Combinación de colores clara u oscura'
+    'Light'      = 'Claro'
+    'Dark'       = 'Oscuro'
+
+    # ============================================================
+    # CONTENIDO: nombres y descripciones de las secciones
+    # ============================================================
+
+    'Privacy & Security'   = 'Privacidad y seguridad'
+    'Security, Content Delivery & Advertising, Lock Screen, General, ...' = 'Seguridad, contenido y publicidad, pantalla de bloqueo, general, ...'
+
+    'Power' = 'Energía'
+    'Display, Hard Disk, Internet Explorer, Desktop Background Settings, ...' = 'Pantalla, disco duro, Internet Explorer, fondo de escritorio, ...'
+
+    'Gaming & Performance' = 'Juegos y rendimiento'
+    'Processor, Graphics, Network, Security, ...' = 'Procesador, gráficos, red, seguridad, ...'
+
+    'Update' = 'Actualizaciones'
+    'Update Policy, Delivery & Store, Update Behavior' = 'Directivas de actualización, distribución y Store, comportamiento'
+
+    'Notifications' = 'Notificaciones'
+    'Additional Settings, System Notifications, Privacy Notifications, Security Notifications' = 'Ajustes adicionales, notificaciones del sistema, de privacidad y de seguridad'
+
+    'Sound' = 'Sonido'
+    'System Sounds' = 'Sonidos del sistema'
+
+    # ============================================================
+    # CONTENIDO: ajustes
+    # ============================================================
+
+    # ---- Privacy & Security ----
+    'User Account Control Level' = 'Nivel del Control de cuentas de usuario'
+    'Controls UAC notification level and secure desktop behavior' = 'Controla el nivel de aviso del UAC y el comportamiento del escritorio seguro'
+    'Always notify' = 'Notificar siempre'
+    'Notify when apps try to make changes' = 'Notificar cuando una aplicación intente hacer cambios'
+    'Notify me only (no dim)' = 'Notificar sin atenuar el escritorio'
+    'Never notify' = 'No notificar nunca'
+
+    'Workplace Join Message Prompts' = 'Avisos de unión al trabajo'
+    "Show 'Allow my organization to manage my device' prompts throughout Windows" = "Mostrar los avisos de 'Permitir que mi organización administre mi dispositivo' por todo Windows"
+
+    'BitLocker Auto Encryption' = 'Cifrado automático de BitLocker'
+    'Controls whether Windows can automatically encrypt drives with BitLocker. Has no effect if BitLocker encryption is already active on your device' = 'Controla si Windows puede cifrar unidades automáticamente con BitLocker. No tiene efecto si el cifrado ya está activo en tu equipo'
+
+    'WiFi-Sense' = 'Sensor WiFi'
+    'Allow sharing WiFi passwords with contacts and automatically connecting to suggested open hotspots' = 'Permitir compartir contraseñas WiFi con tus contactos y conectarse solo a las redes abiertas sugeridas'
+
+    'Automatic Maintenance' = 'Mantenimiento automático'
+    'Choose if Windows should run automatic system maintenance tasks during idle time' = 'Elige si Windows debe ejecutar tareas de mantenimiento cuando el equipo está inactivo'
+
+    'Windows Error Reporting' = 'Informe de errores de Windows'
+    'Choose if Windows should collect and send crash reports and error information to Microsoft' = 'Elige si Windows debe recopilar y enviar a Microsoft los informes de fallos y errores'
+
+    # ---- Power ----
+    'High Performance Power Plan' = 'Plan de energía de alto rendimiento'
+    'Switch to the High Performance / Ultimate Performance power scheme' = 'Cambiar al plan de energía de alto rendimiento o rendimiento máximo'
+
+    'USB Selective Suspend' = 'Suspensión selectiva de USB'
+    'Allow Windows to power down idle USB devices to save energy' = 'Permitir que Windows apague los dispositivos USB inactivos para ahorrar energía'
+
+    'Hibernation' = 'Hibernación'
+    'Enable or disable hibernate mode and the hiberfil.sys reserved space' = 'Activar o desactivar la hibernación y el espacio reservado de hiberfil.sys'
+
+    # ---- Gaming & Performance ----
+    'Game Mode' = 'Modo de juego'
+    'Optimize your PC for play by turning things off in the background' = 'Optimizar el equipo para jugar desactivando procesos en segundo plano'
+
+    'Enhance Pointer Precision' = 'Mejorar la precisión del puntero'
+    'Adjust cursor speed based on movement velocity (mouse acceleration). Most competitive gamers disable this for consistent aiming in FPS games' = 'Ajusta la velocidad del cursor según la del movimiento (aceleración del ratón). La mayoría de jugadores competitivos lo desactivan para apuntar de forma constante en los FPS'
+
+    'Mouse Hover Time' = 'Tiempo de reposo del ratón'
+    'Controls how long you must hover over an element before it activates (in milliseconds). Lower values make tooltips, menus, and hover effects appear faster. Default is 400ms' = 'Controla cuánto hay que mantener el ratón encima de un elemento antes de que reaccione (en milisegundos). Valores más bajos hacen que los mensajes emergentes y los menús aparezcan antes. El valor de fábrica es 400 ms'
+    '100ms' = '100 ms'
+    '200ms' = '200 ms'
+    '400ms (Default)' = '400 ms (de fábrica)'
+    '600ms' = '600 ms'
+
+    'Startup Delay for Apps' = 'Retraso de los programas de inicio'
+    'Delay startup applications by 10 seconds after boot to improve initial system responsiveness. Windows becomes usable faster, but your startup apps take longer to load' = 'Retrasa 10 segundos los programas de inicio para que el sistema responda antes. Windows se puede usar más rápido, pero tus programas tardan más en cargar'
+
+    'Background App Permissions' = 'Permisos de aplicaciones en segundo plano'
+    'Control whether apps can run in the background via Group Policy. Force Deny removes per-app background settings from Windows Settings. Use User in Control if you need apps like Teams, Zoom, or WhatsApp' = 'Controla mediante directivas de grupo si las aplicaciones pueden ejecutarse en segundo plano. "Denegar siempre" quita esa opción por aplicación de la Configuración de Windows. Usa "Decide el usuario" si necesitas Teams, Zoom o WhatsApp'
+    'User in Control' = 'Decide el usuario'
+    'Force Allow' = 'Permitir siempre'
+    'Force Deny' = 'Denegar siempre'
+
+    # ---- Update ----
+    'Delivery Optimization (P2P)' = 'Optimización de distribución (P2P)'
+    'Allow Windows to download/upload updates to and from other PCs on the internet' = 'Permitir que Windows descargue y envíe actualizaciones desde y hacia otros equipos de internet'
+
+    'Auto-Restart With Active Sessions' = 'Reinicio automático con sesión iniciada'
+    'Allow Windows Update to restart the PC automatically while you are logged in' = 'Permitir que Windows Update reinicie el equipo automáticamente con la sesión iniciada'
+
+    # ---- Notifications ----
+    'Windows Tips & Suggestions' = 'Consejos y sugerencias de Windows'
+    'Show occasional tips, tricks, and suggestions as you use Windows' = 'Mostrar de vez en cuando consejos, trucos y sugerencias mientras usas Windows'
+
+    'Lock Screen Suggestions' = 'Sugerencias en la pantalla de bloqueo'
+    'Show fun facts, tips, and other suggestions on the lock screen' = 'Mostrar curiosidades, consejos y otras sugerencias en la pantalla de bloqueo'
+
+    # ---- Sound ----
+    'Startup Sound' = 'Sonido de inicio'
+    'Play the Windows startup sound when signing in' = 'Reproducir el sonido de inicio de Windows al iniciar sesión'
+
+}
+
+# ---- fin incluido: ui/Lang/es.ps1 ----
 
 # ---- inicio incluido: ui/Categories/Gaming.ps1 ----
 # ------------------------------------------------------------
@@ -964,6 +1512,79 @@ Register-Category @{
 
 # ---- fin incluido: ui/Categories/Update.ps1 ----
 
+# ---- inicio incluido: ui/Preferences/10-Language.ps1 ----
+# ------------------------------------------------------------
+# Opción: idioma de la interfaz
+#
+# Ejemplo de opción con lista dinámica: las opciones salen de
+# ui/LanguageIndex.ps1, así que añadir un idioma allí lo hace
+# aparecer aquí sin tocar este archivo.
+# ------------------------------------------------------------
+
+Register-Preference @{
+    Order       = 10
+    Id          = 'language'
+    Group       = 'General'
+    Label       = 'Language'
+    Description = 'Language used across the whole interface'
+    Type        = 'Choice'
+
+    # Los nombres de idioma no se traducen: van siempre en el suyo.
+    TranslateOptions = $false
+
+    Options = {
+        Get-AvailableLanguages | ForEach-Object {
+            # La etiqueta va en su propio idioma a propósito: quien
+            # busca "Español" lo reconoce aunque la app esté en inglés.
+            @{ Value = $_.Code; Label = $_.Label }
+        }
+    }
+
+    Get = { Get-AppLanguage }
+
+    Set = {
+        param($Value)
+        Set-AppLanguage $Value
+        Set-AppSetting 'Language' $Value
+        Update-UiLanguage      # repinta el menú y la pantalla actual
+    }
+}
+
+# ---- fin incluido: ui/Preferences/10-Language.ps1 ----
+# ---- inicio incluido: ui/Preferences/20-Theme.ps1 ----
+# ------------------------------------------------------------
+# Opción: tema claro / oscuro
+#
+# El botón de la barra de título hace lo mismo; los dos pasan por
+# Set-AppTheme y por Set-AppSetting, así que el tema se recuerda
+# se cambie desde donde se cambie.
+# ------------------------------------------------------------
+
+Register-Preference @{
+    Order       = 20
+    Id          = 'theme'
+    Group       = 'Appearance'
+    Label       = 'Theme'
+    Description = 'Light or dark colour scheme'
+    Type        = 'Choice'
+
+    Options = @(
+        @{ Value = 'Light'; Label = 'Light' }
+        @{ Value = 'Dark';  Label = 'Dark' }
+    )
+
+    Get = { Get-AppTheme }
+
+    Set = {
+        param($Value)
+        Set-AppTheme -Window (Get-AppWindow) -Name $Value
+        Set-AppSetting 'Theme' $Value
+        Sync-ThemeButton
+    }
+}
+
+# ---- fin incluido: ui/Preferences/20-Theme.ps1 ----
+
 # ---- inicio incluido: ui/Components/Banner.ps1 ----
 # ============================================================
 # Componente: aviso
@@ -1000,7 +1621,7 @@ function New-Banner {
     $texts.VerticalAlignment = 'Center'
 
     $t = New-Object System.Windows.Controls.TextBlock
-    $t.Text = $Title
+    $t.Text = T $Title
     $t.FontSize = 12.5
     $t.FontWeight = 'SemiBold'
     Set-TextFg $t $Fg
@@ -1008,7 +1629,7 @@ function New-Banner {
 
     if ($Message) {
         $m = New-Object System.Windows.Controls.TextBlock
-        $m.Text = $Message
+        $m.Text = T $Message
         $m.FontSize = 11.5
         $m.TextWrapping = 'Wrap'
         $m.Margin = New-Object System.Windows.Thickness 0, 2, 0, 0
@@ -1024,8 +1645,8 @@ function New-Banner {
 # Aviso concreto de sección bloqueada.
 function New-LockedBanner {
     New-Banner -Icon 'Lock' `
-        -Title 'Sección bloqueada' `
-        -Message 'Sus ajustes se muestran solo como consulta: no se pueden modificar. Para desbloquearla, pon Locked = $false en ui/CategoryIndex.ps1.'
+        -Title 'Locked section' `
+        -Message 'Its settings are shown for reference only: they cannot be changed. To unlock it, set Locked = $false in ui/CategoryIndex.ps1.'
 }
 
 # ---- fin incluido: ui/Components/Banner.ps1 ----
@@ -1066,7 +1687,7 @@ function New-CategoryCard {
     $nameRow.Orientation = 'Horizontal'
 
     $name = New-Object System.Windows.Controls.TextBlock
-    $name.Text = $Category.Name
+    $name.Text = T $Category.Name
     $name.FontFamily = $Window.FindResource('DisplayFont')
     $name.FontWeight = 'SemiBold'
     $name.FontSize = 14.5
@@ -1079,14 +1700,14 @@ function New-CategoryCard {
     if ($Category.Locked) {
         $lock = New-Icon 'Lock' 12 'TextFaint'
         $lock.Margin = New-Object System.Windows.Thickness 9, 1, 0, 0
-        $lock.ToolTip = 'Sección bloqueada: se puede consultar, no modificar'
+        $lock.ToolTip = T 'Locked section: you can look, not change'
         $nameRow.Children.Add($lock) | Out-Null
     }
 
     $text.Children.Add($nameRow) | Out-Null
 
     $desc = New-Object System.Windows.Controls.TextBlock
-    $desc.Text = $Category.Description
+    $desc.Text = T $Category.Description
     $desc.FontSize = 12
     $desc.TextTrimming = 'CharacterEllipsis'
     $desc.Margin = New-Object System.Windows.Thickness 0, 4, 24, 0
@@ -1127,18 +1748,18 @@ function New-CategoryStats {
 
     if ($Category.Recommended -gt 0) {
         $stats.Children.Add((New-Pill 'StarFill' "$($Category.Recommended)/$total" 'Success' 'SuccessSoft' `
-            "Recommended: $($Category.Recommended) de $total")) | Out-Null
+            ((T 'Recommended: {0} of {1}') -f $Category.Recommended, $total))) | Out-Null
     } else {
         $stats.Children.Add((New-Pill 'Star' "0/$total" 'TextFaint' 'SurfaceSunken' `
-            'Sin ajustes recomendados')) | Out-Null
+            (T 'No recommended settings'))) | Out-Null
     }
 
     $stats.Children.Add((New-Pill 'Grid' "$($Category.Default)/$total" 'TextMuted' 'SurfaceSunken' `
-        "Default: $($Category.Default) de $total")) | Out-Null
+        ((T 'Factory defaults: {0} of {1}') -f $Category.Default, $total))) | Out-Null
 
     if ($Category.Custom -gt 0) {
         $stats.Children.Add((New-Pill 'Sliders' "$($Category.Custom)/$total" 'Warn' 'WarnSoft' `
-            "Custom: $($Category.Custom) de $total")) | Out-Null
+            ((T 'Customised: {0} of {1}') -f $Category.Custom, $total))) | Out-Null
     }
 
     $stats
@@ -1207,7 +1828,7 @@ function Set-PageBreadcrumb {
     $back.Margin = New-Object System.Windows.Thickness 0, 0, 14, 0
     $back.VerticalAlignment = 'Center'
     $back.Cursor = 'Hand'
-    $back.ToolTip = 'Volver a la lista'
+    $back.ToolTip = T 'Back to the list'
     Set-BoxBg $back 'Surface'
     Set-BoxLine $back 'Stroke'
     $back.Child = (New-Icon 'Back' 13 'TextMuted')
@@ -1230,7 +1851,7 @@ function Set-PageBreadcrumb {
     $trail.Orientation = 'Horizontal'
 
     $rootLink = New-Object System.Windows.Controls.TextBlock
-    $rootLink.Text = $RootLabel
+    $rootLink.Text = T $RootLabel
     $rootLink.FontSize = 11
     $rootLink.Cursor = 'Hand'
     Set-TextFg $rootLink 'TextFaint'
@@ -1245,7 +1866,7 @@ function Set-PageBreadcrumb {
     $trail.Children.Add($sep) | Out-Null
 
     $leaf = New-Object System.Windows.Controls.TextBlock
-    $leaf.Text = $Category.Name
+    $leaf.Text = T $Category.Name
     $leaf.FontSize = 11
     Set-TextFg $leaf 'TextMuted'
     $trail.Children.Add($leaf) | Out-Null
@@ -1253,7 +1874,7 @@ function Set-PageBreadcrumb {
     $texts.Children.Add($trail) | Out-Null
 
     $title = New-Object System.Windows.Controls.TextBlock
-    $title.Text = $Category.Name
+    $title.Text = T $Category.Name
     $title.FontFamily = $Window.FindResource('DisplayFont')
     $title.FontSize = 21
     $title.FontWeight = 'Bold'
@@ -1263,6 +1884,21 @@ function Set-PageBreadcrumb {
 
     $row.Children.Add($texts) | Out-Null
     $Window.FindName('HeaderTitleArea').Children.Add($row) | Out-Null
+}
+
+# Cabecera de un bloque dentro del contenido ("General",
+# "Appearance"...). La usa la pantalla de Settings.
+function New-SectionHeader {
+    param($Window, [string]$Text)
+
+    $header = New-Object System.Windows.Controls.TextBlock
+    $header.Text = $Text
+    $header.FontFamily = $Window.FindResource('DisplayFont')
+    $header.FontSize = 12
+    $header.FontWeight = 'SemiBold'
+    $header.Margin = New-Object System.Windows.Thickness 4, 6, 0, 10
+    Set-TextFg $header 'TextFaint'
+    $header
 }
 
 # Añade un control a la zona de acciones (derecha).
@@ -1284,6 +1920,130 @@ function Add-PageActionLabel {
 }
 
 # ---- fin incluido: ui/Components/PageHeader.ps1 ----
+# ---- inicio incluido: ui/Components/PreferenceCard.ps1 ----
+# ============================================================
+# Componente: tarjeta de preferencia
+#
+# Dibuja una opción de ui/Preferences/. Mismo aspecto que las
+# tarjetas de ajuste de una categoría, pero conectada a los
+# scriptblocks Get y Set de la preferencia.
+# ============================================================
+
+function New-PreferenceCard {
+    param($Window, $Preference)
+
+    $card = New-Object System.Windows.Controls.Border
+    $card.Style = $Window.FindResource('StaticCardStyle')
+    $card.Padding = New-Object System.Windows.Thickness 20, 15, 20, 16
+
+    $grid = New-Object System.Windows.Controls.Grid
+    Add-GridColumns $grid '*', 'Auto'
+
+    # ---- izquierda: título y explicación ----
+    $left = New-Object System.Windows.Controls.StackPanel
+    $left.VerticalAlignment = 'Center'
+
+    $label = New-Object System.Windows.Controls.TextBlock
+    $label.Text = T $Preference.Label
+    $label.FontFamily = $Window.FindResource('DisplayFont')
+    $label.FontWeight = 'SemiBold'
+    $label.FontSize = 13.5
+    Set-TextFg $label 'Text'
+    $left.Children.Add($label) | Out-Null
+
+    if ($Preference.Description) {
+        $desc = New-Object System.Windows.Controls.TextBlock
+        $desc.Text = T $Preference.Description
+        $desc.FontSize = 11.5
+        $desc.TextWrapping = 'Wrap'
+        $desc.LineHeight = 17
+        $desc.Margin = New-Object System.Windows.Thickness 0, 5, 30, 0
+        Set-TextFg $desc 'TextMuted'
+        $left.Children.Add($desc) | Out-Null
+    }
+
+    Add-ToColumn $grid $left 0
+    Add-ToColumn $grid (New-PreferenceControl $Window $Preference) 1
+
+    $card.Child = $grid
+    $card
+}
+
+function New-PreferenceControl {
+    param($Window, $Preference)
+
+    $holder = New-Object System.Windows.Controls.StackPanel
+    $holder.Orientation = 'Horizontal'
+    $holder.VerticalAlignment = 'Center'
+
+    switch ($Preference.Type) {
+
+        'Choice' {
+            $options = @(Get-PreferenceOptions $Preference)
+            $current = & $Preference.Get
+
+            $combo = New-Object System.Windows.Controls.ComboBox
+            $combo.Style = $Window.FindResource('ModernComboStyle')
+            $combo.Width = 220
+            foreach ($option in $options) {
+                if ($Preference.TranslateOptions) { $combo.Items.Add((T $option.Label)) | Out-Null }
+                else                              { $combo.Items.Add($option.Label)     | Out-Null }
+            }
+
+            $index = 0
+            for ($i = 0; $i -lt $options.Count; $i++) {
+                if ($options[$i].Value -eq $current) { $index = $i }
+            }
+            $combo.SelectedIndex = $index
+
+            # El Tag lleva lo necesario para resolver el cambio sin
+            # closures (regla 4 de CLAUDE.md).
+            $combo.Tag = [PSCustomObject]@{ Preference = $Preference; Options = $options }
+
+            # El handler se engancha DESPUÉS de fijar la selección
+            # inicial, o saltaría al construir la tarjeta.
+            $combo.Add_SelectionChanged({
+                param($s, $e)
+                $info = $s.Tag
+                if ($s.SelectedIndex -lt 0) { return }
+                $value = $info.Options[$s.SelectedIndex].Value
+                if ($value -eq (& $info.Preference.Get)) { return }
+                & $info.Preference.Set $value
+            })
+
+            $holder.Children.Add($combo) | Out-Null
+        }
+
+        'Toggle' {
+            $current = [bool](& $Preference.Get)
+
+            $state = New-Object System.Windows.Controls.TextBlock
+            if ($current) { $state.Text = T 'On' } else { $state.Text = T 'Off' }
+            $state.FontSize = 11.5
+            $state.FontWeight = 'SemiBold'
+            $state.Width = 30
+            $state.TextAlignment = 'Right'
+            $state.VerticalAlignment = 'Center'
+            $state.Margin = New-Object System.Windows.Thickness 0, 0, 10, 0
+            Set-TextFg $state 'TextMuted'
+            $holder.Children.Add($state) | Out-Null
+
+            $toggle = New-ToggleSwitch -Window $Window -InitialState $current -Label $state
+            # Se añade la preferencia al Tag que ya usa el interruptor
+            # para su propio estado.
+            $toggle.Tag | Add-Member -NotePropertyName Preference -NotePropertyValue $Preference -Force
+            $toggle.Add_MouseLeftButtonUp({
+                param($s, $e)
+                & $s.Tag.Preference.Set $s.Tag.State
+            })
+            $holder.Children.Add($toggle) | Out-Null
+        }
+    }
+
+    $holder
+}
+
+# ---- fin incluido: ui/Components/PreferenceCard.ps1 ----
 # ---- inicio incluido: ui/Components/SettingCard.ps1 ----
 # ============================================================
 # Componente: tarjeta de ajuste
@@ -1317,7 +2077,7 @@ function New-SettingCard {
         # así que el interruptor deja de responder al ratón.
         $control.IsEnabled = $false
         $control.Opacity = 0.45
-        $card.ToolTip = 'Sección bloqueada'
+        $card.ToolTip = T 'Locked section'
     }
     Add-ToColumn $grid $control 1
 
@@ -1336,7 +2096,7 @@ function New-SettingInfo {
     $nameRow.Orientation = 'Horizontal'
 
     $name = New-Object System.Windows.Controls.TextBlock
-    $name.Text = $Setting.Name
+    $name.Text = T $Setting.Name
     $name.FontFamily = $Window.FindResource('DisplayFont')
     $name.FontWeight = 'SemiBold'
     $name.FontSize = 13.5
@@ -1347,7 +2107,7 @@ function New-SettingInfo {
     $left.Children.Add($nameRow) | Out-Null
 
     $desc = New-Object System.Windows.Controls.TextBlock
-    $desc.Text = $Setting.Description
+    $desc.Text = T $Setting.Description
     $desc.FontSize = 11.5
     $desc.TextWrapping = 'Wrap'
     $desc.LineHeight = 17
@@ -1375,20 +2135,20 @@ function New-SettingControl {
     if ($Setting.Tags -contains 'Recommended') {
         $star = New-Icon 'StarFill' 13 'Success'
         $star.Margin = New-Object System.Windows.Thickness 0, 0, 10, 0
-        $star.ToolTip = 'Valor recomendado'
+        $star.ToolTip = T 'Recommended value'
         $right.Children.Add($star) | Out-Null
     }
     if ($Setting.Tags -contains 'Default') {
         $grid = New-Icon 'Grid' 13 'TextFaint'
         $grid.Margin = New-Object System.Windows.Thickness 0, 0, 14, 0
-        $grid.ToolTip = 'Valor de fábrica de Windows'
+        $grid.ToolTip = T 'Windows factory value'
         $right.Children.Add($grid) | Out-Null
     }
 
     switch ($Setting.Type) {
         'Toggle' {
             $state = New-Object System.Windows.Controls.TextBlock
-            if ($Setting.Value) { $state.Text = 'On' } else { $state.Text = 'Off' }
+            if ($Setting.Value) { $state.Text = T 'On' } else { $state.Text = T 'Off' }
             $state.FontSize = 11.5
             $state.FontWeight = 'SemiBold'
             $state.Width = 24
@@ -1403,8 +2163,8 @@ function New-SettingControl {
             $combo = New-Object System.Windows.Controls.ComboBox
             $combo.Style = $Window.FindResource('ModernComboStyle')
             $combo.Width = 262
-            foreach ($opt in $Setting.Options) { $combo.Items.Add($opt) | Out-Null }
-            $combo.SelectedItem = $Setting.Value
+            foreach ($opt in $Setting.Options) { $combo.Items.Add((T $opt)) | Out-Null }
+            $combo.SelectedItem = T $Setting.Value
             $right.Children.Add($combo) | Out-Null
         }
     }
@@ -1468,7 +2228,7 @@ function New-NavButton {
     $stack.Children.Add($icon) | Out-Null
 
     $label = New-Object System.Windows.Controls.TextBlock
-    $label.Text = $Item.Label
+    $label.Text = T $Item.Label
     $label.FontSize = 9.5
     $label.HorizontalAlignment = 'Center'
     $label.Margin = New-Object System.Windows.Thickness 0, 5, 0, 0
@@ -1480,13 +2240,16 @@ function New-NavButton {
     if ($Item.Locked) {
         $button.IsEnabled = $false
         $button.Opacity = 0.4
-        $button.ToolTip = "$($Item.Label): bloqueado"
+        $button.ToolTip = (T '{0}: locked') -f (T $Item.Label)
         $icon.Text = Glyph 'Lock'
     }
     elseif ($Item.Default) {
         $button.Tag = 'sel'
     }
 
+    # El Uid guarda el Id de la entrada: así el handler puede
+    # averiguar a qué vista lleva sin recurrir a un closure.
+    $button.Uid = $Item.Id
     $button.Add_Click({ param($s, $e) Set-NavSelection $s })
 
     # Se registra con su nombre para que $Window.FindName siga
@@ -1510,8 +2273,9 @@ function Set-NavSelection {
     $Button.Tag = 'sel'
     Update-NavColors $window
 
-    # Todas las entradas llevan de momento a la misma vista.
-    Show-OptimizationsListView -Window $window
+    # Cada entrada declara su vista en ui/NavigationIndex.ps1.
+    $item = Get-NavigationItem $Button.Uid
+    if ($item -and $item.View) { Show-View -Name $item.View } else { Show-View -Name 'Show-OptimizationsListView' }
 }
 
 # El estilo del XAML pinta el fondo del botón seleccionado; el
@@ -1565,7 +2329,7 @@ function Set-SidebarExpanded {
     $sidebar.Child.BeginAnimation([System.Windows.UIElement]::OpacityProperty, $fade)
 
     if ($button) {
-        if ($Expanded) { $button.ToolTip = 'Ocultar el menú' } else { $button.ToolTip = 'Mostrar el menú' }
+        if ($Expanded) { $button.ToolTip = T 'Hide the menu' } else { $button.ToolTip = T 'Show the menu' }
     }
 
     $script:SidebarExpanded = $Expanded
@@ -1579,6 +2343,39 @@ function Switch-Sidebar {
 function Get-SidebarExpanded { $script:SidebarExpanded }
 
 # ---- fin incluido: ui/Components/Sidebar.ps1 ----
+# ---- inicio incluido: ui/Components/TitleBar.ps1 ----
+# ============================================================
+# Componente: barra de título
+#
+# El XAML deja los textos en inglés porque no puede llamar a T;
+# aquí se traducen al arrancar y cada vez que cambia el idioma.
+# ============================================================
+
+function Update-TitleBarTexts {
+    param($Window)
+
+    $Window.FindName('BtnModeNormal').Content  = T 'Normal'
+    $Window.FindName('BtnModeBuilder').Content = T 'Builder'
+    $Window.FindName('BtnModeConfig').Content  = T 'Config Review'
+
+    $Window.FindName('BtnTheme').ToolTip = T 'Change theme'
+    $Window.FindName('BtnHelp').ToolTip  = T 'Help'
+
+    $menu = $Window.FindName('BtnMenu')
+    if (Get-SidebarExpanded) { $menu.ToolTip = T 'Hide the menu' } else { $menu.ToolTip = T 'Show the menu' }
+}
+
+# El glifo del botón de tema refleja a qué tema se cambiaría:
+# con tema claro se ve una luna, con tema oscuro un sol.
+function Sync-ThemeButton {
+    $window = Get-AppWindow
+    if (-not $window) { return }
+
+    $button = $window.FindName('BtnTheme')
+    if ((Get-AppTheme) -eq 'Dark') { $button.Content = Glyph 'Sun' } else { $button.Content = Glyph 'Moon' }
+}
+
+# ---- fin incluido: ui/Components/TitleBar.ps1 ----
 
 # ---- inicio incluido: ui/Views/CategoryDetailView.ps1 ----
 # ============================================================
@@ -1604,13 +2401,13 @@ function Show-CategoryDetailView {
     Clear-PageHeader $Window
     Set-PageBreadcrumb -Window $Window -Category $Category
 
-    Add-PageActionLabel $Window "$($Category.Items.Count) settings"
+    Add-PageActionLabel $Window ((T '{0} settings') -f $Category.Items.Count)
 
     $reset = New-ChipButton $Window 'Reset' 'Sync'
     if ($locked) {
         $reset.IsEnabled = $false
         $reset.Opacity = 0.45
-        $reset.ToolTip = 'No disponible: la sección está bloqueada'
+        $reset.ToolTip = T 'Not available: the section is locked'
     }
     Add-PageAction $Window $reset
 
@@ -1647,8 +2444,8 @@ function Show-OptimizationsListView {
     # ---- 1. Cabecera ----
     Clear-PageHeader $Window
     Set-PageTitle -Window $Window `
-        -Title 'Optimizations' `
-        -Subtitle 'Optimize your Windows system performance, privacy and power usage'
+        -Title (T 'Optimizations') `
+        -Subtitle (T 'Optimize your Windows system performance, privacy and power usage')
 
     $search = New-SearchBox $Window
     Add-PageAction $Window $search.Root
@@ -1667,6 +2464,45 @@ function Show-OptimizationsListView {
 }
 
 # ---- fin incluido: ui/Views/OptimizationsListView.ps1 ----
+# ---- inicio incluido: ui/Views/SettingsView.ps1 ----
+# ============================================================
+# Vista: Settings
+#
+# Se dibuja sola a partir de lo que haya registrado en
+# ui/Preferences/: recorre los grupos y, dentro de cada uno,
+# sus opciones. Añadir una opción nueva NO requiere tocar este
+# archivo.
+# ============================================================
+
+function Show-SettingsView {
+    param($Window)
+
+    # ---- 1. Cabecera ----
+    Clear-PageHeader $Window
+    Set-PageTitle -Window $Window `
+        -Title (T 'Settings') `
+        -Subtitle (T 'Preferences for the application itself')
+
+    Add-PageActionLabel $Window (T 'Saved automatically')
+
+    # ---- 2. Cuerpo: un bloque por grupo ----
+    $list = New-Object System.Windows.Controls.StackPanel
+
+    foreach ($group in Get-PreferenceGroups) {
+        $list.Children.Add((New-SectionHeader $Window (T $group))) | Out-Null
+
+        foreach ($preference in Get-Preferences) {
+            if ($preference.Group -ne $group) { continue }
+            $list.Children.Add((New-PreferenceCard -Window $Window -Preference $preference)) | Out-Null
+        }
+    }
+
+    # ---- 3. Pintar con transición de entrada ----
+    $Window.FindName('MainContent').Content = $list
+    Start-EnterTransition $list
+}
+
+# ---- fin incluido: ui/Views/SettingsView.ps1 ----
 
 $xamlString = @'
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -2137,7 +2973,7 @@ $xamlString = @'
                 <!-- menú + marca -->
                 <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="8,0,0,0">
                     <Button x:Name="BtnMenu" Style="{StaticResource GlyphButtonStyle}"
-                            Content="&#xE700;" FontSize="15" ToolTip="Ocultar el menú"
+                            Content="&#xE700;" FontSize="15" ToolTip="Hide the menu"
                             Margin="0,0,8,0"/>
                     <Border Width="26" Height="26" CornerRadius="8">
                         <Border.Background>
@@ -2172,8 +3008,8 @@ $xamlString = @'
 
                 <!-- acciones -->
                 <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,10,0">
-                    <Button x:Name="BtnTheme" Style="{StaticResource GlyphButtonStyle}" Content="&#xE708;" ToolTip="Cambiar tema"/>
-                    <Button x:Name="BtnHelp"  Style="{StaticResource GlyphButtonStyle}" Content="&#xE897;" ToolTip="Ayuda"/>
+                    <Button x:Name="BtnTheme" Style="{StaticResource GlyphButtonStyle}" Content="&#xE708;" ToolTip="Change theme"/>
+                    <Button x:Name="BtnHelp"  Style="{StaticResource GlyphButtonStyle}" Content="&#xE897;" ToolTip="Help"/>
                 </StackPanel>
 
                 <!-- cromo de ventana -->
@@ -2243,8 +3079,15 @@ $xamlString = @'
 $reader = New-Object System.Xml.XmlNodeReader $xamlXml
 $Window = [System.Windows.Markup.XamlReader]::Load($reader)
 
-# ---- Tema inicial ----
-Set-AppTheme -Window $Window -Name 'Light'
+Set-AppWindow $Window
+
+# ---- Preferencias guardadas ----
+# Se leen de %APPDATA%\OptimizadorPC\settings.json y se aplican
+# antes de dibujar nada, para que la primera pintura ya salga con
+# el tema y el idioma correctos y no haya parpadeo.
+Import-AppSettings
+Set-AppTheme    -Window $Window -Name (Get-AppSetting 'Theme'    -Default 'Light')
+Set-AppLanguage (Get-AppSetting 'Language' -Default (Get-DefaultLanguage))
 
 # ---- Title bar: arrastrar ventana ----
 $titleBar = $Window.FindName('TitleBar')
@@ -2281,18 +3124,12 @@ $Window.Add_StateChanged({
 })
 
 # ---- Cambio de tema claro / oscuro ----
-# Los recursos son dinámicos, así que basta con reescribirlos:
-# toda la interfaz ya construida se repinta sola.
+# Pasa por la misma preferencia que el desplegable de Settings,
+# así que el cambio se guarda se haga desde donde se haga.
 $Window.FindName('BtnTheme').Add_Click({
     param($s, $e)
-    $win = [System.Windows.Window]::GetWindow($s)
-    if ((Get-AppTheme) -eq 'Dark') {
-        Set-AppTheme -Window $win -Name 'Light'
-        $s.Content = Glyph 'Moon'
-    } else {
-        Set-AppTheme -Window $win -Name 'Dark'
-        $s.Content = Glyph 'Sun'
-    }
+    if ((Get-AppTheme) -eq 'Dark') { $next = 'Light' } else { $next = 'Dark' }
+    & (Get-PreferenceById 'theme').Set $next
 })
 
 # ---- Selector de modo (solo visual por ahora) ----
@@ -2319,7 +3156,12 @@ $Window.FindName('BtnMenu').Add_Click({
     Switch-Sidebar ([System.Windows.Window]::GetWindow($s))
 })
 
+# ---- Textos e iconos que el XAML no puede traducir ----
+Update-TitleBarTexts $Window
+Sync-ThemeButton
+
 # ---- Vista inicial ----
-Show-OptimizationsListView -Window $Window
+# Pasa por el router para que se pueda repintar al cambiar de idioma.
+Show-View -Name 'Show-OptimizationsListView'
 
 $Window.ShowDialog() | Out-Null

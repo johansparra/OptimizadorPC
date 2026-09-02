@@ -34,7 +34,7 @@ function New-CategoryCard {
     $nameRow.Orientation = 'Horizontal'
 
     $name = New-Object System.Windows.Controls.TextBlock
-    $name.Text = $Category.Name
+    $name.Text = T $Category.Name
     $name.FontFamily = $Window.FindResource('DisplayFont')
     $name.FontWeight = 'SemiBold'
     $name.FontSize = 14.5
@@ -47,14 +47,14 @@ function New-CategoryCard {
     if ($Category.Locked) {
         $lock = New-Icon 'Lock' 12 'TextFaint'
         $lock.Margin = New-Object System.Windows.Thickness 9, 1, 0, 0
-        $lock.ToolTip = 'Sección bloqueada: se puede consultar, no modificar'
+        $lock.ToolTip = T 'Locked section: you can look, not change'
         $nameRow.Children.Add($lock) | Out-Null
     }
 
     $text.Children.Add($nameRow) | Out-Null
 
     $desc = New-Object System.Windows.Controls.TextBlock
-    $desc.Text = $Category.Description
+    $desc.Text = T $Category.Description
     $desc.FontSize = 12
     $desc.TextTrimming = 'CharacterEllipsis'
     $desc.Margin = New-Object System.Windows.Thickness 0, 4, 24, 0
@@ -95,18 +95,18 @@ function New-CategoryStats {
 
     if ($Category.Recommended -gt 0) {
         $stats.Children.Add((New-Pill 'StarFill' "$($Category.Recommended)/$total" 'Success' 'SuccessSoft' `
-            "Recommended: $($Category.Recommended) de $total")) | Out-Null
+            ((T 'Recommended: {0} of {1}') -f $Category.Recommended, $total))) | Out-Null
     } else {
         $stats.Children.Add((New-Pill 'Star' "0/$total" 'TextFaint' 'SurfaceSunken' `
-            'Sin ajustes recomendados')) | Out-Null
+            (T 'No recommended settings'))) | Out-Null
     }
 
     $stats.Children.Add((New-Pill 'Grid' "$($Category.Default)/$total" 'TextMuted' 'SurfaceSunken' `
-        "Default: $($Category.Default) de $total")) | Out-Null
+        ((T 'Factory defaults: {0} of {1}') -f $Category.Default, $total))) | Out-Null
 
     if ($Category.Custom -gt 0) {
         $stats.Children.Add((New-Pill 'Sliders' "$($Category.Custom)/$total" 'Warn' 'WarnSoft' `
-            "Custom: $($Category.Custom) de $total")) | Out-Null
+            ((T 'Customised: {0} of {1}') -f $Category.Custom, $total))) | Out-Null
     }
 
     $stats

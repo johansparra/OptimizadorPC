@@ -59,7 +59,7 @@ function Set-PageBreadcrumb {
     $back.Margin = New-Object System.Windows.Thickness 0, 0, 14, 0
     $back.VerticalAlignment = 'Center'
     $back.Cursor = 'Hand'
-    $back.ToolTip = 'Volver a la lista'
+    $back.ToolTip = T 'Back to the list'
     Set-BoxBg $back 'Surface'
     Set-BoxLine $back 'Stroke'
     $back.Child = (New-Icon 'Back' 13 'TextMuted')
@@ -82,7 +82,7 @@ function Set-PageBreadcrumb {
     $trail.Orientation = 'Horizontal'
 
     $rootLink = New-Object System.Windows.Controls.TextBlock
-    $rootLink.Text = $RootLabel
+    $rootLink.Text = T $RootLabel
     $rootLink.FontSize = 11
     $rootLink.Cursor = 'Hand'
     Set-TextFg $rootLink 'TextFaint'
@@ -97,7 +97,7 @@ function Set-PageBreadcrumb {
     $trail.Children.Add($sep) | Out-Null
 
     $leaf = New-Object System.Windows.Controls.TextBlock
-    $leaf.Text = $Category.Name
+    $leaf.Text = T $Category.Name
     $leaf.FontSize = 11
     Set-TextFg $leaf 'TextMuted'
     $trail.Children.Add($leaf) | Out-Null
@@ -105,7 +105,7 @@ function Set-PageBreadcrumb {
     $texts.Children.Add($trail) | Out-Null
 
     $title = New-Object System.Windows.Controls.TextBlock
-    $title.Text = $Category.Name
+    $title.Text = T $Category.Name
     $title.FontFamily = $Window.FindResource('DisplayFont')
     $title.FontSize = 21
     $title.FontWeight = 'Bold'
@@ -115,6 +115,21 @@ function Set-PageBreadcrumb {
 
     $row.Children.Add($texts) | Out-Null
     $Window.FindName('HeaderTitleArea').Children.Add($row) | Out-Null
+}
+
+# Cabecera de un bloque dentro del contenido ("General",
+# "Appearance"...). La usa la pantalla de Settings.
+function New-SectionHeader {
+    param($Window, [string]$Text)
+
+    $header = New-Object System.Windows.Controls.TextBlock
+    $header.Text = $Text
+    $header.FontFamily = $Window.FindResource('DisplayFont')
+    $header.FontSize = 12
+    $header.FontWeight = 'SemiBold'
+    $header.Margin = New-Object System.Windows.Thickness 4, 6, 0, 10
+    Set-TextFg $header 'TextFaint'
+    $header
 }
 
 # Añade un control a la zona de acciones (derecha).

@@ -10,24 +10,24 @@ App de escritorio **WPF construida en PowerShell 5.1**, compilada a un `.exe` po
 
 ## Arquitectura (dónde va cada cosa)
 
-Cuatro capas, de datos a pantalla. **Nunca saltes una capa hacia abajo.**
+De datos a pantalla. **Nunca saltes una capa hacia abajo.**
 
 | Capa | Archivo / carpeta | Regla |
 | ---- | ----------------- | ----- |
-| Política | `ui/CategoryIndex.ps1`<br>`ui/NavigationIndex.ps1` | **Los archivos principales.** Orden, `Visible` y `Locked` de secciones y de botones del menú. Nada de contenido. |
-| Datos | `ui/Categories/` | Un archivo por sección. Solo declaraciones, cero código de UI. |
-| Mecanismo | `ui/CategoryRegistry.ps1` | `Register-Category` / `New-Setting` / `Get-OptimizationCategories`. Sin datos. |
-| Piezas | `ui/Components/` | Construyen controles concretos (tarjeta, cabecera, aviso, menú lateral). No conocen las vistas. |
+| Política | `ui/CategoryIndex.ps1`<br>`ui/NavigationIndex.ps1`<br>`ui/LanguageIndex.ps1` | **Los archivos principales.** Qué se ve, en qué orden, qué está bloqueado. Nada de contenido. |
+| Datos | `ui/Categories/`<br>`ui/Preferences/`<br>`ui/Lang/` | Un archivo por sección, por opción y por idioma. Solo declaraciones, cero código de UI. |
+| Mecanismo | `ui/CategoryRegistry.ps1`<br>`ui/PreferenceRegistry.ps1`<br>`ui/Translation.ps1`<br>`ui/AppSettings.ps1`<br>`ui/Router.ps1` | Registran, traducen, guardan y enrutan. Sin datos ni controles. |
+| Piezas | `ui/Components/` | Construyen controles concretos. No conocen las vistas. |
 | Pantallas | `ui/Views/` | Solo ensamblan piezas. Sin `New-Object` de controles sueltos. |
 
 `ui/UiKit.ps1` (piezas genéricas) y `ui/Theme.ps1` (colores, iconos, animación) están
 por debajo de todo: los usa cualquier capa, y ellos no usan a nadie.
 
-**Las carpetas `Categories/`, `Components/` y `Views/` se cargan enteras**, por orden
-alfabético, mediante los bloques `# @@EMBED_DIR:...@@` de `main.ps1`. Un `.ps1` nuevo
-dentro de ellas entra solo: no hay que registrarlo en `main.ps1` ni en `build.ps1`.
-Por eso el orden de carga es irrelevante — **el orden que se ve lo decide el índice**,
-no el nombre del archivo.
+**Las carpetas `Lang/`, `Categories/`, `Preferences/`, `Components/` y `Views/` se
+cargan enteras**, por orden alfabético, mediante los bloques `# @@EMBED_DIR:...@@` de
+`main.ps1`. Un `.ps1` nuevo dentro de ellas entra solo: no hay que registrarlo en
+`main.ps1` ni en `build.ps1`. Por eso el orden de carga es irrelevante — **el orden
+que se ve lo decide el índice**, no el nombre del archivo.
 
 **`Locked` no es decorativo.** `New-SettingCard -Locked` pone `IsEnabled = $false` en
 el panel de controles, y WPF deja de entregarles el ratón a todo el subárbol. Si
@@ -79,6 +79,11 @@ No hay tests ni linter.
 
 13. **El menú lateral se construye por código, no en el XAML.** `MainWindow.xaml` solo aporta el `Border` llamado `Sidebar` con dos `StackPanel` vacíos (`NavTop` y `NavBottom`); los botones los crea `Build-Sidebar` a partir de `ui/NavigationIndex.ps1`. Cada botón se registra con `$Window.RegisterName('Nav<Id>', ...)`, así que `FindName('NavSettings')` sigue funcionando — si añades uno nuevo, respeta ese nombrado.
 14. **Al plegar el menú se anima el ancho del `Border`, nunca la columna del `Grid`.** La columna es `Auto` y sigue al `Border` sola; animar un `GridLength` exigiría escribir una animación propia porque WPF no trae ninguna. El borde derecho de 1px se pone a 0 al plegar, o el ancho nunca llegaría a cero.
+
+15. **Todo texto visible pasa por `T`.** El inglés es el idioma fuente y se traduce por texto original, no por clave (ver `ui/Translation.ps1`). Un literal sin `T` sale siempre en inglés y no aparece en `Get-MissingTranslations`, así que es un fallo silencioso. El XAML no puede llamar a `T`: sus textos se fijan en `ui/Components/TitleBar.ps1`.
+16. **Al cambiar de idioma hay que repintar.** Los colores se actualizan solos por `DynamicResource`, el texto no. `Update-UiLanguage` reconstruye el menú y vuelve a dibujar la pantalla actual a través de `ui/Router.ps1`. Se aplaza al `Dispatcher` porque suele dispararse desde un control que está dentro de la vista que se va a destruir.
+17. **Las vistas se muestran con `Show-View`, no llamándolas directamente**, o el enrutador pierde el hilo de dónde estás y el cambio de idioma repinta la pantalla equivocada.
+18. **Toda preferencia que deba recordarse pasa por `Set-AppSetting`.** Se guarda en `%APPDATA%\OptimizadorPC\settings.json`, nunca junto al `.exe`: el ejecutable es portable y puede acabar en una carpeta sin permisos de escritura. Un JSON corrupto se ignora y se arranca con los valores por defecto.
 
 ## Al implementar tweaks reales (aún no hecho)
 

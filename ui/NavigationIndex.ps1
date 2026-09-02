@@ -23,19 +23,23 @@
 #
 #   Default    $true en el botón que sale marcado al arrancar.
 #
+#   View       Nombre de la función de vista a la que lleva. Crear
+#              una pantalla nueva es añadir su archivo a ui/Views/
+#              y apuntar aquí a su función.
+#
 #   Icon       Nombre de glifo del catálogo de ui/Theme.ps1.
 # ============================================================
 
 $NavigationIndex = @(
 
-    #  Id             Icono        Etiqueta       Grupo      Visible  Bloqueado
-    @{ Id = 'software';  Icon = 'Apps';    Label = 'Software';  Group = 'Top';    Visible = $true; Locked = $false }
-    @{ Id = 'optimize';  Icon = 'Gauge';   Label = 'Optimize';  Group = 'Top';    Visible = $true; Locked = $false; Default = $true }
-    @{ Id = 'customize'; Icon = 'Palette'; Label = 'Customize'; Group = 'Top';    Visible = $true; Locked = $false }
+    #  Id             Icono        Etiqueta       Grupo      Visible  Bloqueado   Vista
+    @{ Id = 'software';  Icon = 'Apps';    Label = 'Software';  Group = 'Top';    Visible = $true; Locked = $false; View = 'Show-OptimizationsListView' }
+    @{ Id = 'optimize';  Icon = 'Gauge';   Label = 'Optimize';  Group = 'Top';    Visible = $true; Locked = $false; View = 'Show-OptimizationsListView'; Default = $true }
+    @{ Id = 'customize'; Icon = 'Palette'; Label = 'Customize'; Group = 'Top';    Visible = $true; Locked = $false; View = 'Show-OptimizationsListView' }
 
-    @{ Id = 'advanced';  Icon = 'Wrench';  Label = 'Advanced';  Group = 'Bottom'; Visible = $true; Locked = $false }
-    @{ Id = 'settings';  Icon = 'Gear';    Label = 'Settings';  Group = 'Bottom'; Visible = $true; Locked = $false }
-    @{ Id = 'more';      Icon = 'More';    Label = 'More';      Group = 'Bottom'; Visible = $true; Locked = $false }
+    @{ Id = 'advanced';  Icon = 'Wrench';  Label = 'Advanced';  Group = 'Bottom'; Visible = $true; Locked = $false; View = 'Show-OptimizationsListView' }
+    @{ Id = 'settings';  Icon = 'Gear';    Label = 'Settings';  Group = 'Bottom'; Visible = $true; Locked = $false; View = 'Show-SettingsView' }
+    @{ Id = 'more';      Icon = 'More';    Label = 'More';      Group = 'Bottom'; Visible = $true; Locked = $false; View = 'Show-OptimizationsListView' }
 
 )
 
@@ -55,4 +59,9 @@ function Get-NavigationItems {
 function Get-NavElementName {
     param([string]$Id)
     'Nav' + $Id.Substring(0, 1).ToUpper() + $Id.Substring(1)
+}
+
+function Get-NavigationItem {
+    param([string]$Id)
+    $NavigationIndex | Where-Object { $_.Id -eq $Id } | Select-Object -First 1
 }

@@ -19,15 +19,18 @@ Add-Type -AssemblyName System.Xaml
 # ---- Base: sistema de diseño y componentes genéricos ----
 . (Join-Path $ScriptRoot 'ui\Theme.ps1')
 . (Join-Path $ScriptRoot 'ui\UiKit.ps1')
+
+# ---- Mecanismos (sin datos) ----
+. (Join-Path $ScriptRoot 'ui\Translation.ps1')
+. (Join-Path $ScriptRoot 'ui\AppSettings.ps1')
+. (Join-Path $ScriptRoot 'ui\Router.ps1')
 . (Join-Path $ScriptRoot 'ui\CategoryRegistry.ps1')
+. (Join-Path $ScriptRoot 'ui\PreferenceRegistry.ps1')
 
-# ---- Índice de secciones: orden, visibilidad y bloqueo ----
-# Es el archivo que se toca para mostrar, ocultar, bloquear o
-# reordenar secciones sin abrir ninguna otra cosa.
+# ---- Archivos principales: qué se ve y en qué orden ----
 . (Join-Path $ScriptRoot 'ui\CategoryIndex.ps1')
-
-# ---- Índice del menú lateral: botones, orden, visibilidad y bloqueo ----
 . (Join-Path $ScriptRoot 'ui\NavigationIndex.ps1')
+. (Join-Path $ScriptRoot 'ui\LanguageIndex.ps1')
 
 # ---- Carpetas que se cargan enteras ----
 # Todo archivo .ps1 que haya dentro entra solo, por orden de nombre.
@@ -35,8 +38,16 @@ Add-Type -AssemblyName System.Xaml
 # quitarla = borrarlo. No hay que tocar este archivo.
 # build.ps1 sustituye cada bloque por el contenido de la carpeta.
 
+# @@EMBED_DIR:ui/Lang@@
+foreach ($f in (Get-ChildItem (Join-Path $ScriptRoot 'ui\Lang') -Filter '*.ps1' | Sort-Object Name)) { . $f.FullName }
+# @@ENDEMBED@@
+
 # @@EMBED_DIR:ui/Categories@@
 foreach ($f in (Get-ChildItem (Join-Path $ScriptRoot 'ui\Categories') -Filter '*.ps1' | Sort-Object Name)) { . $f.FullName }
+# @@ENDEMBED@@
+
+# @@EMBED_DIR:ui/Preferences@@
+foreach ($f in (Get-ChildItem (Join-Path $ScriptRoot 'ui\Preferences') -Filter '*.ps1' | Sort-Object Name)) { . $f.FullName }
 # @@ENDEMBED@@
 
 # @@EMBED_DIR:ui/Components@@
@@ -55,8 +66,15 @@ $xamlPath = Join-Path $ScriptRoot 'ui\MainWindow.xaml'
 $reader = New-Object System.Xml.XmlNodeReader $xamlXml
 $Window = [System.Windows.Markup.XamlReader]::Load($reader)
 
-# ---- Tema inicial ----
-Set-AppTheme -Window $Window -Name 'Light'
+Set-AppWindow $Window
+
+# ---- Preferencias guardadas ----
+# Se leen de %APPDATA%\OptimizadorPC\settings.json y se aplican
+# antes de dibujar nada, para que la primera pintura ya salga con
+# el tema y el idioma correctos y no haya parpadeo.
+Import-AppSettings
+Set-AppTheme    -Window $Window -Name (Get-AppSetting 'Theme'    -Default 'Light')
+Set-AppLanguage (Get-AppSetting 'Language' -Default (Get-DefaultLanguage))
 
 # ---- Title bar: arrastrar ventana ----
 $titleBar = $Window.FindName('TitleBar')
@@ -93,18 +111,12 @@ $Window.Add_StateChanged({
 })
 
 # ---- Cambio de tema claro / oscuro ----
-# Los recursos son dinámicos, así que basta con reescribirlos:
-# toda la interfaz ya construida se repinta sola.
+# Pasa por la misma preferencia que el desplegable de Settings,
+# así que el cambio se guarda se haga desde donde se haga.
 $Window.FindName('BtnTheme').Add_Click({
     param($s, $e)
-    $win = [System.Windows.Window]::GetWindow($s)
-    if ((Get-AppTheme) -eq 'Dark') {
-        Set-AppTheme -Window $win -Name 'Light'
-        $s.Content = Glyph 'Moon'
-    } else {
-        Set-AppTheme -Window $win -Name 'Dark'
-        $s.Content = Glyph 'Sun'
-    }
+    if ((Get-AppTheme) -eq 'Dark') { $next = 'Light' } else { $next = 'Dark' }
+    & (Get-PreferenceById 'theme').Set $next
 })
 
 # ---- Selector de modo (solo visual por ahora) ----
@@ -131,7 +143,12 @@ $Window.FindName('BtnMenu').Add_Click({
     Switch-Sidebar ([System.Windows.Window]::GetWindow($s))
 })
 
+# ---- Textos e iconos que el XAML no puede traducir ----
+Update-TitleBarTexts $Window
+Sync-ThemeButton
+
 # ---- Vista inicial ----
-Show-OptimizationsListView -Window $Window
+# Pasa por el router para que se pueda repintar al cambiar de idioma.
+Show-View -Name 'Show-OptimizationsListView'
 
 $Window.ShowDialog() | Out-Null

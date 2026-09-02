@@ -21,13 +21,13 @@ function Show-CategoryDetailView {
     Clear-PageHeader $Window
     Set-PageBreadcrumb -Window $Window -Category $Category
 
-    Add-PageActionLabel $Window "$($Category.Items.Count) settings"
+    Add-PageActionLabel $Window ((T '{0} settings') -f $Category.Items.Count)
 
     $reset = New-ChipButton $Window 'Reset' 'Sync'
     if ($locked) {
         $reset.IsEnabled = $false
         $reset.Opacity = 0.45
-        $reset.ToolTip = 'No disponible: la sección está bloqueada'
+        $reset.ToolTip = T 'Not available: the section is locked'
     }
     Add-PageAction $Window $reset
 

@@ -100,7 +100,7 @@ function New-Tag {
     Set-BoxBg $b $c.Bg
 
     $t = New-Object System.Windows.Controls.TextBlock
-    $t.Text = $Text; $t.FontSize = 10.5; $t.FontWeight = 'SemiBold'
+    $t.Text = T $Text; $t.FontSize = 10.5; $t.FontWeight = 'SemiBold'
     Set-TextFg $t $c.Fg
     $b.Child = $t
     $b
@@ -183,7 +183,7 @@ function New-ToggleSwitch {
             (New-Anim $s.Child.RenderTransform.X $to 190))
 
         if ($info.Label) {
-            if ($new) { $info.Label.Text = 'On' } else { $info.Label.Text = 'Off' }
+            if ($new) { $info.Label.Text = T 'On' } else { $info.Label.Text = T 'Off' }
         }
     })
 
@@ -212,7 +212,7 @@ function New-SearchBox {
     $ph.Children.Add($ic) | Out-Null
 
     $t = New-Object System.Windows.Controls.TextBlock
-    $t.Text = $Placeholder; $t.FontSize = 12.5
+    $t.Text = T $Placeholder; $t.FontSize = 12.5
     $t.VerticalAlignment = 'Center'
     Set-TextFg $t 'TextFaint'
     $ph.Children.Add($t) | Out-Null
@@ -246,7 +246,7 @@ function New-ChipButton {
     }
 
     $t = New-Object System.Windows.Controls.TextBlock
-    $t.Text = $Text; $t.FontSize = 12.5; $t.FontWeight = 'SemiBold'
+    $t.Text = T $Text; $t.FontSize = 12.5; $t.FontWeight = 'SemiBold'
     $t.VerticalAlignment = 'Center'
     Set-TextFg $t 'Text'
     $sp.Children.Add($t) | Out-Null

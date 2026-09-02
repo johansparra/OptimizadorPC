@@ -33,7 +33,7 @@ function New-Banner {
     $texts.VerticalAlignment = 'Center'
 
     $t = New-Object System.Windows.Controls.TextBlock
-    $t.Text = $Title
+    $t.Text = T $Title
     $t.FontSize = 12.5
     $t.FontWeight = 'SemiBold'
     Set-TextFg $t $Fg
@@ -41,7 +41,7 @@ function New-Banner {
 
     if ($Message) {
         $m = New-Object System.Windows.Controls.TextBlock
-        $m.Text = $Message
+        $m.Text = T $Message
         $m.FontSize = 11.5
         $m.TextWrapping = 'Wrap'
         $m.Margin = New-Object System.Windows.Thickness 0, 2, 0, 0
@@ -57,6 +57,6 @@ function New-Banner {
 # Aviso concreto de sección bloqueada.
 function New-LockedBanner {
     New-Banner -Icon 'Lock' `
-        -Title 'Sección bloqueada' `
-        -Message 'Sus ajustes se muestran solo como consulta: no se pueden modificar. Para desbloquearla, pon Locked = $false en ui/CategoryIndex.ps1.'
+        -Title 'Locked section' `
+        -Message 'Its settings are shown for reference only: they cannot be changed. To unlock it, set Locked = $false in ui/CategoryIndex.ps1.'
 }

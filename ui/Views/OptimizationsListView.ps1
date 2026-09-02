@@ -15,8 +15,8 @@ function Show-OptimizationsListView {
     # ---- 1. Cabecera ----
     Clear-PageHeader $Window
     Set-PageTitle -Window $Window `
-        -Title 'Optimizations' `
-        -Subtitle 'Optimize your Windows system performance, privacy and power usage'
+        -Title (T 'Optimizations') `
+        -Subtitle (T 'Optimize your Windows system performance, privacy and power usage')
 
     $search = New-SearchBox $Window
     Add-PageAction $Window $search.Root

@@ -52,7 +52,7 @@ function New-NavButton {
     $stack.Children.Add($icon) | Out-Null
 
     $label = New-Object System.Windows.Controls.TextBlock
-    $label.Text = $Item.Label
+    $label.Text = T $Item.Label
     $label.FontSize = 9.5
     $label.HorizontalAlignment = 'Center'
     $label.Margin = New-Object System.Windows.Thickness 0, 5, 0, 0
@@ -64,13 +64,16 @@ function New-NavButton {
     if ($Item.Locked) {
         $button.IsEnabled = $false
         $button.Opacity = 0.4
-        $button.ToolTip = "$($Item.Label): bloqueado"
+        $button.ToolTip = (T '{0}: locked') -f (T $Item.Label)
         $icon.Text = Glyph 'Lock'
     }
     elseif ($Item.Default) {
         $button.Tag = 'sel'
     }
 
+    # El Uid guarda el Id de la entrada: así el handler puede
+    # averiguar a qué vista lleva sin recurrir a un closure.
+    $button.Uid = $Item.Id
     $button.Add_Click({ param($s, $e) Set-NavSelection $s })
 
     # Se registra con su nombre para que $Window.FindName siga
@@ -94,8 +97,9 @@ function Set-NavSelection {
     $Button.Tag = 'sel'
     Update-NavColors $window
 
-    # Todas las entradas llevan de momento a la misma vista.
-    Show-OptimizationsListView -Window $window
+    # Cada entrada declara su vista en ui/NavigationIndex.ps1.
+    $item = Get-NavigationItem $Button.Uid
+    if ($item -and $item.View) { Show-View -Name $item.View } else { Show-View -Name 'Show-OptimizationsListView' }
 }
 
 # El estilo del XAML pinta el fondo del botón seleccionado; el
@@ -149,7 +153,7 @@ function Set-SidebarExpanded {
     $sidebar.Child.BeginAnimation([System.Windows.UIElement]::OpacityProperty, $fade)
 
     if ($button) {
-        if ($Expanded) { $button.ToolTip = 'Ocultar el menú' } else { $button.ToolTip = 'Mostrar el menú' }
+        if ($Expanded) { $button.ToolTip = T 'Hide the menu' } else { $button.ToolTip = T 'Show the menu' }
     }
 
     $script:SidebarExpanded = $Expanded
