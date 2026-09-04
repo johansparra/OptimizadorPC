@@ -1,19 +1,68 @@
 {
   "permissions": {
     "allow": [
+      "Bash(cat:*)",
+      "Bash(head:*)",
+      "Bash(tail:*)",
+      "Bash(ls:*)",
+      "Bash(find:*)",
+      "Bash(grep:*)",
+      "Bash(rg:*)",
+      "Bash(sed:*)",
+      "Bash(awk:*)",
+      "Bash(wc:*)",
+      "Bash(sort:*)",
+      "Bash(uniq:*)",
+      "Bash(diff:*)",
+      "Bash(file:*)",
+      "Bash(od:*)",
+      "Bash(echo:*)",
+      "Bash(printf:*)",
+      "Bash(mkdir:*)",
+      "Bash(cp:*)",
+      "Bash(mv:*)",
       "Bash(git status)",
+      "Bash(git status:*)",
       "Bash(git diff:*)",
       "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(git branch:*)",
+      "Bash(git ls-files:*)",
+      "Bash(powershell -ExecutionPolicy Bypass -File ./tests/Run-Tests.ps1:*)",
+      "Bash(pwsh -ExecutionPolicy Bypass -File ./tests/Run-Tests.ps1:*)",
       "PowerShell(Get-Content:*)",
       "PowerShell(Get-ChildItem:*)",
       "PowerShell(Test-Path:*)",
       "PowerShell(Get-Module:*)",
+      "PowerShell(Resolve-Path:*)",
+      "PowerShell(Select-String:*)",
+      "PowerShell(powershell -ExecutionPolicy Bypass -File .\\tests\\Run-Tests.ps1:*)",
+      "PowerShell(pwsh -ExecutionPolicy Bypass -File .\\tests\\Run-Tests.ps1:*)",
       "PowerShell(powershell -ExecutionPolicy Bypass -File .\\build.ps1)",
       "PowerShell(powershell -ExecutionPolicy Bypass -File .\\main.ps1)"
     ],
     "deny": [
       "PowerShell(Remove-Item:*)",
-      "PowerShell(reg delete:*)"
+      "PowerShell(reg delete:*)",
+      "Bash(rm -rf:*)",
+      "Bash(git push:*)",
+      "PowerShell(git push:*)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "shell": "powershell",
+            "command": "pwsh -NoProfile -File \"C:/Users/ingse/OneDrive/Escritorio/Temp/Proyecto/.claude/hooks/Normalize-PsEncoding.ps1\"",
+            "statusMessage": "Normalizando codificacion",
+            "timeout": 20
+          }
+        ]
+      }
     ]
   }
 }
