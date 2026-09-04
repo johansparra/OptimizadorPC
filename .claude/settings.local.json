@@ -57,7 +57,7 @@
           {
             "type": "command",
             "shell": "powershell",
-            "command": "pwsh -NoProfile -File \"C:/Users/ingse/OneDrive/Escritorio/Temp/Proyecto/.claude/hooks/Normalize-PsEncoding.ps1\"",
+            "command": "pwsh -NoProfile -File \"C:/Users/ingse/OneDrive/Escritorio/Temp/OptimizadorPC/.claude/hooks/Normalize-PsEncoding.ps1\"",
             "statusMessage": "Normalizando codificacion",
             "timeout": 20
           }

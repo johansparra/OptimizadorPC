@@ -12,7 +12,7 @@ Cada archivo tiene **una sola responsabilidad**. La regla general: para cambiar 
 solo deberías tener que abrir un archivo.
 
 ```
-Proyecto/
+OptimizadorPC/
 ├── main.ps1                 Arranque: carga todo, aplica preferencias, conecta la ventana
 ├── build.ps1                Empaquetador (inline) + compilador a .exe
 ├── OptimizadorPC.exe        Binario portable generado

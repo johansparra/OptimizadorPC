@@ -1,7 +1,7 @@
 ﻿# Pruebas
 
 ```powershell
-# Desde Proyecto\
+# Desde OptimizadorPC\
 pwsh -ExecutionPolicy Bypass -File ./tests/Run-Tests.ps1 -BothHosts   # los DOS hosts, en paralelo
 powershell -ExecutionPolicy Bypass -File ./tests/Run-Tests.ps1         # solo 5.1, para acotar
 ```
