@@ -1,6 +1,6 @@
 ---
 name: versionado
-description: Confirmar cambios en el repositorio LOCAL de Optimizador PC. Úsalo cuando pidan guardar, versionar o confirmar el trabajo - revisa qué cambió de verdad, verifica que el proyecto sigue en pie (pruebas en los dos hosts, BOM, empaquetado), prepara solo lo que toca y redacta el commit a partir del diff, no de la intención. No hay remoto - nunca se hace push. Trigger words - commit, confirmar, versionar, guardar cambios, git, status, add, historial, rama, branch, "sube los cambios".
+description: Confirmar cambios en el repositorio LOCAL de Optimizador PC. Úsalo cuando pidan guardar, versionar o confirmar el trabajo - revisa qué cambió de verdad, verifica que el proyecto sigue en pie, prepara solo lo que toca y redacta el commit a partir del diff, no de la intención. No hay remoto - nunca se hace push. Trigger words - commit, confirmar, versionar, guardar cambios, git, status, add, historial, rama, branch, "sube los cambios".
 ---
 
 # Versionado — repositorio local
@@ -8,49 +8,84 @@ description: Confirmar cambios en el repositorio LOCAL de Optimizador PC. Úsalo
 **Este repositorio no tiene remoto.** No existe `push`, ni `pull`, ni PRs, ni nada que
 salga de la máquina. Si algo lo sugiere, es un error: dilo y para.
 
-Regla que manda sobre todo lo demás: **solo se confirma cuando el usuario lo pide.**
-Terminar una tarea no es motivo para hacer un commit.
+**Solo se confirma cuando el usuario lo pide.** Terminar una tarea no es motivo.
 
-## El orden. No te lo saltes
+## La ruta rápida — tres turnos
+
+Confirmar es una tarea pequeña y tiene que costar poco. Cuando **escribiste tú los
+cambios en esta misma sesión**, que es el caso normal, son tres turnos:
 
 ```bash
-# 1. QUÉ hay
-git status --short
-git diff --stat                    # sin preparar
-git diff --cached --stat           # ya preparado, si lo hubiera
-
-# 2. QUÉ dice ese cambio  (léelo de verdad, es de donde sale el mensaje)
-git diff
+# TURNO 1 — todo el estado de una vez
+git status --short && git diff --stat && git diff
 ```
 
-**Antes de preparar nada, mira el diff completo.** El mensaje del commit se redacta a
-partir de lo que el diff enseña, no de lo que creías haber hecho. Es habitual
-encontrarse con más cosas de las que recordabas: un archivo tocado de paso, una
-prueba que quedó a medias, un `.bak` que no pinta nada ahí.
-
-### 3. Verificar que el proyecto sigue en pie
-
-Un commit rojo es peor que no tener commit: enmascara dónde se rompió. Antes de
-confirmar, **siempre**:
-
 ```bash
-pwsh -ExecutionPolicy Bypass -File ./tests/Run-Tests.ps1 -BothHosts   # 5.1 y 7 a la vez
+# TURNO 2 — verificar, SOLO si hace falta (ver abajo)
+pwsh -ExecutionPolicy Bypass -File ./tests/Run-Tests.ps1 -BothHosts
 ```
 
-Y si el cambio toca archivos de código o el empaquetado:
+```bash
+# TURNO 3 — preparar y confirmar en la misma llamada, una por commit
+git add <rutas> && git commit -F - <<'MSGEOF'
+Asunto en imperativo, sin punto final
+
+Cuerpo: por qué, no qué.
+
+Co-Authored-By: ...
+MSGEOF
+```
+
+Lo que **no** hay que hacer y alarga esto sin aportar nada:
+
+- Preguntar el estado en tres llamadas (`status`, luego `diff --stat`, luego `diff`).
+  Van encadenadas con `&&` en una.
+- Separar `git add` de `git commit` en dos turnos.
+- Comprobar ramas, divergencias o historial "por si acaso" antes de saber si hace
+  falta. `git log --oneline -3` al final ya lo enseña.
+- Releer archivos que acabas de escribir.
+
+## Cuándo verificar, y cuándo no
+
+Un commit rojo es peor que no tener commit. Pero repetir una verificación que ya
+pasaste hace dos minutos tampoco vale nada. La pregunta es una sola:
+
+> ¿He tocado código **después** de la última vez que las suites salieron verdes?
+
+| Situación | Qué hacer |
+| --- | --- |
+| Las suites salieron verdes y no has tocado nada desde entonces | **Nada.** Confirma |
+| Has tocado `.ps1` o `.xaml` desde entonces (aunque sea un comentario) | Las dos suites con `-BothHosts` |
+| Solo has tocado `.md`, `.claude/` o documentación | **Nada.** No hay código que romper |
+| Vienes de una sesión anterior o el árbol traía cambios ajenos | Las dos suites, y lee el diff entero |
+
+Y una sola vez más: si tocaste **fuentes que entran al `.exe`**, regenera el paquete
+antes de confirmar, o `build/_combined.ps1` se queda desfasado:
 
 ```bash
-# Ningún .ps1 sin BOM: en 5.1 el parser revienta (regla 3 de CLAUDE.md)
-find ui core tests -name '*.ps1' -exec file {} \; | grep -v 'with BOM'   # debe salir vacío
-
-# El paquete del .exe se arma y lleva todo dentro
 powershell -ExecutionPolicy Bypass -File ./build.ps1 -CombineOnly
 ```
 
-**Si algo falla, no confirmes.** Arréglalo o cuéntaselo al usuario; que decida él si
-quiere guardar un punto intermedio, y entonces dilo en el propio mensaje.
+El BOM ya no hay que comprobarlo a mano: lo deja puesto el hook
+`.claude/hooks/Normalize-PsEncoding.ps1` al escribir, y hay una prueba que lo vigila.
 
-### 4. Preparar solo lo que toca
+**Si algo falla, no confirmes.** Arréglalo, o cuéntaselo al usuario para que decida si
+quiere un punto intermedio — y entonces dilo en el propio mensaje.
+
+## Leer el diff
+
+**El mensaje sale de lo que el diff enseña, no de lo que creías haber hecho.**
+
+Si escribiste tú los cambios, el `--stat` te dice si se ha colado un archivo que no
+esperabas, y en el diff buscas sobre todo **restos de las ediciones automáticas**: un
+`<#` duplicado, una línea en blanco que se comió un `awk`, un bloque insertado dos
+veces. Es el fallo típico de editar con `awk`/`sed` y el diff es el único sitio donde
+se ve.
+
+Si el árbol **ya traía cambios sin confirmar al empezar la sesión**, eso léelo entero:
+es trabajo ajeno y puede que no debas confirmarlo.
+
+## Qué entra y qué no
 
 ```bash
 git add -A                                    # todo
@@ -58,99 +93,76 @@ git add -A -- ':(exclude).claude'             # todo menos una carpeta
 git add ui/Data/Categories/Regedit.ps1        # archivos concretos
 ```
 
-Lo que **no** entra:
-
 | No confirmar | Por qué |
 | --- | --- |
 | `*.bak`, `*.tmp`, copias de seguridad | Ruido; suelen ser la versión **rota** de algo |
 | Archivos del scratchpad o de `%TEMP%` | No son del proyecto |
 | Credenciales, tokens, rutas con datos personales | Nunca, aunque el repo sea local |
-| `OptimizadorPC.exe` recién compilado | Solo si el usuario lo pide expresamente |
+| `OptimizadorPC.exe` recién compilado | Solo si el usuario lo pide |
+| Un archivo que sabes que está roto | Déjalo fuera y **dilo en el mensaje** |
 
 `build/_combined.ps1` **sí** va: es generado, pero ya está versionado y dejarlo atrás
-haría que el árbol nunca estuviera limpio. Que no cuadre con las fuentes es señal de
-que falta ejecutar `build.ps1`.
+haría que el árbol nunca estuviera limpio.
 
-Comprueba lo preparado antes de escribir el mensaje:
+## Cuántos commits
 
-```bash
-git status --short          # las dos columnas: preparado | sin preparar
-git diff --cached
-```
+**Varios cambios sin relación = varios commits.** El código de la aplicación y la
+configuración de `.claude/` son siempre dos: se revisan y se revierten por separado.
 
-### 5. Confirmar
-
-`git commit -m "..."` vale para una línea. Para un mensaje con cuerpo —lo normal
-aquí— usa un heredoc, que evita pelearse con las comillas:
-
-```bash
-git commit -F - <<'MSGEOF'
-Asunto en imperativo, sin punto final
-
-Cuerpo: por qué, no qué. El qué ya está en el diff.
-
-Co-Authored-By: ...
-MSGEOF
-```
-
-En PowerShell el equivalente es un aquí-string de comillas simples (`@'...'@`), con el
-cierre pegado al margen izquierdo.
+Pero hay un límite práctico: `git add` prepara **archivos enteros**, no trozos. Si dos
+trabajos distintos tocaron el mismo archivo —el diccionario de idiomas, la sonda de
+cableado, `CLAUDE.md`— separarlos dejaría commits intermedios en rojo, y eso enmascara
+dónde se rompió algo. En ese caso **van juntos, y el cuerpo del mensaje explica por
+qué**. Un commit honesto que agrupa dos cosas es mejor que dos que mienten.
 
 ## Ramas
 
-`master` es la rama por defecto y es la única que hay. **Si el trabajo es más que un
-retoque, saca una rama antes de confirmar:**
+`master` es la rama por defecto. **Si el trabajo es más que un retoque, saca una rama
+antes de confirmar**, salvo que ya estés en una de trabajo:
 
 ```bash
 git checkout -b refactor/lo-que-sea
 ```
 
-Y al terminar dile al usuario cómo llevarlo a `master`, que al no haber divergido es
-un avance rápido:
+Al terminar, dile al usuario cómo llevarlo a `master` — sin divergencia es avance
+rápido:
 
 ```bash
 git checkout master && git merge --ff-only refactor/lo-que-sea
 ```
 
-Si el usuario dice explícitamente que quiere confirmar directo sobre `master`, se
-hace y ya está: es su repositorio.
+Si pide confirmar directo sobre `master`, se hace: es su repositorio.
 
 ## El mensaje
 
-En **español**, como el resto del proyecto. Asunto en imperativo (*Reorganiza*,
-*Añade*, *Corrige*), sin punto final, y que quepa en una línea de terminal.
+En **español**. Asunto en imperativo (*Reorganiza*, *Añade*, *Corrige*), sin punto
+final, que quepa en una línea de terminal.
 
-El cuerpo explica **por qué** y qué se decidió; el *qué* ya lo cuenta el diff. Vale la
-pena escribirlo cuando hay algo que el diff no puede decir:
+El cuerpo explica **por qué** y qué se decidió; el *qué* ya lo cuenta el diff. Escríbelo
+cuando haya algo que el diff no puede decir:
 
-- la razón del cambio, o el problema que resuelve;
-- una alternativa que se descartó y por qué;
+- la razón del cambio o el problema que resuelve;
+- una alternativa descartada y por qué;
 - lo que **no** cambia (*"sin cambios de comportamiento"*);
-- lo que quedó a medias o pendiente;
-- **trabajo ajeno que arrastra el commit.** Si el árbol ya tenía cambios sin confirmar
-  que no son tuyos y no se pueden separar, dilo en el mensaje. Es la diferencia entre
-  un historial honesto y uno que engaña.
+- lo que quedó a medias, pendiente o fuera del commit;
+- **trabajo ajeno que arrastra el commit**, si no se podía separar.
 
 Al final, **las líneas de atribución que indique la sesión actual** (`Co-Authored-By:`
 y `Claude-Session:`). Cópialas de las instrucciones de esta sesión — cambian, no las
 saques de un commit viejo.
 
-**Varios cambios sin relación = varios commits.** Si el trabajo toca el código de la
-aplicación y además la configuración de `.claude/`, son dos commits: se revisan y se
-revierten por separado. Prepara y confirma uno, luego el otro.
-
 ## Al mover o renombrar archivos
 
-Mueve con `mv` normal y luego `git add -A`: git detecta el renombrado al comparar, no
-hace falta `git mv`. Compruébalo antes de dar el commit por bueno:
+Mueve con `mv` normal y luego `git add -A`: git detecta el renombrado solo.
+Compruébalo antes de dar el commit por bueno:
 
 ```bash
 git show --stat --find-renames=40% HEAD | grep '=>'
 ```
 
-Si salen como borrado + añadido en vez de `{ => Nueva }/Archivo.ps1`, es que el
-contenido cambió demasiado en el mismo commit. **Separa el movimiento del cambio de
-contenido en dos commits** y el historial de cada archivo se conserva.
+Si sale como borrado + añadido en vez de `{ => Nueva }/Archivo.ps1`, el contenido
+cambió demasiado en el mismo commit: **separa el movimiento del cambio de contenido**
+y el historial de cada archivo se conserva.
 
 ## Cosas que no se hacen
 
@@ -159,21 +171,17 @@ contenido en dos commits** y el historial de cada archivo se conserva.
 - **Nada de `git reset --hard`, `git checkout -- <archivo>` ni `git clean`** sobre
   trabajo del usuario. Son irreversibles y ahí suele haber cosas sin guardar. Si hace
   falta deshacer algo, pregunta primero.
-- **Prefiere un commit nuevo a `--amend`.** Enmendar reescribe historia; solo si el
-  usuario lo pide.
+- **Prefiere un commit nuevo a `--amend`.** Enmendar reescribe historia.
 - **No inventes lo que hay en el diff.** Si no lo has leído, no lo resumas.
 
-El aviso `LF will be replaced by CRLF` es normal en este repositorio (Windows con
-`autocrlf`): no es un error y no hay que hacer nada.
+El aviso `LF will be replaced by CRLF` es normal aquí (Windows con `autocrlf`): no es
+un error.
 
 ## Al terminar
 
-Enseña al usuario lo que quedó, en tres líneas:
-
 ```bash
-git log --oneline -3
-git status --short          # debería estar limpio, salvo lo que dejaste fuera a propósito
+git log --oneline -3 && git status --short
 ```
 
-Y dile **qué dejaste sin confirmar y por qué** (ese `.bak`, ese `.exe`), más el
-comando para llevar la rama a `master` si sacaste una.
+Y dile al usuario, en dos líneas: qué commits quedaron, **qué dejaste fuera y por
+qué**, y el comando para llevar la rama a `master` si sacaste una.
