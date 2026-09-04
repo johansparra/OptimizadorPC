@@ -53,6 +53,7 @@
         <FontFamily x:Key="IconFont">Segoe Fluent Icons, Segoe MDL2 Assets</FontFamily>
         <FontFamily x:Key="DisplayFont">Segoe UI Variable Display, Segoe UI</FontFamily>
         <FontFamily x:Key="BodyFont">Segoe UI Variable Text, Segoe UI</FontFamily>
+        <FontFamily x:Key="MonoFont">Cascadia Mono, Consolas, Courier New</FontFamily>
 
         <!-- ================= BARRA DE DESPLAZAMIENTO FINA ================= -->
         <Style x:Key="ScrollThumbStyle" TargetType="Thumb">
@@ -452,6 +453,7 @@
                 <RowDefinition Height="46"/>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
             <!-- ===== BARRA DE TITULO ===== -->
@@ -501,6 +503,7 @@
 
                 <!-- acciones -->
                 <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,10,0">
+                    <Button x:Name="BtnLog"   Style="{StaticResource GlyphButtonStyle}" Content="&#xE9D9;" ToolTip="Activity log"/>
                     <Button x:Name="BtnTheme" Style="{StaticResource GlyphButtonStyle}" Content="&#xE708;" ToolTip="Change theme"/>
                     <Button x:Name="BtnHelp"  Style="{StaticResource GlyphButtonStyle}" Content="&#xE897;" ToolTip="Help"/>
                 </StackPanel>
@@ -516,12 +519,20 @@
             <!-- ===== CABECERA DE CONTENIDO ===== -->
             <Border Grid.Row="1" Background="{DynamicResource Bg0}">
                 <Grid Margin="30,18,30,16">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
-                    <StackPanel x:Name="HeaderTitleArea" Grid.Column="0" VerticalAlignment="Center" Orientation="Horizontal"/>
-                    <StackPanel x:Name="HeaderActionsArea" Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center"/>
+                    <StackPanel x:Name="HeaderTitleArea" Grid.Row="0" Grid.Column="0" VerticalAlignment="Center" Orientation="Horizontal"/>
+                    <StackPanel x:Name="HeaderActionsArea" Grid.Row="0" Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center"/>
+                    <!-- Resumen centrado bajo el titulo. Vacio salvo en el
+                         detalle de una seccion; lo llena Set-PageSummary. -->
+                    <StackPanel x:Name="HeaderSummaryArea" Grid.Row="1" Grid.ColumnSpan="2"
+                                Orientation="Horizontal" HorizontalAlignment="Center"/>
                 </Grid>
             </Border>
 
@@ -529,14 +540,14 @@
             <Grid Grid.Row="2">
                 <Grid.ColumnDefinitions>
                     <!-- Auto: la columna sigue al ancho del Border, que es lo
-                         que se anima al plegar (ver ui/Components/Sidebar.ps1) -->
+                         que se anima al plegar (ver ui/Components/Shell/Sidebar.ps1) -->
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
 
                 <!-- NAVEGACION LATERAL
                      Solo el contenedor: los botones los construye
-                     ui/Components/Sidebar.ps1 a partir de ui/NavigationIndex.ps1 -->
+                     ui/Components/Shell/Sidebar.ps1 a partir de ui/Index/NavigationIndex.ps1 -->
                 <Border x:Name="Sidebar" Grid.Column="0" Width="88" MinWidth="0"
                         ClipToBounds="True"
                         Background="{DynamicResource Bg1}"
@@ -558,9 +569,66 @@
                 </Border>
 
                 <!-- CONTENIDO PRINCIPAL -->
-                <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto" Padding="30,2,22,26">
+                <!-- Con nombre porque ui/Engine/Router.ps1 guarda y restaura su
+                     posicion al repintar la misma pantalla. -->
+                <ScrollViewer x:Name="MainScroll" Grid.Column="1" VerticalScrollBarVisibility="Auto" Padding="30,2,22,26">
                     <ContentControl x:Name="MainContent"/>
                 </ScrollViewer>
+            </Grid>
+
+            <!-- ===== BARRA DE PROGRESO =====
+                 Solo el contenedor; lo mueve ui/Components/Shell/ProgressStrip.ps1.
+                 Colapsada no ocupa alto, asi que la fila Auto desaparece y
+                 el contenido no se mueve al aparecer y desaparecer. -->
+            <Border x:Name="ProgressStrip" Grid.Row="3" Visibility="Collapsed"
+                    Background="{DynamicResource Bg1}"
+                    BorderBrush="{DynamicResource Stroke}" BorderThickness="0,1,0,0">
+                <StackPanel Margin="30,9,30,10">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock x:Name="ProgressText" Grid.Column="0" FontSize="11.5"
+                                   Foreground="{DynamicResource TextMuted}"/>
+                        <TextBlock x:Name="ProgressCount" Grid.Column="1" FontSize="11.5" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextFaint}"/>
+                    </Grid>
+
+                    <!-- El relleno se mide con anchos estrella, no en pixeles:
+                         asi no hace falta saber el ancho real de la ventana. -->
+                    <Border Height="4" CornerRadius="2" Margin="0,7,0,0"
+                            Background="{DynamicResource SurfaceSunken}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition x:Name="ProgressDone" Width="0*"/>
+                                <ColumnDefinition x:Name="ProgressLeft" Width="1*"/>
+                            </Grid.ColumnDefinitions>
+                            <Border Grid.Column="0" CornerRadius="2" Background="{DynamicResource Accent}"/>
+                        </Grid>
+                    </Border>
+                </StackPanel>
+            </Border>
+
+            <!-- ===== REGISTRO DE ACTIVIDAD (LOG) =====
+                 Solo la carcasa: todo lo de dentro lo construye
+                 ui/Components/Shell/LogPanel.ps1, que es quien sabe que hay
+                 un log y como se pinta.
+
+                 Va DESPUES que todo lo demas y con RowSpan hasta el
+                 final para quedar por encima: en un Grid manda el orden
+                 del documento. Cubre de la fila 1 hacia abajo, asi que
+                 la barra de titulo sigue viva y su boton puede cerrarlo.
+
+                 Colapsado no existe para el raton, de modo que con el
+                 cajon cerrado no hay nada estorbando delante. -->
+            <Grid x:Name="LogOverlay" Grid.Row="1" Grid.RowSpan="3" Visibility="Collapsed">
+                <!-- El velo que oscurece lo de detras. Tambien se come
+                     los clics: con el cajon abierto no se navega. -->
+                <Border x:Name="LogScrim" Background="{DynamicResource Overlay}" Opacity="0"/>
+                <Border x:Name="LogDrawer" Width="660" HorizontalAlignment="Right"
+                        Background="{DynamicResource Bg1}"
+                        BorderBrush="{DynamicResource Stroke}" BorderThickness="1,0,0,0"/>
             </Grid>
         </Grid>
     </Border>

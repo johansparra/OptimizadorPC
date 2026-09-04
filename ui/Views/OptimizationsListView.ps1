@@ -2,11 +2,11 @@
 # Vista: lista de optimizaciones (pantalla principal)
 #
 # Una vista solo ENSAMBLA, no dibuja: pide la cabecera a
-# ui/Components/PageHeader.ps1 y una tarjeta por categoría a
-# ui/Components/CategoryCard.ps1.
+# ui/Components/Layout/PageHeader.ps1 y una tarjeta por categoría a
+# ui/Components/Cards/CategoryCard.ps1.
 #
 # Las categorías salen del registro, así que esta pantalla se
-# adapta sola a las que haya en ui/Categories/.
+# adapta sola a las que haya en ui/Data/Categories/.
 # ============================================================
 
 function Show-OptimizationsListView {
@@ -21,7 +21,7 @@ function Show-OptimizationsListView {
     $search = New-SearchBox $Window
     Add-PageAction $Window $search.Root
     Add-PageAction $Window (New-ChipButton $Window 'Quick Actions' 'Bolt' -Chevron)
-    Add-PageAction $Window (New-ChipButton $Window 'View' 'Filter' -Chevron)
+    Add-PageAction $Window (New-ViewMenu $Window)
 
     # ---- 2. Cuerpo: una tarjeta por categoría ----
     $list = New-Object System.Windows.Controls.StackPanel

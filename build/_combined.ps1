@@ -16,8 +16,29 @@ Add-Type -AssemblyName PresentationCore
 Add-Type -AssemblyName WindowsBase
 Add-Type -AssemblyName System.Xaml
 
-# ---- Base: sistema de diseño y componentes genéricos ----
-# ---- inicio incluido: ui/Theme.ps1 ----
+# ============================================================
+# CÓMO SE CARGA TODO
+#
+# Cada bloque @@EMBED_DIR@@ carga una carpeta ENTERA, subcarpetas
+# incluidas, por orden de ruta. Un .ps1 nuevo en cualquiera de
+# ellas entra solo: no hay que tocar este archivo ni build.ps1.
+#
+# Lo único que se decide aquí es EL ORDEN DE LAS CAPAS, y solo
+# importa por una razón: los datos se registran al cargarse, así
+# que su mecanismo tiene que estar definido antes. Por ejemplo,
+# ui/Data/Categories llama a Register-Category, que vive en
+# ui/Engine/CategoryRegistry.ps1.
+#
+# Dentro de una carpeta el orden es alfabético y da igual: esos
+# archivos solo definen funciones y tablas.
+#
+# build.ps1 sustituye cada bloque por el contenido de la carpeta,
+# así que el .exe no necesita ninguna carpeta al lado.
+# ============================================================
+
+# ---- 1. Base: sistema de diseño y piezas genéricas ----
+# No dependen de nadie y las usa cualquier capa, así que van primero.
+# ---- inicio incluido: ui/Design/Theme.ps1 ----
 # ============================================================
 # Theme.ps1
 # Sistema de diseño: paletas claro/oscuro, iconos Fluent,
@@ -45,6 +66,9 @@ $Glyphs = @{
     Grid = 0xE80A; Sliders = 0xE9E9; Bolt = 0xE945; Sun = 0xE706
     Moon = 0xE708; Help = 0xE897; Heart = 0xEB51; Check = 0xE73E
     Info = 0xE946; Bulb = 0xEA80; Lock = 0xE72E; Apps = 0xF0E2
+    ChevronUp = 0xE70E; OpenIn = 0xE8A7; Person = 0xE77B
+    # registro de actividad (ui/Components/Shell/LogPanel.ps1)
+    Pulse = 0xE9D9; Trash = 0xE74D; Save = 0xE74E; Alert = 0xE783
 }
 
 function Glyph {
@@ -191,8 +215,8 @@ function Add-HoverLift {
     })
 }
 
-# ---- fin incluido: ui/Theme.ps1 ----
-# ---- inicio incluido: ui/UiKit.ps1 ----
+# ---- fin incluido: ui/Design/Theme.ps1 ----
+# ---- inicio incluido: ui/Design/UiKit.ps1 ----
 # ============================================================
 # UiKit.ps1
 # Componentes visuales reutilizables construidos por código.
@@ -276,11 +300,10 @@ function New-Pill {
     $b
 }
 
-# Etiqueta de clasificación (Preference / Recommended / ...).
+# Etiqueta de clasificación (Recommended / Default / Custom).
 function New-Tag {
     param([string]$Text)
     $map = @{
-        'Preference'  = @{ Fg = 'Accent';    Bg = 'AccentSoft' }
         'Recommended' = @{ Fg = 'Success';   Bg = 'SuccessSoft' }
         'Default'     = @{ Fg = 'TextMuted'; Bg = 'SurfaceSunken' }
         'Custom'      = @{ Fg = 'Warn';      Bg = 'WarnSoft' }
@@ -301,7 +324,9 @@ function New-Tag {
     $b
 }
 
-# Distintivo rojo "NEW n".
+# Distintivo rojo "NEW n". Se traduce la PALABRA y se respeta el
+# número ('NEW 45' -> 'NUEVO 45'), de modo que ui/Data/Lang/ solo
+# necesita la línea de 'NEW' y no una por cada cifra.
 function New-Badge {
     param([string]$Text)
     $b = New-Object System.Windows.Controls.Border
@@ -312,7 +337,9 @@ function New-Badge {
     Set-BoxBg $b 'Danger'
 
     $t = New-Object System.Windows.Controls.TextBlock
-    $t.Text = $Text; $t.FontSize = 9.5; $t.FontWeight = 'Bold'
+    if ($Text -match '^(.*\S)\s+(\d+)$') { $t.Text = (T $Matches[1]) + ' ' + $Matches[2] }
+    else                                 { $t.Text = T $Text }
+    $t.FontSize = 9.5; $t.FontWeight = 'Bold'
     $t.Foreground = [System.Windows.Media.Brushes]::White
     $b.Child = $t
     $b
@@ -456,87 +483,10 @@ function New-ChipButton {
     $btn
 }
 
-# ---- fin incluido: ui/UiKit.ps1 ----
+# ---- fin incluido: ui/Design/UiKit.ps1 ----
 
-# ---- Mecanismos (sin datos) ----
-# ---- inicio incluido: ui/Translation.ps1 ----
-# ============================================================
-# Translation.ps1
-# Mecanismo de idiomas. NO contiene textos.
-#
-# Se traduce POR TEXTO ORIGINAL, no por clave: el inglés es el
-# idioma fuente y cada archivo de ui/Lang/ es un diccionario
-# "texto en inglés" -> "texto traducido".
-#
-# Gracias a eso los archivos de ui/Categories/ no necesitan
-# tocarse: siguen leyéndose en inglés claro. Y si falta una
-# traducción, sale el original en vez de romperse.
-#
-#   -> Añadir un idioma = crear ui/Lang/<código>.ps1
-#                         y su línea en ui/LanguageIndex.ps1
-#   -> El inglés no necesita archivo: es la fuente.
-# ============================================================
-
-$Translations = @{}       # código -> tabla de textos
-$CurrentLanguage = 'en'
-$SeenStrings = @{}        # todo lo que ha pasado por T, para auditar
-
-function Register-Language {
-    param(
-        [Parameter(Mandatory)][string]$Code,
-        [Parameter(Mandatory)][hashtable]$Strings
-    )
-    if (-not $Translations.ContainsKey($Code)) { $Translations[$Code] = @{} }
-    foreach ($key in $Strings.Keys) { $Translations[$Code][$key] = $Strings[$key] }
-}
-
-function Set-AppLanguage {
-    param([Parameter(Mandatory)][string]$Code)
-    $script:CurrentLanguage = $Code
-}
-
-function Get-AppLanguage { $script:CurrentLanguage }
-
-<#
-    Traduce un texto al idioma activo.
-
-        $t.Text = T 'Optimizations'
-        $t.Text = (T '{0} settings') -f 6
-
-    Si el idioma activo es el fuente, o no hay traducción para
-    ese texto, devuelve el original tal cual.
-#>
-function T {
-    param([Parameter(Mandatory)][AllowEmptyString()][string]$Text)
-
-    if ([string]::IsNullOrEmpty($Text)) { return $Text }
-    $script:SeenStrings[$Text] = $true
-
-    $dict = $Translations[$script:CurrentLanguage]
-    if ($dict -and $dict.ContainsKey($Text)) { return $dict[$Text] }
-    $Text
-}
-
-<#
-    Textos que la interfaz ha pedido traducir y que faltan en el
-    idioma indicado. Sirve para saber qué queda por traducir tras
-    añadir ajustes nuevos:
-
-        Get-MissingTranslations 'es'
-
-    Solo ve lo que se haya mostrado en esta sesión, así que
-    conviene navegar por la aplicación antes de consultarlo.
-#>
-function Get-MissingTranslations {
-    param([string]$Code = $CurrentLanguage)
-
-    $dict = $Translations[$Code]
-    if (-not $dict) { return $SeenStrings.Keys }
-    $SeenStrings.Keys | Where-Object { -not $dict.ContainsKey($_) } | Sort-Object
-}
-
-# ---- fin incluido: ui/Translation.ps1 ----
-# ---- inicio incluido: ui/AppSettings.ps1 ----
+# ---- 2. Mecanismos: registran, traducen, guardan y enrutan ----
+# ---- inicio incluido: ui/Engine/AppSettings.ps1 ----
 # ============================================================
 # AppSettings.ps1
 # Preferencias guardadas entre sesiones.
@@ -599,100 +549,19 @@ function Set-AppSetting {
 
 function Get-AppSettingsPath { $AppSettingsPath }
 
-# ---- fin incluido: ui/AppSettings.ps1 ----
-# ---- inicio incluido: ui/Router.ps1 ----
-# ============================================================
-# Router.ps1
-# Sabe qué pantalla se está viendo y cómo volver a dibujarla.
-#
-# Hace falta por dos motivos:
-#
-#   1. Cada botón del menú lateral lleva a una vista distinta
-#      (campo View de ui/NavigationIndex.ps1).
-#   2. Al cambiar de idioma hay que repintar la pantalla actual.
-#      Los colores se actualizan solos porque el XAML usa
-#      DynamicResource, pero para el texto no existe equivalente:
-#      hay que reconstruir la vista.
-#
-# Las vistas se invocan por nombre de función, así que añadir una
-# pantalla es crear su archivo en ui/Views/ y apuntar a ella
-# desde el índice de navegación. Nada que registrar aquí.
-# ============================================================
-
-$AppWindow = $null
-$CurrentView = @{ Name = 'Show-OptimizationsListView'; Arguments = @{} }
-
-# La ventana se guarda una vez al arrancar para que cualquier
-# capa pueda repintar sin ir pasándola de mano en mano.
-function Set-AppWindow {
-    param($Window)
-    $script:AppWindow = $Window
-}
-
-function Get-AppWindow { $script:AppWindow }
-
-<#
-    Muestra una vista y la recuerda.
-
-        Show-View 'Show-SettingsView'
-        Show-View 'Show-CategoryDetailView' @{ Category = $cat }
-#>
-function Show-View {
-    param(
-        [Parameter(Mandatory)][string]$Name,
-        [hashtable]$Arguments = @{}
-    )
-
-    if (-not (Get-Command $Name -ErrorAction SilentlyContinue)) {
-        throw "Router: la vista '$Name' no existe. Revisa el campo View de ui/NavigationIndex.ps1."
-    }
-
-    $script:CurrentView = @{ Name = $Name; Arguments = $Arguments }
-
-    $all = @{ Window = $AppWindow }
-    foreach ($key in $Arguments.Keys) { $all[$key] = $Arguments[$key] }
-    & $Name @all
-}
-
-# Vuelve a dibujar la pantalla actual con los mismos argumentos.
-function Show-CurrentView {
-    Show-View -Name $CurrentView.Name -Arguments $CurrentView.Arguments
-}
-
-function Get-CurrentViewName { $CurrentView.Name }
-
-# Repinta todo tras cambiar el idioma: el menú lateral (sus
-# etiquetas también se traducen) y la pantalla actual.
-#
-# Se aplaza al Dispatcher porque esto suele dispararse desde el
-# evento de un control que está dentro de la vista que vamos a
-# destruir; dejar que el evento termine primero evita sorpresas.
-function Update-UiLanguage {
-    $window = Get-AppWindow
-    if (-not $window) { return }
-
-    $window.Dispatcher.BeginInvoke(
-        [System.Windows.Threading.DispatcherPriority]::Background,
-        [action]{
-            Build-Sidebar -Window (Get-AppWindow)
-            Update-TitleBarTexts (Get-AppWindow)
-            Show-CurrentView
-        }) | Out-Null
-}
-
-# ---- fin incluido: ui/Router.ps1 ----
-# ---- inicio incluido: ui/CategoryRegistry.ps1 ----
+# ---- fin incluido: ui/Engine/AppSettings.ps1 ----
+# ---- inicio incluido: ui/Engine/CategoryRegistry.ps1 ----
 # ============================================================
 # CategoryRegistry.ps1
 # Registro de categorías.
 #
 # NO contiene datos ni decide qué se ve: solo el mecanismo.
 #
-#   ui/Categories/<Nombre>.ps1  ->  QUÉ tiene cada sección
-#   ui/CategoryIndex.ps1        ->  CUÁLES se ven, en qué orden
+#   ui/Data/Categories/<Nombre>.ps1  ->  QUÉ tiene cada sección
+#   ui/Index/CategoryIndex.ps1        ->  CUÁLES se ven, en qué orden
 #                                   y cuáles están bloqueadas
 #
-#   -> Añadir una sección  = crear su archivo en ui/Categories/
+#   -> Añadir una sección  = crear su archivo en ui/Data/Categories/
 #                            (aparece al final) y, si quieres
 #                            colocarla, añadir su línea al índice
 #   -> Ocultar una sección = Visible = $false en el índice
@@ -704,15 +573,33 @@ function Update-UiLanguage {
 $CategoryList = New-Object System.Collections.Generic.List[object]
 
 <#
+    Cuenta los ajustes marcados como nuevos y devuelve el texto del
+    distintivo de la categoría: 'NEW 3', o $null si no hay ninguno
+    (así la tarjeta no pinta un distintivo vacío).
+
+    Nuevo = el ajuste lleva su propio Badge, sea cual sea su texto.
+#>
+function Get-NewBadgeText {
+    param($Items)
+
+    $count = @($Items | Where-Object { $_.Badge }).Count
+    if ($count -eq 0) { return $null }
+    "NEW $count"
+}
+
+<#
     Da de alta una categoría. Campos de la definición:
 
-    Id           (string) Identificador corto y único: 'privacy', 'power'...
-                          Es la clave con la que ui/CategoryIndex.ps1 la coloca.
+    Id           (string) Identificador corto y único: 'regedit', 'power'...
+                          Es la clave con la que ui/Index/CategoryIndex.ps1 la coloca.
     Name         (string) Título visible.
     Icon         (string) Nombre de glifo del catálogo de Theme.ps1 ('Shield', 'Power'...).
     Accent       (string) Clave de color del tema para el icono ('Accent', 'Success', 'Warn').
     AccentSoft   (string) Clave de color del tema para el fondo del icono.
-    Badge        (string) Distintivo rojo opcional: 'NEW 45'. $null para ocultarlo.
+    Badge        (string) Distintivo rojo. Si NO se declara, se calcula solo:
+                          cuenta los Items que llevan su propio -Badge y sale
+                          'NEW <n>', o nada si no hay ninguno. Declararlo lo
+                          fija a mano ('NEW 45'); ponerlo a '' lo apaga.
     Description  (string) Línea gris bajo el título.
     Recommended / Default / Custom / Total  (int)  Contadores de las píldoras.
     Items        (array)  Ajustes, creados con New-Setting.
@@ -724,12 +611,19 @@ function Register-Category {
     # Id, Name, Icon, Description e Items.
     # Locked lo rellena el índice; aquí solo se reserva el campo.
     $defaults = @{
-        Badge = $null; Accent = 'Accent'; AccentSoft = 'AccentSoft'
+        Accent = 'Accent'; AccentSoft = 'AccentSoft'
         Recommended = 0; Default = 0; Custom = 0; Total = 0
         Items = @(); Locked = $false
     }
     foreach ($key in $defaults.Keys) {
         if (-not $Definition.ContainsKey($key)) { $Definition[$key] = $defaults[$key] }
+    }
+
+    # El distintivo se cuenta a partir de los ajustes marcados como
+    # nuevos, para que el número no se quede desfasado al añadir o
+    # quitar uno. Declarar Badge en la categoría lo fija a mano.
+    if (-not $Definition.ContainsKey('Badge')) {
+        $Definition['Badge'] = Get-NewBadgeText $Definition['Items']
     }
 
     foreach ($required in @('Id', 'Name', 'Icon', 'Description')) {
@@ -743,7 +637,7 @@ function Register-Category {
 
 <#
     Devuelve las categorías que debe pintar la interfaz, ya
-    ordenadas y filtradas según ui/CategoryIndex.ps1:
+    ordenadas y filtradas según ui/Index/CategoryIndex.ps1:
 
       1. Recorre el índice en orden. De cada entrada:
            - si no existe el archivo de esa Id, la salta
@@ -795,19 +689,65 @@ function Get-CategoryById {
 }
 
 <#
+    Cuenta los ajustes de una categoría por etiqueta. Es lo que
+    resume la fila centrada bajo el título del detalle (ver
+    ui/Components/Layout/CategorySummary.ps1).
+
+    Se cuenta SIEMPRE sobre los Items de verdad, no sobre los
+    campos Recommended/Default/Custom de la categoría: esos son
+    números fijos escritos a mano para las píldoras de la lista y
+    no cuadran con el contenido real del archivo.
+
+    Al recontar se vuelve a leer el array, así que en cuanto la
+    lógica real cambie las etiquetas de un ajuste el resumen se
+    actualiza sin tocar nada aquí.
+#>
+function Get-CategoryCounts {
+    param($Category)
+
+    $items = @($Category.Items)
+    $counts = [ordered]@{}
+    foreach ($tag in @('Recommended', 'Default', 'Custom')) {
+        $counts[$tag] = @($items | Where-Object { $_.Tags -contains $tag }).Count
+    }
+    $counts['Total'] = $items.Count
+    [PSCustomObject]$counts
+}
+
+<#
     Crea un ajuste para el array Items de una categoría.
 
     El tipo de control se deduce solo:
       - con -Options  -> desplegable
       - sin -Options  -> interruptor (el -Value debe ser $true / $false)
 
+    -Registry declara las claves que toca el ajuste. Son las que
+    enseña el pie "Detalles técnicos" de la tarjeta (ver
+    ui/Components/Cards/TechnicalDetails.ps1). Cada clave es una tabla:
+
+        Path         Ruta completa, con la raíz sin abreviar.
+        Name         Nombre del valor dentro de esa ruta.
+        Type         Tipo del valor: 'DWord', 'String'...
+        Current      Valor que hay ahora.
+        Recommended  Valor que propone el programa.
+        Default      Valor de fábrica de Windows.
+
+    Los tres valores son texto y hoy son ESTÁTICOS: nadie lee el
+    registro todavía. Un ajuste sin -Registry sale con un aviso
+    en su lugar, no se rompe.
+
     Ejemplos:
         New-Setting -Name 'Game Mode' -Description '...' `
                     -Tags 'Recommended','Default' -Value $true
 
         New-Setting -Name 'Mouse Hover Time' -Description '...' `
-                    -Tags 'Preference' -Options '100ms','200ms' `
-                    -Value '200ms' -Badge 'NEW'
+                    -Tags 'Custom' -Options '100ms','200ms' `
+                    -Value '200ms' -Badge 'NEW' `
+                    -Registry @(
+                        @{ Path = 'HKEY_CURRENT_USER\Control Panel\Mouse'
+                           Name = 'MouseHoverTime'; Type = 'String'
+                           Current = '400'; Recommended = '200'; Default = '400' }
+                    )
 #>
 function New-Setting {
     param(
@@ -816,7 +756,8 @@ function New-Setting {
         [string[]]$Tags = @(),
         [string[]]$Options,
         [Parameter(Mandatory)]$Value,
-        [string]$Badge
+        [string]$Badge,
+        [hashtable[]]$Registry = @()
     )
 
     if ($Options) { $type = 'Dropdown' } else { $type = 'Toggle' }
@@ -829,20 +770,21 @@ function New-Setting {
         Options     = $Options
         Value       = $Value
         Badge       = $Badge
+        Registry    = $Registry
     }
 }
 
-# ---- fin incluido: ui/CategoryRegistry.ps1 ----
-# ---- inicio incluido: ui/PreferenceRegistry.ps1 ----
+# ---- fin incluido: ui/Engine/CategoryRegistry.ps1 ----
+# ---- inicio incluido: ui/Engine/PreferenceRegistry.ps1 ----
 # ============================================================
 # PreferenceRegistry.ps1
 # Registro de las opciones de la pantalla Settings.
 #
 # NO contiene opciones: solo el mecanismo. Cada opción vive en
-# su propio archivo dentro de ui/Preferences/, igual que cada
-# sección vive en ui/Categories/.
+# su propio archivo dentro de ui/Data/Preferences/, igual que cada
+# sección vive en ui/Data/Categories/.
 #
-#   -> Añadir una opción  = crear un archivo en ui/Preferences/
+#   -> Añadir una opción  = crear un archivo en ui/Data/Preferences/
 #   -> Quitarla           = borrar ese archivo
 #   -> Reordenar          = cambiar su campo Order
 #
@@ -919,10 +861,227 @@ function Get-PreferenceById {
     $PreferenceList | Where-Object { $_.Id -eq $Id } | Select-Object -First 1
 }
 
-# ---- fin incluido: ui/PreferenceRegistry.ps1 ----
+# ---- fin incluido: ui/Engine/PreferenceRegistry.ps1 ----
+# ---- inicio incluido: ui/Engine/Router.ps1 ----
+# ============================================================
+# Router.ps1
+# Sabe qué pantalla se está viendo y cómo volver a dibujarla.
+#
+# Hace falta por dos motivos:
+#
+#   1. Cada botón del menú lateral lleva a una vista distinta
+#      (campo View de ui/Index/NavigationIndex.ps1).
+#   2. Al cambiar de idioma hay que repintar la pantalla actual.
+#      Los colores se actualizan solos porque el XAML usa
+#      DynamicResource, pero para el texto no existe equivalente:
+#      hay que reconstruir la vista.
+#
+# Las vistas se invocan por nombre de función, así que añadir una
+# pantalla es crear su archivo en ui/Views/ y apuntar a ella
+# desde el índice de navegación. Nada que registrar aquí.
+# ============================================================
 
-# ---- Archivos principales: qué se ve y en qué orden ----
-# ---- inicio incluido: ui/CategoryIndex.ps1 ----
+$AppWindow = $null
+$CurrentView = @{ Name = 'Show-OptimizationsListView'; Arguments = @{} }
+
+# La ventana se guarda una vez al arrancar para que cualquier
+# capa pueda repintar sin ir pasándola de mano en mano.
+function Set-AppWindow {
+    param($Window)
+    $script:AppWindow = $Window
+}
+
+function Get-AppWindow { $script:AppWindow }
+
+<#
+    Muestra una vista y la recuerda.
+
+        Show-View 'Show-SettingsView'
+        Show-View 'Show-CategoryDetailView' @{ Category = $cat }
+#>
+function Show-View {
+    param(
+        [Parameter(Mandatory)][string]$Name,
+        [hashtable]$Arguments = @{}
+    )
+
+    if (-not (Get-Command $Name -ErrorAction SilentlyContinue)) {
+        throw "Router: la vista '$Name' no existe. Revisa el campo View de ui/Index/NavigationIndex.ps1."
+    }
+
+    $script:CurrentView = @{ Name = $Name; Arguments = $Arguments }
+
+    $all = @{ Window = $AppWindow }
+    foreach ($key in $Arguments.Keys) { $all[$key] = $Arguments[$key] }
+    & $Name @all
+
+    # Navegar empieza arriba. El ScrollViewer conserva su posición
+    # aunque le cambies el contenido, así que al entrar en una
+    # sección te dejaría a media página. Show-CurrentView deshace
+    # esto después, porque repintar no es navegar.
+    if ($AppWindow) {
+        $scroll = $AppWindow.FindName('MainScroll')
+        if ($scroll) { $scroll.ScrollToTop() }
+    }
+}
+
+<#
+    Vuelve a dibujar la pantalla actual con los mismos argumentos,
+    dejando el scroll donde estaba.
+
+    Repintar NO es navegar: sigues en la misma pantalla mirando lo
+    mismo, así que saltar al principio se siente como si la
+    aplicación te hubiera movido de sitio. Por eso la posición se
+    conserva aquí y no en Show-View, donde sí toca empezar arriba.
+
+    La restauración se aplaza: el contenido nuevo aún no está
+    medido y, mientras el alto sea 0, ScrollToVerticalOffset se
+    recorta a 0 y no haría nada.
+#>
+$PendingScroll = 0.0
+
+function Show-CurrentView {
+    $window = Get-AppWindow
+    $scroll = $null
+    if ($window) { $scroll = $window.FindName('MainScroll') }
+    if ($scroll) { $script:PendingScroll = $scroll.VerticalOffset }
+
+    Show-View -Name $CurrentView.Name -Arguments $CurrentView.Arguments
+
+    if ($scroll -and $PendingScroll -gt 0) {
+        $window.Dispatcher.BeginInvoke(
+            [System.Windows.Threading.DispatcherPriority]::Loaded,
+            [action]{
+                $sv = (Get-AppWindow).FindName('MainScroll')
+                # Si la pantalla ha encogido, ScrollViewer recorta
+                # solo al máximo posible.
+                $sv.ScrollToVerticalOffset($PendingScroll)
+            }) | Out-Null
+    }
+}
+
+function Get-CurrentViewName { $CurrentView.Name }
+
+# Repinta todo tras cambiar el idioma: el menú lateral (sus
+# etiquetas también se traducen) y la pantalla actual.
+#
+# Se aplaza al Dispatcher porque esto suele dispararse desde el
+# evento de un control que está dentro de la vista que vamos a
+# destruir; dejar que el evento termine primero evita sorpresas.
+function Update-UiLanguage {
+    $window = Get-AppWindow
+    if (-not $window) { return }
+
+    $window.Dispatcher.BeginInvoke(
+        [System.Windows.Threading.DispatcherPriority]::Background,
+        [action]{
+            Build-Sidebar -Window (Get-AppWindow)
+            Update-TitleBarTexts (Get-AppWindow)
+            Show-CurrentView
+
+            # El cajón del log no es una vista y Show-CurrentView no
+            # lo toca, así que si está abierto hay que rehacerlo
+            # aparte o se quedaría en el idioma anterior.
+            if (Get-LogPanelOpen) { Update-LogPanel (Get-AppWindow) }
+        }) | Out-Null
+}
+
+# ---- fin incluido: ui/Engine/Router.ps1 ----
+# ---- inicio incluido: ui/Engine/Translation.ps1 ----
+# ============================================================
+# Translation.ps1
+# Mecanismo de idiomas. NO contiene textos.
+#
+# Se traduce POR TEXTO ORIGINAL, no por clave: el inglés es el
+# idioma fuente y cada archivo de ui/Data/Lang/ es un diccionario
+# "texto en inglés" -> "texto traducido".
+#
+# Gracias a eso los archivos de ui/Data/Categories/ no necesitan
+# tocarse: siguen leyéndose en inglés claro. Y si falta una
+# traducción, sale el original en vez de romperse.
+#
+#   -> Añadir un idioma = crear ui/Data/Lang/<código>.ps1
+#                         y su línea en ui/Index/LanguageIndex.ps1
+#   -> El inglés no necesita archivo: es la fuente.
+# ============================================================
+
+$Translations = @{}       # código -> tabla de textos
+$CurrentLanguage = 'en'
+$SeenStrings = @{}        # todo lo que ha pasado por T, para auditar
+
+function Register-Language {
+    param(
+        [Parameter(Mandatory)][string]$Code,
+        [Parameter(Mandatory)][hashtable]$Strings
+    )
+    if (-not $Translations.ContainsKey($Code)) { $Translations[$Code] = @{} }
+    foreach ($key in $Strings.Keys) { $Translations[$Code][$key] = $Strings[$key] }
+}
+
+function Set-AppLanguage {
+    param([Parameter(Mandatory)][string]$Code)
+    $script:CurrentLanguage = $Code
+}
+
+function Get-AppLanguage { $script:CurrentLanguage }
+
+<#
+    Traduce un texto al idioma activo.
+
+        $t.Text = T 'Optimizations'
+        $t.Text = (T '{0} settings') -f 6
+
+    Si el idioma activo es el fuente, o no hay traducción para
+    ese texto, devuelve el original tal cual.
+#>
+function T {
+    param([Parameter(Mandatory)][AllowEmptyString()][string]$Text)
+
+    if ([string]::IsNullOrEmpty($Text)) { return $Text }
+    $script:SeenStrings[$Text] = $true
+
+    $dict = $Translations[$script:CurrentLanguage]
+    if ($dict -and $dict.ContainsKey($Text)) { return $dict[$Text] }
+    $Text
+}
+
+<#
+    Textos que la interfaz ha pedido traducir y que faltan en el
+    idioma indicado. Sirve para saber qué queda por traducir tras
+    añadir ajustes nuevos:
+
+        Get-MissingTranslations 'es'
+
+    Solo ve lo que se haya mostrado en esta sesión, así que
+    conviene navegar por la aplicación antes de consultarlo.
+#>
+function Get-MissingTranslations {
+    param([string]$Code = $CurrentLanguage)
+
+    $dict = $Translations[$Code]
+    if (-not $dict) { return $SeenStrings.Keys }
+    $SeenStrings.Keys | Where-Object { -not $dict.ContainsKey($_) } | Sort-Object
+}
+
+<#
+    Olvida lo visto hasta ahora y empieza a apuntar de cero.
+
+    Get-MissingTranslations acumula desde que arrancó el programa,
+    así que sin esto no hay forma de preguntar por una pantalla
+    concreta: arrastraría todo lo que se haya pintado antes.
+
+        Reset-TranslationAudit
+        Show-View -Name 'Show-SettingsView'
+        Get-MissingTranslations 'es'
+#>
+function Reset-TranslationAudit {
+    $script:SeenStrings = @{}
+}
+
+# ---- fin incluido: ui/Engine/Translation.ps1 ----
+
+# ---- 3. Índices: qué se ve, en qué orden y qué está bloqueado ----
+# ---- inicio incluido: ui/Index/CategoryIndex.ps1 ----
 # ============================================================
 # CategoryIndex.ps1
 #
@@ -930,7 +1089,7 @@ function Get-PreferenceById {
 #
 # Manda sobre qué secciones se ven, en qué orden y cuáles están
 # bloqueadas. El contenido de cada una sigue viviendo en su
-# propio archivo dentro de ui/Categories/.
+# propio archivo dentro de ui/Data/Categories/.
 #
 #   ORDEN      El de esta lista, de arriba abajo.
 #              Mover una sección = mover su línea.
@@ -947,14 +1106,14 @@ function Get-PreferenceById {
 # Quitar una sección de la lista NO borra su archivo: si la
 # comentas con # deja de aparecer, y la recuperas quitando el #.
 #
-# Una sección que exista en ui/Categories/ pero no esté aquí se
+# Una sección que exista en ui/Data/Categories/ pero no esté aquí se
 # añade al final, visible y desbloqueada.
 # ============================================================
 
 $CategoryIndex = @(
 
     #  Id                    Visible          Bloqueada
-    @{ Id = 'privacy';       Visible = $true;  Locked = $false }
+    @{ Id = 'regedit';       Visible = $true;  Locked = $false }
     @{ Id = 'power';         Visible = $true;  Locked = $false }
     @{ Id = 'gaming';        Visible = $true;  Locked = $false }
     @{ Id = 'update';        Visible = $true;  Locked = $false }
@@ -963,17 +1122,64 @@ $CategoryIndex = @(
 
 )
 
-# ---- fin incluido: ui/CategoryIndex.ps1 ----
-# ---- inicio incluido: ui/NavigationIndex.ps1 ----
+# ---- fin incluido: ui/Index/CategoryIndex.ps1 ----
+# ---- inicio incluido: ui/Index/LanguageIndex.ps1 ----
+# ============================================================
+# LanguageIndex.ps1
+#
+#   *** ARCHIVO PRINCIPAL DE LOS IDIOMAS ***
+#
+# Qué idiomas ofrece el programa y en qué orden salen en el
+# desplegable de Settings.
+#
+#   Code     Código corto. Debe coincidir con el nombre del
+#            archivo de ui/Data/Lang/ (es -> ui/Data/Lang/es.ps1).
+#   Label    Cómo se llama el idioma EN SU PROPIO IDIOMA, que es
+#            lo que espera ver quien lo busca. No se traduce.
+#   Source   $true en el idioma en el que está escrito el código
+#            fuente. Ese no lleva archivo en ui/Data/Lang/.
+#   Default  Idioma de arranque la primera vez. Después manda lo
+#            que haya guardado en %APPDATA% (ver AppSettings.ps1).
+#   Visible  $false lo esconde sin borrar su archivo.
+#
+# Para añadir un idioma:
+#   1. crear ui/Data/Lang/<código>.ps1 copiando ui/Data/Lang/es.ps1
+#   2. añadir su línea aquí
+# ============================================================
+
+$LanguageIndex = @(
+
+    @{ Code = 'en'; Label = 'English';  Visible = $true; Source = $true; Default = $true }
+    @{ Code = 'es'; Label = 'Español';  Visible = $true }
+
+)
+
+function Get-AvailableLanguages {
+    $LanguageIndex | Where-Object { -not $_.ContainsKey('Visible') -or $_.Visible }
+}
+
+function Get-DefaultLanguage {
+    $default = $LanguageIndex | Where-Object { $_.Default } | Select-Object -First 1
+    if ($default) { $default.Code } else { 'en' }
+}
+
+function Get-LanguageLabel {
+    param([string]$Code)
+    $found = $LanguageIndex | Where-Object { $_.Code -eq $Code } | Select-Object -First 1
+    if ($found) { $found.Label } else { $Code }
+}
+
+# ---- fin incluido: ui/Index/LanguageIndex.ps1 ----
+# ---- inicio incluido: ui/Index/NavigationIndex.ps1 ----
 # ============================================================
 # NavigationIndex.ps1
 #
 #   *** ARCHIVO PRINCIPAL DEL MENÚ LATERAL ***
 #
-# Mismo planteamiento que ui/CategoryIndex.ps1, pero para los
+# Mismo planteamiento que ui/Index/CategoryIndex.ps1, pero para los
 # botones de la barra de la izquierda. Antes estaban escritos a
 # mano dentro de MainWindow.xaml; ahora son datos y los dibuja
-# ui/Components/Sidebar.ps1.
+# ui/Components/Shell/Sidebar.ps1.
 #
 #   ORDEN      El de esta lista, dentro de cada grupo.
 #              Mover un botón = mover su línea.
@@ -994,7 +1200,7 @@ $CategoryIndex = @(
 #              una pantalla nueva es añadir su archivo a ui/Views/
 #              y apuntar aquí a su función.
 #
-#   Icon       Nombre de glifo del catálogo de ui/Theme.ps1.
+#   Icon       Nombre de glifo del catálogo de ui/Design/Theme.ps1.
 # ============================================================
 
 $NavigationIndex = @(
@@ -1033,62 +1239,931 @@ function Get-NavigationItem {
     $NavigationIndex | Where-Object { $_.Id -eq $Id } | Select-Object -First 1
 }
 
-# ---- fin incluido: ui/NavigationIndex.ps1 ----
-# ---- inicio incluido: ui/LanguageIndex.ps1 ----
+# ---- fin incluido: ui/Index/NavigationIndex.ps1 ----
+# ---- inicio incluido: ui/Index/ViewOptionsIndex.ps1 ----
 # ============================================================
-# LanguageIndex.ps1
+# ViewOptionsIndex.ps1
 #
-#   *** ARCHIVO PRINCIPAL DE LOS IDIOMAS ***
+#   *** ARCHIVO PRINCIPAL DEL BOTÓN "VISTA" ***
 #
-# Qué idiomas ofrece el programa y en qué orden salen en el
-# desplegable de Settings.
+# Mismo planteamiento que ui/Index/CategoryIndex.ps1 y que
+# ui/Index/NavigationIndex.ps1, pero para las casillas que salen al
+# pulsar el botón "Vista" de la cabecera. Las dibuja
+# ui/Components/Shell/ViewMenu.ps1.
 #
-#   Code     Código corto. Debe coincidir con el nombre del
-#            archivo de ui/Lang/ (es -> ui/Lang/es.ps1).
-#   Label    Cómo se llama el idioma EN SU PROPIO IDIOMA, que es
-#            lo que espera ver quien lo busca. No se traduce.
-#   Source   $true en el idioma en el que está escrito el código
-#            fuente. Ese no lleva archivo en ui/Lang/.
-#   Default  Idioma de arranque la primera vez. Después manda lo
-#            que haya guardado en %APPDATA% (ver AppSettings.ps1).
-#   Visible  $false lo esconde sin borrar su archivo.
+# Son opciones de VISTA: deciden qué se enseña en pantalla, no
+# tocan nada del sistema ni del contenido de las categorías.
 #
-# Para añadir un idioma:
-#   1. crear ui/Lang/<código>.ps1 copiando ui/Lang/es.ps1
-#   2. añadir su línea aquí
+#   ORDEN      El de esta lista, de arriba abajo.
+#
+#   Id         Clave corta. Se guarda en settings.json como
+#              'View.<Id>', así que cambiarla olvida lo elegido.
+#
+#   Label      Texto de la fila (en inglés: es el idioma fuente).
+#   Hint       Línea gris debajo del texto.
+#   Icon       Nombre de glifo del catálogo de ui/Design/Theme.ps1.
+#   Default    Valor con el que arranca la primera vez.
+#   Visible    $false -> se oculta la fila (no se pierde nada)
+#
+# Añadir una opción es añadir su línea aquí y consultarla con
+# Get-ViewOption '<Id>' donde toque. El menú se dibuja solo.
 # ============================================================
 
-$LanguageIndex = @(
+$ViewOptionsIndex = @(
 
-    @{ Code = 'en'; Label = 'English';  Visible = $true; Source = $true; Default = $true }
-    @{ Code = 'es'; Label = 'Español';  Visible = $true }
+    #  Id             Icono     Etiqueta              Por defecto  Visible
+    @{ Id = 'technical'; Icon = 'Info'; Label = 'Technical details'
+       Hint = 'Show the registry keys each setting touches'
+       Default = $true;  Visible = $true }
+
+    @{ Id = 'badges';    Icon = 'Bulb'; Label = 'New badges'
+       Hint = "Show the red 'NEW' tags on sections and settings"
+       Default = $true;  Visible = $true }
 
 )
 
-function Get-AvailableLanguages {
-    $LanguageIndex | Where-Object { -not $_.ContainsKey('Visible') -or $_.Visible }
+# Clave con la que se guarda cada opción en settings.json.
+function Get-ViewOptionKey {
+    param([Parameter(Mandatory)][string]$Id)
+    "View.$Id"
 }
 
-function Get-DefaultLanguage {
-    $default = $LanguageIndex | Where-Object { $_.Default } | Select-Object -First 1
-    if ($default) { $default.Code } else { 'en' }
+# Devuelve las filas visibles del menú, en el orden del índice.
+function Get-ViewOptions {
+    $ViewOptionsIndex | Where-Object {
+        -not ($_.ContainsKey('Visible')) -or $_.Visible
+    }
 }
 
-function Get-LanguageLabel {
-    param([string]$Code)
-    $found = $LanguageIndex | Where-Object { $_.Code -eq $Code } | Select-Object -First 1
-    if ($found) { $found.Label } else { $Code }
+function Get-ViewOptionDefinition {
+    param([Parameter(Mandatory)][string]$Id)
+    $ViewOptionsIndex | Where-Object { $_.Id -eq $Id } | Select-Object -First 1
 }
 
-# ---- fin incluido: ui/LanguageIndex.ps1 ----
+<#
+    Estado actual de una opción de vista.
 
-# ---- Carpetas que se cargan enteras ----
-# Todo archivo .ps1 que haya dentro entra solo, por orden de nombre.
-# Añadir una categoría, un componente o una vista = crear su archivo;
-# quitarla = borrarlo. No hay que tocar este archivo.
-# build.ps1 sustituye cada bloque por el contenido de la carpeta.
+        if (Get-ViewOption 'badges') { ... }
 
-# ---- inicio incluido: ui/Lang/es.ps1 ----
+    Una Id desconocida devuelve $false en lugar de fallar: así un
+    componente que pregunte por una opción ya retirada del índice
+    simplemente deja de enseñar esa parte.
+#>
+function Get-ViewOption {
+    param([Parameter(Mandatory)][string]$Id)
+
+    $definition = Get-ViewOptionDefinition $Id
+    if (-not $definition) { return $false }
+
+    [bool](Get-AppSetting (Get-ViewOptionKey $Id) -Default $definition.Default)
+}
+
+# Guarda el nuevo estado en %APPDATA%\OptimizadorPC\settings.json.
+function Set-ViewOption {
+    param([Parameter(Mandatory)][string]$Id, [bool]$Value)
+    Set-AppSetting (Get-ViewOptionKey $Id) $Value
+}
+
+# ---- fin incluido: ui/Index/ViewOptionsIndex.ps1 ----
+
+# ---- 4. Lógica de sistema ----
+# Todo lo que habla con Windows vive en core/, fuera de ui/, y no
+# conoce la interfaz. Solo define funciones, así que podría ir en
+# cualquier punto; está aquí porque es la frontera entre lo que
+# sabe de Windows y lo que sabe de la pantalla.
+# ---- inicio incluido: core/Diagnostics/Log.ps1 ----
+# ============================================================
+# core/Diagnostics/Log.ps1
+# Registro de actividad: qué ha hecho el programa y cuándo.
+#
+# Vive en core/ porque es información del sistema, no de la
+# interfaz: aquí no hay ni un control de WPF. Quien quiera
+# enseñarlo -hoy ui/Components/Shell/LogPanel.ps1- pide las entradas
+# con Get-AppLog y las pinta como le parezca.
+#
+# Dos reglas de la casa, las mismas que el resto de core/:
+#
+#   1. NADA lanza una excepción hacia arriba. Si no se puede
+#      escribir el archivo de volcado se devuelve $null; apuntar
+#      lo que pasa jamás debe tumbar lo que estaba pasando.
+#
+#   2. Se guardan HECHOS, no frases traducidas. El campo Status
+#      lleva una palabra en inglés ('read', 'no access'...) que
+#      la interfaz pasa por T; así el idioma se decide al pintar
+#      y el mismo registro sirve para los dos.
+#
+# El buffer es circular y vive en memoria: al cerrar se pierde,
+# salvo que se haya volcado con Export-AppLog.
+# ============================================================
+
+# Tope de entradas guardadas. Al pasarse se van tirando las más
+# viejas y se cuentan aparte, para poder decir "faltan N".
+$AppLogCapacity = 1000
+
+$AppLogEntries = New-Object System.Collections.Generic.List[object]
+$AppLogDropped = 0
+
+<#
+    Apunta una línea en el registro de actividad.
+
+        Write-AppLog -Source 'registry' -Status 'read' `
+                     -Message 'HKEY_LOCAL_MACHINE\...\Valor' `
+                     -Detail  '5 (0x00000005) - DWord - 0,4 ms'
+
+    Message   La línea principal. Es TEXTO TÉCNICO -rutas, nombres
+              de valor, cifras- y por eso no se traduce.
+    Status    Palabra corta en inglés para la etiqueta de color.
+              La interfaz la pasa por T; $null la deja sin etiqueta.
+    Detail    Segunda línea gris, opcional.
+    Level     'info' | 'warn' | 'error'. Decide el color.
+    Source    De dónde viene: 'registry', 'app'...
+
+    No devuelve nada: se llama desde sitios que están calculando
+    otra cosa y un valor suelto se colaría en su salida.
+#>
+function Write-AppLog {
+    param(
+        [Parameter(Mandatory)][AllowEmptyString()][string]$Message,
+        [ValidateSet('info', 'warn', 'error')][string]$Level = 'info',
+        [string]$Source = 'app',
+        [string]$Status,
+        [string]$Detail
+    )
+
+    $AppLogEntries.Add([PSCustomObject]@{
+        Time    = [DateTime]::Now
+        Level   = $Level
+        Source  = $Source
+        Status  = $Status
+        Message = $Message
+        Detail  = $Detail
+    })
+
+    # Buffer circular: si se pasa del tope, fuera la más vieja.
+    while ($AppLogEntries.Count -gt $AppLogCapacity) {
+        $AppLogEntries.RemoveAt(0)
+        $script:AppLogDropped++
+    }
+}
+
+<#
+    Entradas guardadas, de la más vieja a la más nueva.
+
+        Get-AppLog                       -> todas
+        Get-AppLog -Source 'registry'    -> solo las del registro
+        Get-AppLog -Level 'error'        -> solo los fallos
+        Get-AppLog -Last 200             -> las 200 últimas
+
+    Devuelve una copia: quien la reciba puede recorrerla con
+    calma aunque entre tanto se apunte algo más.
+
+    ENVUÉLVELO EN @(): al devolverlo, PowerShell desenrolla el
+    array, así que con una sola entrada llega el objeto pelado.
+    Es la misma convención que @($Category.Items) por todo el
+    proyecto.
+#>
+function Get-AppLog {
+    param([string]$Source, [string]$Level, [int]$Last = 0)
+
+    # ToArray() y no @($AppLogEntries): una List[object] creada con
+    # New-Object viene envuelta en un PSObject y el operador @()
+    # revienta con "los tipos de argumentos no coinciden", en 5.1 y
+    # en 7 (ver la regla 19 de CLAUDE.md).
+    $items = $AppLogEntries.ToArray()
+    if ($Source) { $items = @($items | Where-Object { $_.Source -eq $Source }) }
+    if ($Level)  { $items = @($items | Where-Object { $_.Level  -eq $Level }) }
+
+    if ($Last -gt 0 -and $items.Count -gt $Last) {
+        $items = @($items[($items.Count - $Last)..($items.Count - 1)])
+    }
+
+    $items
+}
+
+function Get-AppLogCount { $AppLogEntries.Count }
+
+# Cuántas se han tirado por llenarse el buffer.
+function Get-AppLogDropped { $AppLogDropped }
+
+function Clear-AppLog {
+    $AppLogEntries.Clear()
+    $script:AppLogDropped = 0
+}
+
+# ---- Volcado a texto ----------------------------------------
+
+<#
+    Una entrada como línea de archivo:
+
+        2026-09-03 20:14:03.118  INFO   registry  [read] HKEY_...\Valor  |  5 - DWord - 0,4 ms
+
+    El archivo va siempre en inglés: es para pegarlo en un
+    informe, no para leerlo en pantalla.
+#>
+function Format-AppLogLine {
+    param([Parameter(Mandatory)]$Entry)
+
+    $line = '{0:yyyy-MM-dd HH:mm:ss.fff}  {1,-5}  {2,-9}' -f $Entry.Time, $Entry.Level.ToUpper(), $Entry.Source
+    if ($Entry.Status)  { $line += '  [{0}]' -f $Entry.Status }
+    if ($Entry.Message) { $line += '  {0}'   -f $Entry.Message }
+    if ($Entry.Detail)  { $line += '  |  {0}' -f $Entry.Detail }
+    $line
+}
+
+# Todo el registro como un único texto, con cabecera.
+function Format-AppLogText {
+    # El resumen se arma fuera del Add(): dentro de los paréntesis
+    # de un método, la coma separa ARGUMENTOS, así que el -f se
+    # quedaría solo con el primero y {1} se saldría de la lista.
+    $summary = 'Entries: {0}' -f $AppLogEntries.Count
+    if ($AppLogDropped -gt 0) { $summary += ' (+{0} dropped)' -f $AppLogDropped }
+
+    $lines = New-Object System.Collections.Generic.List[string]
+    $lines.Add('Optimizador PC - activity log')
+    $lines.Add('Generated: {0:yyyy-MM-dd HH:mm:ss}' -f [DateTime]::Now)
+    $lines.Add($summary)
+    $lines.Add('')
+
+    foreach ($entry in $AppLogEntries) { $lines.Add((Format-AppLogLine $entry)) }
+    $lines -join [Environment]::NewLine
+}
+
+# Junto a settings.json, y por el mismo motivo: el .exe es
+# portable y su carpeta puede no admitir escritura.
+function Get-AppLogFolder {
+    Join-Path $env:APPDATA 'OptimizadorPC\logs'
+}
+
+<#
+    Vuelca el registro a un archivo de texto.
+
+        $ruta = Export-AppLog             -> %APPDATA%\...\logs\log-<fecha>.txt
+        $ruta = Export-AppLog -Path 'C:\x.txt'
+
+    Devuelve la ruta escrita, o $null si no se ha podido (sin
+    permisos, disco lleno...). No lanza: quien llame decide qué
+    contarle al usuario.
+#>
+function Export-AppLog {
+    param([string]$Path)
+
+    try {
+        if (-not $Path) {
+            $folder = Get-AppLogFolder
+            $Path = Join-Path $folder ('log-{0:yyyyMMdd-HHmmss}.txt' -f [DateTime]::Now)
+        }
+
+        $folder = Split-Path -Parent $Path
+        if ($folder -and -not (Test-Path $folder)) {
+            New-Item -ItemType Directory -Path $folder -Force | Out-Null
+        }
+
+        # UTF-8 con BOM, que es lo que espera el Bloc de notas de
+        # Windows al abrirlo con doble clic.
+        [System.IO.File]::WriteAllText($Path, (Format-AppLogText), (New-Object System.Text.UTF8Encoding($true)))
+        $Path
+    }
+    catch {
+        $null
+    }
+}
+
+# ---- fin incluido: core/Diagnostics/Log.ps1 ----
+# ---- inicio incluido: core/Registry/CategoryState.ps1 ----
+# ============================================================
+# core/Registry/CategoryState.ps1
+# Vuelca en los ajustes lo que hay de verdad en el equipo.
+#
+# Es el puente entre core/Registry/Reader.ps1 (lee el sistema) y los
+# datos de ui/Data/Categories/: recorre las claves declaradas en el
+# campo -Registry de cada ajuste y rellena su Current.
+#
+# Sigue sin saber de interfaz. Para poder enseñar una barra de
+# progreso acepta un scriptblock -OnProgress al que va avisando;
+# quién lo pinte es asunto de quien llame.
+#
+# SOLO LECTURA: aquí no se escribe nada en el registro.
+# ============================================================
+
+<#
+    Lee del equipo todas las claves de una categoría y actualiza
+    en el sitio los campos de cada una:
+
+        Current   texto ya formateado, o $null si no se pudo leer
+        State     'read' | 'missing' | 'denied' | 'badpath'
+
+    El Current que venga escrito en ui/Data/Categories/ se ignora: el
+    valor bueno es el del equipo.
+
+    Una categoría cuyos ajustes no declaren claves -hoy, todas
+    menos Regedit- sale por la puerta de atrás sin hacer nada, así
+    que se puede llamar siempre sin preguntar de cuál se trata.
+
+        Update-CategoryRegistryState -Category $cat -OnProgress {
+            param($Done, $Total) Set-ProgressStrip ...
+        }
+
+    Devuelve cuántas claves ha leído.
+#>
+function Update-CategoryRegistryState {
+    param(
+        [Parameter(Mandatory)]$Category,
+        [scriptblock]$OnProgress
+    )
+
+    $keys = New-Object System.Collections.Generic.List[object]
+    foreach ($setting in @($Category.Items)) {
+        foreach ($key in @($setting.Registry)) { $keys.Add($key) }
+    }
+
+    $total = $keys.Count
+    if ($total -eq 0) { return 0 }
+
+    # Cabecera del bloque en el registro de actividad: sin ella,
+    # las lecturas de una sección y las de la siguiente saldrían
+    # seguidas y no se sabría dónde empieza cada visita.
+    Write-AppLog -Source 'registry' -Level 'info' -Status 'reading' `
+        -Message $Category.Name -Detail "$total keys"
+
+    $watch = [System.Diagnostics.Stopwatch]::StartNew()
+    $states = @{}
+
+    $done = 0
+    if ($OnProgress) { & $OnProgress $done $total }
+
+    foreach ($key in $keys) {
+        $result = Read-RegistryValue $key.Path $key.Name
+
+        # Las claves de -Registry son hashtables, así que se
+        # rellenan en el sitio y la tarjeta las lee tal cual.
+        $key['State'] = $result.State
+        if ($result.State -eq 'read') {
+            $key['Current'] = Format-RegistryValue $result.Value $result.Kind $key.Display
+        }
+        else {
+            $key['Current'] = $null
+        }
+
+        $states[$result.State] = 1 + [int]$states[$result.State]
+
+        $done++
+        if ($OnProgress) { & $OnProgress $done $total }
+    }
+
+    $watch.Stop()
+
+    # Resumen: cuántas de cada clase y cuánto ha costado. Es lo
+    # que dice de un vistazo si una sección va lenta o si hay
+    # claves que no se están pudiendo leer.
+    $summary = ($states.Keys | Sort-Object | ForEach-Object { "$($states[$_]) $_" }) -join ' - '
+    Write-AppLog -Source 'registry' -Level 'info' -Status 'done' `
+        -Message $Category.Name `
+        -Detail ('{0} - {1:N1} ms' -f $summary, $watch.Elapsed.TotalMilliseconds)
+
+    $total
+}
+
+# Cuántas claves declara una categoría. La vista lo usa para saber
+# si merece la pena enseñar la barra antes de ponerse a leer.
+function Get-CategoryRegistryKeyCount {
+    param([Parameter(Mandatory)]$Category)
+
+    $n = 0
+    foreach ($setting in @($Category.Items)) { $n += @($setting.Registry).Count }
+    $n
+}
+
+# ---- fin incluido: core/Registry/CategoryState.ps1 ----
+# ---- inicio incluido: core/Registry/Reader.ps1 ----
+# ============================================================
+# core/Registry/Reader.ps1
+# Lectura del registro de Windows. SOLO LECTURA.
+#
+# Esta es la primera pieza fuera de ui/: aquí vive lo que habla
+# con el sistema, y no sabe nada de ventanas, tarjetas ni temas.
+# Si algo de este archivo necesita un control de WPF, está en el
+# sitio equivocado.
+#
+# Dos reglas de la casa:
+#
+#   1. NADA lanza una excepción hacia arriba. Una clave protegida
+#      o una ruta que no existe son respuestas válidas, no fallos:
+#      la interfaz debe poder pintarlas, no caerse.
+#
+#   2. Se distingue "no está" de "no se pudo leer". La primera es
+#      información -Windows usa su valor interno-, la segunda es
+#      un problema de permisos. Enseñarlas igual sería mentir.
+# ============================================================
+
+$RegistryHives = @{
+    'HKEY_LOCAL_MACHINE' = [Microsoft.Win32.RegistryHive]::LocalMachine
+    'HKEY_CURRENT_USER'  = [Microsoft.Win32.RegistryHive]::CurrentUser
+    'HKEY_CLASSES_ROOT'  = [Microsoft.Win32.RegistryHive]::ClassesRoot
+    'HKEY_USERS'         = [Microsoft.Win32.RegistryHive]::Users
+    'HKLM'               = [Microsoft.Win32.RegistryHive]::LocalMachine
+    'HKCU'               = [Microsoft.Win32.RegistryHive]::CurrentUser
+}
+
+<#
+    Lee un valor del registro y lo apunta en el registro de
+    actividad (core/Diagnostics/Log.ps1), que es lo que enseña el botón de
+    log de la barra de título.
+
+        $r = Read-RegistryValue 'HKEY_LOCAL_MACHINE\SOFTWARE\...' 'MiValor'
+
+    Devuelve siempre un objeto con:
+
+        State   'read'     -> se leyó; Value y Kind traen el dato
+                'missing'  -> la ruta o el valor no existen
+                'denied'   -> existe pero no se pudo leer
+                'badpath'  -> la raíz de la ruta no se reconoce
+        Value   El dato en crudo, tal cual lo da .NET (ojo: un
+                DWord llega como Int32 CON SIGNO).
+        Kind    El RegistryValueKind, o $null.
+
+    La lectura de verdad está en Read-RegistryValueRaw; aquí solo
+    se cronometra y se apunta. Separarlas mantiene la lectura sin
+    nada alrededor y deja apagar el rastro cambiando un archivo.
+#>
+function Read-RegistryValue {
+    param(
+        [Parameter(Mandatory)][AllowEmptyString()][string]$Path,
+        [Parameter(Mandatory)][AllowEmptyString()][string]$Name
+    )
+
+    $watch = [System.Diagnostics.Stopwatch]::StartNew()
+    $result = Read-RegistryValueRaw -Path $Path -Name $Name
+    $watch.Stop()
+
+    Write-RegistryLog -Path $Path -Name $Name -Result $result -Ms $watch.Elapsed.TotalMilliseconds
+
+    $result
+}
+
+<#
+    Apunta una lectura en el registro de actividad.
+
+    El Message es la clave consultada y el Detail lo que se
+    encontró: los dos son texto técnico y no se traducen. Lo
+    único traducible es el Status, y por eso viaja como palabra
+    suelta en inglés (ver core/Diagnostics/Log.ps1).
+
+    Que un valor no exista NO es un fallo -Windows está usando su
+    valor interno-, así que sale como aviso y no como error. Sin
+    acceso o con una raíz inventada sí lo son.
+#>
+function Write-RegistryLog {
+    param([string]$Path, [string]$Name, $Result, [double]$Ms)
+
+    $took = '{0:N1} ms' -f $Ms
+
+    switch ($Result.State) {
+        'read' {
+            Write-AppLog -Source 'registry' -Level 'info' -Status 'read' `
+                -Message "$Path\$Name" `
+                -Detail ('{0} - {1} - {2}' -f (Format-LogValue $Result.Value $Result.Kind), $Result.Kind, $took)
+        }
+        'missing' {
+            Write-AppLog -Source 'registry' -Level 'warn' -Status 'not set' `
+                -Message "$Path\$Name" -Detail $took
+        }
+        'denied' {
+            Write-AppLog -Source 'registry' -Level 'error' -Status 'no access' `
+                -Message "$Path\$Name" -Detail $took
+        }
+        default {
+            Write-AppLog -Source 'registry' -Level 'error' -Status 'unknown root key' `
+                -Message "$Path\$Name" -Detail $took
+        }
+    }
+}
+
+<#
+    El valor tal y como se apunta en el log. A diferencia de la
+    tarjeta -que enseña decimal o hexadecimal según pida cada
+    clave con su campo Display- aquí no hay quien lo pida, así
+    que de un número se ponen las dos formas:
+
+        5 (0x00000005)
+
+    Los textos largos se recortan: una MultiString puede traer
+    cientos de líneas y el log es para leerlo de un vistazo.
+#>
+function Format-LogValue {
+    param($Value, $Kind)
+
+    $text = Format-RegistryValue $Value $Kind
+    if ($null -eq $text) { return '' }
+
+    if ($Kind -eq [Microsoft.Win32.RegistryValueKind]::DWord -or
+        $Kind -eq [Microsoft.Win32.RegistryValueKind]::QWord) {
+        $text += ' ({0})' -f (Format-RegistryValue $Value $Kind 'hex')
+    }
+
+    if ($text.Length -gt 120) { $text = $text.Substring(0, 117) + '...' }
+    $text
+}
+
+# La lectura pelada, sin cronómetro ni rastro. Todo lo que dice
+# la ayuda de Read-RegistryValue sobre los cuatro estados vale
+# aquí: es esta función quien los decide.
+#
+# AllowEmptyString porque una ruta vacía tiene que salir como
+# badpath y no como un error de enlace de parámetros: eso ocurre
+# ANTES de entrar aquí, así que ni siquiera lo podríamos atrapar.
+function Read-RegistryValueRaw {
+    param(
+        [Parameter(Mandatory)][AllowEmptyString()][string]$Path,
+        [Parameter(Mandatory)][AllowEmptyString()][string]$Name
+    )
+
+    $parts = $Path.Split('\', 2)
+    if ($parts.Count -lt 2) { return (New-RegistryResult 'badpath') }
+
+    $hive = $RegistryHives[$parts[0].ToUpper()]
+    if (-not $hive) { return (New-RegistryResult 'badpath') }
+
+    $base = $null
+    $key = $null
+    try {
+        # Registry64 explícito: si el .exe se compilase a 32 bits,
+        # HKLM\SOFTWARE se redirigiría solo a Wow6432Node y
+        # estaríamos leyendo otras claves sin enterarnos.
+        $base = [Microsoft.Win32.RegistryKey]::OpenBaseKey($hive, [Microsoft.Win32.RegistryView]::Registry64)
+        $key = $base.OpenSubKey($parts[1])
+        if (-not $key) { return (New-RegistryResult 'missing') }
+
+        $value = $key.GetValue($Name, $null)
+        if ($null -eq $value) { return (New-RegistryResult 'missing') }
+
+        New-RegistryResult 'read' $value $key.GetValueKind($Name)
+    }
+    catch [System.Security.SecurityException] {
+        New-RegistryResult 'denied'
+    }
+    catch [System.UnauthorizedAccessException] {
+        New-RegistryResult 'denied'
+    }
+    catch {
+        New-RegistryResult 'denied'
+    }
+    finally {
+        if ($key)  { $key.Dispose() }
+        if ($base) { $base.Dispose() }
+    }
+}
+
+function New-RegistryResult {
+    param([string]$State, $Value = $null, $Kind = $null)
+    [PSCustomObject]@{ State = $State; Value = $Value; Kind = $Kind }
+}
+
+<#
+    Convierte a texto un valor leído, para poder enseñarlo.
+
+    El caso que importa son los DWord: .NET los devuelve como
+    Int32 CON SIGNO, así que NetworkThrottlingIndex = 0xFFFFFFFF
+    llega como -1. Se reinterpreta sin signo para que coincida
+    con lo que enseña el Editor del registro.
+
+        Format-RegistryValue -1 DWord 'hex'  ->  '0xFFFFFFFF'
+        Format-RegistryValue -1 DWord        ->  '4294967295'
+
+    $As = 'hex' lo pide cada clave con su campo Display.
+#>
+function Format-RegistryValue {
+    param($Value, $Kind, [string]$As = 'dec')
+
+    if ($null -eq $Value) { return $null }
+
+    switch ($Kind) {
+
+        ([Microsoft.Win32.RegistryValueKind]::DWord) {
+            $u = [System.BitConverter]::ToUInt32([System.BitConverter]::GetBytes([int32]$Value), 0)
+            if ($As -eq 'hex') { '0x{0:X8}' -f $u } else { [string]$u }
+        }
+
+        ([Microsoft.Win32.RegistryValueKind]::QWord) {
+            $u = [System.BitConverter]::ToUInt64([System.BitConverter]::GetBytes([int64]$Value), 0)
+            if ($As -eq 'hex') { '0x{0:X16}' -f $u } else { [string]$u }
+        }
+
+        ([Microsoft.Win32.RegistryValueKind]::Binary) {
+            ($Value | ForEach-Object { '{0:X2}' -f $_ }) -join ' '
+        }
+
+        ([Microsoft.Win32.RegistryValueKind]::MultiString) {
+            $Value -join '; '
+        }
+
+        default { [string]$Value }
+    }
+}
+
+# ---- fin incluido: core/Registry/Reader.ps1 ----
+
+# ---- 5. Datos: secciones, opciones e idiomas ----
+# Se registran al cargarse, de ahí que vayan después del paso 2.
+# Añadir una sección = crear su archivo; quitarla = borrarlo.
+# ---- inicio incluido: ui/Data/Categories/Gaming.ps1 ----
+# ------------------------------------------------------------
+# Categoría: Gaming & Performance
+# ------------------------------------------------------------
+
+Register-Category @{
+    Id          = 'gaming'
+    Name        = 'Gaming & Performance'
+    Icon        = 'Game'
+    Accent      = 'Warn'
+    AccentSoft  = 'WarnSoft'
+    Badge       = 'NEW 16'
+    Description = 'Processor, Graphics, Network, Security, ...'
+
+    Recommended = 65
+    Default     = 47
+    Custom      = 2
+    Total       = 112
+
+    Items = @(
+        New-Setting -Name 'Game Mode' `
+            -Description 'Optimize your PC for play by turning things off in the background' `
+            -Tags 'Recommended', 'Default' `
+            -Value $true
+
+        New-Setting -Name 'Enhance Pointer Precision' `
+            -Description 'Adjust cursor speed based on movement velocity (mouse acceleration). Most competitive gamers disable this for consistent aiming in FPS games' `
+            -Tags 'Recommended' `
+            -Value $false
+
+        New-Setting -Name 'Mouse Hover Time' `
+            -Description 'Controls how long you must hover over an element before it activates (in milliseconds). Lower values make tooltips, menus, and hover effects appear faster. Default is 400ms' `
+            -Tags 'Recommended', 'Default', 'Custom' `
+            -Options '100ms', '200ms', '400ms (Default)', '600ms' `
+            -Value '400ms (Default)' `
+            -Badge 'NEW'
+
+        New-Setting -Name 'Startup Delay for Apps' `
+            -Description 'Delay startup applications by 10 seconds after boot to improve initial system responsiveness. Windows becomes usable faster, but your startup apps take longer to load' `
+            -Tags 'Recommended', 'Default', 'Custom' `
+            -Value $false
+
+        New-Setting -Name 'Background App Permissions' `
+            -Description 'Control whether apps can run in the background via Group Policy. Force Deny removes per-app background settings from Windows Settings. Use User in Control if you need apps like Teams, Zoom, or WhatsApp' `
+            -Tags 'Recommended', 'Default', 'Custom' `
+            -Options 'User in Control', 'Force Allow', 'Force Deny' `
+            -Value 'Force Deny' `
+            -Badge 'NEW'
+    )
+}
+
+# ---- fin incluido: ui/Data/Categories/Gaming.ps1 ----
+# ---- inicio incluido: ui/Data/Categories/Notifications.ps1 ----
+# ------------------------------------------------------------
+# Categoría: Notifications
+# ------------------------------------------------------------
+
+Register-Category @{
+    Id          = 'notifications'
+    Name        = 'Notifications'
+    Icon        = 'Bell'
+    Accent      = 'Warn'
+    AccentSoft  = 'WarnSoft'
+    Badge       = $null
+    Description = 'Additional Settings, System Notifications, Privacy Notifications, Security Notifications'
+
+    Recommended = 7
+    Default     = 9
+    Custom      = 0
+    Total       = 15
+
+    Items = @(
+        New-Setting -Name 'Windows Tips & Suggestions' `
+            -Description 'Show occasional tips, tricks, and suggestions as you use Windows' `
+            -Tags 'Recommended', 'Default' `
+            -Value $false
+
+        New-Setting -Name 'Lock Screen Suggestions' `
+            -Description 'Show fun facts, tips, and other suggestions on the lock screen' `
+            -Tags 'Recommended', 'Default', 'Custom' `
+            -Value $false
+    )
+}
+
+# ---- fin incluido: ui/Data/Categories/Notifications.ps1 ----
+# ---- inicio incluido: ui/Data/Categories/Power.ps1 ----
+# ------------------------------------------------------------
+# Categoría: Power
+# ------------------------------------------------------------
+
+Register-Category @{
+    Id          = 'power'
+    Name        = 'Power'
+    Icon        = 'Power'
+    Accent      = 'Success'
+    AccentSoft  = 'SuccessSoft'
+    Badge       = $null
+    Description = 'Display, Hard Disk, Internet Explorer, Desktop Background Settings, ...'
+
+    Recommended = 18
+    Default     = 23
+    Custom      = 2
+    Total       = 34
+
+    Items = @(
+        New-Setting -Name 'High Performance Power Plan' `
+            -Description 'Switch to the High Performance / Ultimate Performance power scheme' `
+            -Tags 'Recommended', 'Default' `
+            -Value $true
+
+        New-Setting -Name 'USB Selective Suspend' `
+            -Description 'Allow Windows to power down idle USB devices to save energy' `
+            -Tags 'Recommended', 'Default', 'Custom' `
+            -Value $false
+
+        New-Setting -Name 'Hibernation' `
+            -Description 'Enable or disable hibernate mode and the hiberfil.sys reserved space' `
+            -Tags 'Default' `
+            -Value $true
+    )
+}
+
+# ---- fin incluido: ui/Data/Categories/Power.ps1 ----
+# ---- inicio incluido: ui/Data/Categories/Regedit.ps1 ----
+# ------------------------------------------------------------
+# Categoría: Regedit
+# Todo lo de esta sección vive aquí. Para quitarla del programa,
+# borra este archivo. Ver ui/Engine/CategoryRegistry.ps1 para el formato.
+#
+# Cada ajuste declara en -Registry las claves que toca:
+#
+#   Path / Name / Type   dónde está el valor
+#   Recommended          lo que propone el programa
+#   Default              el valor de fábrica de Windows
+#   Display = 'hex'      enseñarlo como 0xFFFFFFFF y no en decimal
+#
+# NO se declara Current: lo rellena core/Registry/CategoryState.ps1 leyendo
+# el equipo cada vez que se entra en la sección. Escribir en el
+# registro sigue sin estar implementado.
+# ------------------------------------------------------------
+
+Register-Category @{
+    Id          = 'regedit'
+    Name        = 'Regedit'
+    Icon        = 'Shield'
+    Accent      = 'Accent'
+    AccentSoft  = 'AccentSoft'
+    # Sin Badge: lo cuenta Register-Category a partir de los Items
+    # que llevan -Badge 'NEW'. Marcar uno más sube el número solo.
+    Description = 'Windows registry keys'
+
+    Recommended = 29
+    Default     = 59
+    Custom      = 0
+    Total       = 88
+
+    Items = @(
+        New-Setting -Name 'Network Throttling Mechanism' `
+            -Description 'Limits network packet processing (NDIS) to 10 packets' `
+            -Tags 'Recommended', 'Default', 'Custom' `
+            -Badge 'NEW' `
+            -Value $true `
+            -Registry @(
+                @{ Path = 'HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile'
+                   Name = 'NetworkThrottlingIndex'; Type = 'DWord'; Display = 'hex'
+                   Recommended = '0xFFFFFFFF'; Default = '0x00000000' }
+            )
+        New-Setting -Name 'User Account Control Level' `
+            -Description 'Controls UAC notification level and secure desktop behavior' `
+            -Tags 'Recommended', 'Default', 'Custom' `
+            -Options 'Always notify', 'Notify when apps try to make changes', 'Notify me only (no dim)', 'Never notify' `
+            -Value 'Notify when apps try to make changes' `
+            -Badge 'NEW' `
+            -Registry @(
+                @{ Path = 'HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System'
+                   Name = 'ConsentPromptBehaviorAdmin'; Type = 'DWord'
+                   Recommended = '0'; Default = '5' }
+                @{ Path = 'HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System'
+                   Name = 'PromptOnSecureDesktop'; Type = 'DWord'
+                   Recommended = '0'; Default = '1' }
+            )
+
+        New-Setting -Name 'Workplace Join Message Prompts' `
+            -Description "Show 'Allow my organization to manage my device' prompts throughout Windows" `
+            -Tags 'Recommended', 'Default', 'Custom' `
+            -Value $true `
+            -Registry @(
+                @{ Path = 'HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Windows\WorkplaceJoin'
+                   Name = 'BlockAADWorkplaceJoin'; Type = 'DWord'
+                   Recommended = '1'; Default = '0' }
+            )
+
+        New-Setting -Name 'BitLocker Auto Encryption' `
+            -Description 'Controls whether Windows can automatically encrypt drives with BitLocker. Has no effect if BitLocker encryption is already active on your device' `
+            -Tags 'Recommended', 'Default', 'Custom' `
+            -Value $false `
+            -Badge 'NEW' `
+            -Registry @(
+                @{ Path = 'HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\BitLocker'
+                   Name = 'PreventDeviceEncryption'; Type = 'DWord'
+                   Recommended = '1'; Default = '0' }
+            )
+
+        New-Setting -Name 'WiFi-Sense' `
+            -Description 'Allow sharing WiFi passwords with contacts and automatically connecting to suggested open hotspots' `
+            -Tags 'Recommended', 'Custom' `
+            -Value $true `
+            -Registry @(
+                @{ Path = 'HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\PolicyManager\default\WiFi\AllowWiFiHotSpotReporting'
+                   Name = 'Value'; Type = 'DWord'
+                   Recommended = '0'; Default = '1' }
+                @{ Path = 'HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\PolicyManager\default\WiFi\AllowAutoConnectToWiFiSenseHotspots'
+                   Name = 'Value'; Type = 'DWord'
+                   Recommended = '0'; Default = '1' }
+            )
+
+        New-Setting -Name 'Automatic Maintenance' `
+            -Description 'Choose if Windows should run automatic system maintenance tasks during idle time' `
+            -Tags 'Recommended', 'Default', 'Custom' `
+            -Value $false `
+            -Registry @(
+                @{ Path = 'HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Schedule\Maintenance'
+                   Name = 'MaintenanceDisabled'; Type = 'DWord'
+                   Recommended = '0'; Default = '0' }
+            )
+
+        New-Setting -Name 'Windows Error Reporting' `
+            -Description 'Choose if Windows should collect and send crash reports and error information to Microsoft' `
+            -Tags 'Recommended', 'Default', 'Custom' `
+            -Value $false `
+            -Registry @(
+                @{ Path = 'HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\Windows Error Reporting'
+                   Name = 'Disabled'; Type = 'DWord'
+                   Recommended = '1'; Default = '0' }
+            )
+    )
+}
+
+# ---- fin incluido: ui/Data/Categories/Regedit.ps1 ----
+# ---- inicio incluido: ui/Data/Categories/Sound.ps1 ----
+# ------------------------------------------------------------
+# Categoría: Sound
+# Ejemplo de categoría mínima: un solo ajuste y sin distintivo.
+# ------------------------------------------------------------
+
+Register-Category @{
+    Id          = 'sound'
+    Name        = 'Sound'
+    Icon        = 'Volume'
+    Accent      = 'Success'
+    AccentSoft  = 'SuccessSoft'
+    Description = 'System Sounds'
+
+    Default     = 7
+    Total       = 7
+
+    Items = @(
+        New-Setting -Name 'Startup Sound' `
+            -Description 'Play the Windows startup sound when signing in' `
+            -Tags 'Default' `
+            -Value $true
+    )
+}
+
+# ---- fin incluido: ui/Data/Categories/Sound.ps1 ----
+# ---- inicio incluido: ui/Data/Categories/Update.ps1 ----
+# ------------------------------------------------------------
+# Categoría: Update
+# ------------------------------------------------------------
+
+Register-Category @{
+    Id          = 'update'
+    Name        = 'Update'
+    Icon        = 'Sync'
+    Accent      = 'Accent'
+    AccentSoft  = 'AccentSoft'
+    Badge       = 'NEW 1'
+    Description = 'Update Policy, Delivery & Store, Update Behavior'
+
+    Recommended = 5
+    Default     = 8
+    Custom      = 1
+    Total       = 12
+
+    Items = @(
+        New-Setting -Name 'Delivery Optimization (P2P)' `
+            -Description 'Allow Windows to download/upload updates to and from other PCs on the internet' `
+            -Tags 'Recommended', 'Default' `
+            -Value $false
+
+        New-Setting -Name 'Auto-Restart With Active Sessions' `
+            -Description 'Allow Windows Update to restart the PC automatically while you are logged in' `
+            -Tags 'Recommended', 'Default', 'Custom' `
+            -Value $false
+    )
+}
+
+# ---- fin incluido: ui/Data/Categories/Update.ps1 ----
+# ---- inicio incluido: ui/Data/Lang/es.ps1 ----
 # ------------------------------------------------------------
 # Español
 #
@@ -1100,7 +2175,7 @@ function Get-LanguageLabel {
 # después ejecuta:  Get-MissingTranslations 'es'
 #
 # Para crear otro idioma, copia este archivo con otro código y
-# añade su línea en ui/LanguageIndex.ps1.
+# añade su línea en ui/Index/LanguageIndex.ps1.
 # ------------------------------------------------------------
 
 Register-Language 'es' @{
@@ -1121,6 +2196,33 @@ Register-Language 'es' @{
     'Help'           = 'Ayuda'
     'Hide the menu'  = 'Ocultar el menú'
     'Show the menu'  = 'Mostrar el menú'
+    'Activity log'   = 'Registro de actividad'
+
+    # ---- Registro de actividad (ui/Components/Shell/LogPanel.ps1) ----
+    # Solo el marco. Las líneas del log no se traducen: son rutas
+    # del registro y valores, texto técnico para copiar y pegar.
+    'What the app has read from your system in this session' = 'Lo que el programa ha leído de tu sistema en esta sesión'
+    'Close the log'   = 'Cerrar el registro'
+    'Clear'           = 'Vaciar'
+    'Save to file'    = 'Guardar en archivo'
+    '{0} entries'     = '{0} entradas'
+    'Newest at the bottom' = 'Lo más reciente, abajo'
+    'Nothing logged yet'   = 'Todavía no hay nada apuntado'
+    'Nothing has been read from your system yet' = 'Todavía no se ha leído nada de tu sistema'
+    'Open a section and its registry keys will show up here' = 'Entra en una sección y sus claves del registro saldrán aquí'
+    'Showing the last {0} of {1} entries' = 'Se enseñan las {0} últimas de {1} entradas'
+    'Only the last {0} entries are kept; {1} older ones were discarded' = 'Solo se guardan las {0} últimas entradas; se han descartado {1} más antiguas'
+    'Saved to {0}'    = 'Guardado en {0}'
+    'The log file could not be written' = 'No se ha podido escribir el archivo del registro'
+
+    # Etiquetas de estado de cada línea. Las cuatro primeras son
+    # las mismas que usa el detalle técnico de las tarjetas.
+    'read'    = 'leído'
+    'reading' = 'leyendo'
+    'done'    = 'hecho'
+    'info'    = 'info'
+    'warn'    = 'aviso'
+    'error'   = 'fallo'
 
     # ---- Pantalla principal ----
     'Optimizations' = 'Optimizaciones'
@@ -1129,13 +2231,37 @@ Register-Language 'es' @{
     'Quick Actions' = 'Acciones rápidas'
     'View'          = 'Vista'
 
+    # ---- Menú del botón "Vista" ----
+    'Show on screen'    = 'Mostrar en pantalla'
+    'Technical details' = 'Detalles técnicos'
+    'Show the registry keys each setting touches' = 'Enseñar las claves del registro que toca cada ajuste'
+    'New badges'        = 'Insignias de nuevo'
+    "Show the red 'NEW' tags on sections and settings" = "Enseñar las etiquetas rojas de 'nuevo' en secciones y ajustes"
+
+    # ---- Insignias ----
+    'NEW' = 'NUEVO'
+
+    # ---- Detalles técnicos ----
+    'Registry changes' = 'Cambios en el registro'
+    'Path:'            = 'Ruta:'
+    'Value:'           = 'Valor:'
+    'Current:'         = 'Actual:'
+    'Recommended:'     = 'Recomendado:'
+    'Factory:'         = 'Predeterminado:'
+    'Open this key in Registry Editor' = 'Abrir esta clave en el Editor del registro'
+    'Reading the registry...' = 'Leyendo el registro...'
+    'not set'          = 'sin definir'
+    'not read'         = 'sin leer'
+    'no access'        = 'sin acceso'
+    'unknown root key' = 'raíz desconocida'
+    'No registry keys declared for this setting yet.' = 'Este ajuste todavía no declara ninguna clave del registro.'
+
     # ---- Pantalla de detalle ----
     '{0} settings' = '{0} ajustes'
     'Reset'        = 'Restablecer'
     'Back to the list' = 'Volver a la lista'
 
     # ---- Etiquetas de clasificación ----
-    'Preference'  = 'Preferencia'
     'Recommended' = 'Recomendado'
     'Default'     = 'De fábrica'
     'Custom'      = 'Personalizado'
@@ -1152,7 +2278,7 @@ Register-Language 'es' @{
 
     # ---- Bloqueo ----
     'Locked section' = 'Sección bloqueada'
-    'Its settings are shown for reference only: they cannot be changed. To unlock it, set Locked = $false in ui/CategoryIndex.ps1.' = 'Sus ajustes se muestran solo como consulta: no se pueden modificar. Para desbloquearla, pon Locked = $false en ui/CategoryIndex.ps1.'
+    'Its settings are shown for reference only: they cannot be changed. To unlock it, set Locked = $false in ui/Index/CategoryIndex.ps1.' = 'Sus ajustes se muestran solo como consulta: no se pueden modificar. Para desbloquearla, pon Locked = $false en ui/Index/CategoryIndex.ps1.'
     'Locked section: you can look, not change' = 'Sección bloqueada: se puede consultar, no modificar'
     'Not available: the section is locked'     = 'No disponible: la sección está bloqueada'
     '{0}: locked' = '{0}: bloqueado'
@@ -1173,8 +2299,8 @@ Register-Language 'es' @{
     # CONTENIDO: nombres y descripciones de las secciones
     # ============================================================
 
-    'Privacy & Security'   = 'Privacidad y seguridad'
-    'Security, Content Delivery & Advertising, Lock Screen, General, ...' = 'Seguridad, contenido y publicidad, pantalla de bloqueo, general, ...'
+    'Regedit'               = 'Regedit'
+    'Windows registry keys' = 'Claves de registro de Windows'
 
     'Power' = 'Energía'
     'Display, Hard Disk, Internet Explorer, Desktop Background Settings, ...' = 'Pantalla, disco duro, Internet Explorer, fondo de escritorio, ...'
@@ -1195,7 +2321,10 @@ Register-Language 'es' @{
     # CONTENIDO: ajustes
     # ============================================================
 
-    # ---- Privacy & Security ----
+    # ---- Regedit ----
+    'Network Throttling Mechanism' = 'Mecanismo de limitación de red'
+    'Limits network packet processing (NDIS) to 10 packets' = 'Limita el procesamiento de paquetes de red (NDIS) a 10 paquetes'
+
     'User Account Control Level' = 'Nivel del Control de cuentas de usuario'
     'Controls UAC notification level and secure desktop behavior' = 'Controla el nivel de aviso del UAC y el comportamiento del escritorio seguro'
     'Always notify' = 'Notificar siempre'
@@ -1271,253 +2400,13 @@ Register-Language 'es' @{
 
 }
 
-# ---- fin incluido: ui/Lang/es.ps1 ----
-
-# ---- inicio incluido: ui/Categories/Gaming.ps1 ----
-# ------------------------------------------------------------
-# Categoría: Gaming & Performance
-# ------------------------------------------------------------
-
-Register-Category @{
-    Id          = 'gaming'
-    Name        = 'Gaming & Performance'
-    Icon        = 'Game'
-    Accent      = 'Warn'
-    AccentSoft  = 'WarnSoft'
-    Badge       = 'NEW 16'
-    Description = 'Processor, Graphics, Network, Security, ...'
-
-    Recommended = 65
-    Default     = 47
-    Custom      = 2
-    Total       = 112
-
-    Items = @(
-        New-Setting -Name 'Game Mode' `
-            -Description 'Optimize your PC for play by turning things off in the background' `
-            -Tags 'Recommended', 'Default' `
-            -Value $true
-
-        New-Setting -Name 'Enhance Pointer Precision' `
-            -Description 'Adjust cursor speed based on movement velocity (mouse acceleration). Most competitive gamers disable this for consistent aiming in FPS games' `
-            -Tags 'Preference', 'Recommended' `
-            -Value $false
-
-        New-Setting -Name 'Mouse Hover Time' `
-            -Description 'Controls how long you must hover over an element before it activates (in milliseconds). Lower values make tooltips, menus, and hover effects appear faster. Default is 400ms' `
-            -Tags 'Preference', 'Recommended', 'Default', 'Custom' `
-            -Options '100ms', '200ms', '400ms (Default)', '600ms' `
-            -Value '400ms (Default)' `
-            -Badge 'NEW'
-
-        New-Setting -Name 'Startup Delay for Apps' `
-            -Description 'Delay startup applications by 10 seconds after boot to improve initial system responsiveness. Windows becomes usable faster, but your startup apps take longer to load' `
-            -Tags 'Preference', 'Recommended', 'Default', 'Custom' `
-            -Value $false
-
-        New-Setting -Name 'Background App Permissions' `
-            -Description 'Control whether apps can run in the background via Group Policy. Force Deny removes per-app background settings from Windows Settings. Use User in Control if you need apps like Teams, Zoom, or WhatsApp' `
-            -Tags 'Preference', 'Recommended', 'Default', 'Custom' `
-            -Options 'User in Control', 'Force Allow', 'Force Deny' `
-            -Value 'Force Deny' `
-            -Badge 'NEW'
-    )
-}
-
-# ---- fin incluido: ui/Categories/Gaming.ps1 ----
-# ---- inicio incluido: ui/Categories/Notifications.ps1 ----
-# ------------------------------------------------------------
-# Categoría: Notifications
-# ------------------------------------------------------------
-
-Register-Category @{
-    Id          = 'notifications'
-    Name        = 'Notifications'
-    Icon        = 'Bell'
-    Accent      = 'Warn'
-    AccentSoft  = 'WarnSoft'
-    Badge       = $null
-    Description = 'Additional Settings, System Notifications, Privacy Notifications, Security Notifications'
-
-    Recommended = 7
-    Default     = 9
-    Custom      = 0
-    Total       = 15
-
-    Items = @(
-        New-Setting -Name 'Windows Tips & Suggestions' `
-            -Description 'Show occasional tips, tricks, and suggestions as you use Windows' `
-            -Tags 'Recommended', 'Default' `
-            -Value $false
-
-        New-Setting -Name 'Lock Screen Suggestions' `
-            -Description 'Show fun facts, tips, and other suggestions on the lock screen' `
-            -Tags 'Recommended', 'Default', 'Custom' `
-            -Value $false
-    )
-}
-
-# ---- fin incluido: ui/Categories/Notifications.ps1 ----
-# ---- inicio incluido: ui/Categories/Power.ps1 ----
-# ------------------------------------------------------------
-# Categoría: Power
-# ------------------------------------------------------------
-
-Register-Category @{
-    Id          = 'power'
-    Name        = 'Power'
-    Icon        = 'Power'
-    Accent      = 'Success'
-    AccentSoft  = 'SuccessSoft'
-    Badge       = $null
-    Description = 'Display, Hard Disk, Internet Explorer, Desktop Background Settings, ...'
-
-    Recommended = 18
-    Default     = 23
-    Custom      = 2
-    Total       = 34
-
-    Items = @(
-        New-Setting -Name 'High Performance Power Plan' `
-            -Description 'Switch to the High Performance / Ultimate Performance power scheme' `
-            -Tags 'Recommended', 'Default' `
-            -Value $true
-
-        New-Setting -Name 'USB Selective Suspend' `
-            -Description 'Allow Windows to power down idle USB devices to save energy' `
-            -Tags 'Recommended', 'Default', 'Custom' `
-            -Value $false
-
-        New-Setting -Name 'Hibernation' `
-            -Description 'Enable or disable hibernate mode and the hiberfil.sys reserved space' `
-            -Tags 'Preference', 'Default' `
-            -Value $true
-    )
-}
-
-# ---- fin incluido: ui/Categories/Power.ps1 ----
-# ---- inicio incluido: ui/Categories/Privacy.ps1 ----
-# ------------------------------------------------------------
-# Categoría: Privacy & Security
-# Todo lo de esta sección vive aquí. Para quitarla del programa,
-# borra este archivo. Ver ui/CategoryRegistry.ps1 para el formato.
-# ------------------------------------------------------------
-
-Register-Category @{
-    Id          = 'privacy'
-    Name        = 'Privacy & Security'
-    Icon        = 'Shield'
-    Accent      = 'Accent'
-    AccentSoft  = 'AccentSoft'
-    Badge       = 'NEW 45'
-    Description = 'Security, Content Delivery & Advertising, Lock Screen, General, ...'
-
-    Recommended = 29
-    Default     = 59
-    Custom      = 0
-    Total       = 88
-
-    Items = @(
-        New-Setting -Name 'User Account Control Level' `
-            -Description 'Controls UAC notification level and secure desktop behavior' `
-            -Tags 'Preference', 'Recommended', 'Default', 'Custom' `
-            -Options 'Always notify', 'Notify when apps try to make changes', 'Notify me only (no dim)', 'Never notify' `
-            -Value 'Notify when apps try to make changes'
-
-        New-Setting -Name 'Workplace Join Message Prompts' `
-            -Description "Show 'Allow my organization to manage my device' prompts throughout Windows" `
-            -Tags 'Recommended', 'Default', 'Custom' `
-            -Value $true
-
-        New-Setting -Name 'BitLocker Auto Encryption' `
-            -Description 'Controls whether Windows can automatically encrypt drives with BitLocker. Has no effect if BitLocker encryption is already active on your device' `
-            -Tags 'Preference', 'Recommended', 'Default', 'Custom' `
-            -Value $false
-
-        New-Setting -Name 'WiFi-Sense' `
-            -Description 'Allow sharing WiFi passwords with contacts and automatically connecting to suggested open hotspots' `
-            -Tags 'Recommended', 'Custom' `
-            -Value $true
-
-        New-Setting -Name 'Automatic Maintenance' `
-            -Description 'Choose if Windows should run automatic system maintenance tasks during idle time' `
-            -Tags 'Recommended', 'Default', 'Custom' `
-            -Value $false
-
-        New-Setting -Name 'Windows Error Reporting' `
-            -Description 'Choose if Windows should collect and send crash reports and error information to Microsoft' `
-            -Tags 'Recommended', 'Default', 'Custom' `
-            -Value $false
-    )
-}
-
-# ---- fin incluido: ui/Categories/Privacy.ps1 ----
-# ---- inicio incluido: ui/Categories/Sound.ps1 ----
-# ------------------------------------------------------------
-# Categoría: Sound
-# Ejemplo de categoría mínima: un solo ajuste y sin distintivo.
-# ------------------------------------------------------------
-
-Register-Category @{
-    Id          = 'sound'
-    Name        = 'Sound'
-    Icon        = 'Volume'
-    Accent      = 'Success'
-    AccentSoft  = 'SuccessSoft'
-    Description = 'System Sounds'
-
-    Default     = 7
-    Total       = 7
-
-    Items = @(
-        New-Setting -Name 'Startup Sound' `
-            -Description 'Play the Windows startup sound when signing in' `
-            -Tags 'Default' `
-            -Value $true
-    )
-}
-
-# ---- fin incluido: ui/Categories/Sound.ps1 ----
-# ---- inicio incluido: ui/Categories/Update.ps1 ----
-# ------------------------------------------------------------
-# Categoría: Update
-# ------------------------------------------------------------
-
-Register-Category @{
-    Id          = 'update'
-    Name        = 'Update'
-    Icon        = 'Sync'
-    Accent      = 'Accent'
-    AccentSoft  = 'AccentSoft'
-    Badge       = 'NEW 1'
-    Description = 'Update Policy, Delivery & Store, Update Behavior'
-
-    Recommended = 5
-    Default     = 8
-    Custom      = 1
-    Total       = 12
-
-    Items = @(
-        New-Setting -Name 'Delivery Optimization (P2P)' `
-            -Description 'Allow Windows to download/upload updates to and from other PCs on the internet' `
-            -Tags 'Recommended', 'Default' `
-            -Value $false
-
-        New-Setting -Name 'Auto-Restart With Active Sessions' `
-            -Description 'Allow Windows Update to restart the PC automatically while you are logged in' `
-            -Tags 'Recommended', 'Default', 'Custom' `
-            -Value $false
-    )
-}
-
-# ---- fin incluido: ui/Categories/Update.ps1 ----
-
-# ---- inicio incluido: ui/Preferences/10-Language.ps1 ----
+# ---- fin incluido: ui/Data/Lang/es.ps1 ----
+# ---- inicio incluido: ui/Data/Preferences/10-Language.ps1 ----
 # ------------------------------------------------------------
 # Opción: idioma de la interfaz
 #
 # Ejemplo de opción con lista dinámica: las opciones salen de
-# ui/LanguageIndex.ps1, así que añadir un idioma allí lo hace
+# ui/Index/LanguageIndex.ps1, así que añadir un idioma allí lo hace
 # aparecer aquí sin tocar este archivo.
 # ------------------------------------------------------------
 
@@ -1550,8 +2439,8 @@ Register-Preference @{
     }
 }
 
-# ---- fin incluido: ui/Preferences/10-Language.ps1 ----
-# ---- inicio incluido: ui/Preferences/20-Theme.ps1 ----
+# ---- fin incluido: ui/Data/Preferences/10-Language.ps1 ----
+# ---- inicio incluido: ui/Data/Preferences/20-Theme.ps1 ----
 # ------------------------------------------------------------
 # Opción: tema claro / oscuro
 #
@@ -1583,74 +2472,10 @@ Register-Preference @{
     }
 }
 
-# ---- fin incluido: ui/Preferences/20-Theme.ps1 ----
+# ---- fin incluido: ui/Data/Preferences/20-Theme.ps1 ----
 
-# ---- inicio incluido: ui/Components/Banner.ps1 ----
-# ============================================================
-# Componente: aviso
-#
-# Franja informativa que se coloca encima del contenido de una
-# pantalla. Ahora mismo la usa el detalle para avisar de que la
-# sección está bloqueada.
-# ============================================================
-
-function New-Banner {
-    param(
-        [string]$Icon,
-        [string]$Title,
-        [string]$Message,
-        [string]$Fg = 'Warn',
-        [string]$Bg = 'WarnSoft'
-    )
-
-    $banner = New-Object System.Windows.Controls.Border
-    $banner.CornerRadius = New-Object System.Windows.CornerRadius 12
-    $banner.Padding = New-Object System.Windows.Thickness 16, 13, 18, 14
-    $banner.Margin = New-Object System.Windows.Thickness 0, 0, 0, 14
-    Set-BoxBg $banner $Bg
-
-    $row = New-Object System.Windows.Controls.StackPanel
-    $row.Orientation = 'Horizontal'
-
-    $ic = New-Icon $Icon 17 $Fg
-    $ic.VerticalAlignment = 'Center'
-    $ic.Margin = New-Object System.Windows.Thickness 0, 0, 13, 0
-    $row.Children.Add($ic) | Out-Null
-
-    $texts = New-Object System.Windows.Controls.StackPanel
-    $texts.VerticalAlignment = 'Center'
-
-    $t = New-Object System.Windows.Controls.TextBlock
-    $t.Text = T $Title
-    $t.FontSize = 12.5
-    $t.FontWeight = 'SemiBold'
-    Set-TextFg $t $Fg
-    $texts.Children.Add($t) | Out-Null
-
-    if ($Message) {
-        $m = New-Object System.Windows.Controls.TextBlock
-        $m.Text = T $Message
-        $m.FontSize = 11.5
-        $m.TextWrapping = 'Wrap'
-        $m.Margin = New-Object System.Windows.Thickness 0, 2, 0, 0
-        Set-TextFg $m 'TextMuted'
-        $texts.Children.Add($m) | Out-Null
-    }
-
-    $row.Children.Add($texts) | Out-Null
-    $banner.Child = $row
-    $banner
-}
-
-# Aviso concreto de sección bloqueada.
-function New-LockedBanner {
-    New-Banner -Icon 'Lock' `
-        -Title 'Locked section' `
-        -Message 'Its settings are shown for reference only: they cannot be changed. To unlock it, set Locked = $false in ui/CategoryIndex.ps1.'
-}
-
-# ---- fin incluido: ui/Components/Banner.ps1 ----
-# ---- inicio incluido: ui/Components/CategoryCard.ps1 ----
+# ---- 6. Piezas: los controles concretos ----
+# ---- inicio incluido: ui/Components/Cards/CategoryCard.ps1 ----
 # ============================================================
 # Componente: tarjeta de categoría
 #
@@ -1694,9 +2519,12 @@ function New-CategoryCard {
     Set-TextFg $name 'Text'
     $nameRow.Children.Add($name) | Out-Null
 
-    if ($Category.Badge) { $nameRow.Children.Add((New-Badge $Category.Badge)) | Out-Null }
+    # La insignia se apaga desde el botón "Vista" de la cabecera.
+    if ($Category.Badge -and (Get-ViewOption 'badges')) {
+        $nameRow.Children.Add((New-Badge $Category.Badge)) | Out-Null
+    }
 
-    # Candado si la sección está bloqueada en ui/CategoryIndex.ps1.
+    # Candado si la sección está bloqueada en ui/Index/CategoryIndex.ps1.
     if ($Category.Locked) {
         $lock = New-Icon 'Lock' 12 'TextFaint'
         $lock.Margin = New-Object System.Windows.Thickness 9, 1, 0, 0
@@ -1727,10 +2555,15 @@ function New-CategoryCard {
     $card.Child = $grid
 
     # La categoría viaja en el Tag: nada de closures (regla 4 de CLAUDE.md).
+    #
+    # Se abre con Show-View, NO llamando a la vista (regla 17): si se
+    # llamara directamente, el enrutador seguiría creyendo que estamos
+    # en la lista y cualquier repintado -cambiar de idioma, tocar una
+    # casilla del botón "Vista"- saltaría de vuelta a ella.
     $card.Tag = $Category
     $card.Add_MouseLeftButtonUp({
         param($s, $e)
-        Show-CategoryDetailView -Window ([System.Windows.Window]::GetWindow($s)) -Category $s.Tag
+        Show-View -Name 'Show-CategoryDetailView' -Arguments @{ Category = $s.Tag }
     })
 
     $card
@@ -1765,166 +2598,12 @@ function New-CategoryStats {
     $stats
 }
 
-# ---- fin incluido: ui/Components/CategoryCard.ps1 ----
-# ---- inicio incluido: ui/Components/PageHeader.ps1 ----
-# ============================================================
-# Componente: cabecera de página
-#
-# La franja superior del contenido, con dos zonas definidas en
-# MainWindow.xaml:
-#     HeaderTitleArea    -> izquierda: título o breadcrumb
-#     HeaderActionsArea  -> derecha:   buscador y botones
-#
-# Las vistas no tocan esas zonas directamente: usan estas
-# funciones. Así todas las pantallas comparten el mismo aspecto.
-# ============================================================
-
-# Vacía las dos zonas. Toda vista debe llamarla antes de pintar.
-function Clear-PageHeader {
-    param($Window)
-    $Window.FindName('HeaderTitleArea').Children.Clear()
-    $Window.FindName('HeaderActionsArea').Children.Clear()
-}
-
-# Título grande + subtítulo gris (pantalla principal).
-function Set-PageTitle {
-    param($Window, [string]$Title, [string]$Subtitle)
-
-    $stack = New-Object System.Windows.Controls.StackPanel
-
-    $big = New-Object System.Windows.Controls.TextBlock
-    $big.Text = $Title
-    $big.FontFamily = $Window.FindResource('DisplayFont')
-    $big.FontSize = 27
-    $big.FontWeight = 'Bold'
-    Set-TextFg $big 'Text'
-    $stack.Children.Add($big) | Out-Null
-
-    if ($Subtitle) {
-        $sub = New-Object System.Windows.Controls.TextBlock
-        $sub.Text = $Subtitle
-        $sub.FontSize = 12.5
-        $sub.Margin = New-Object System.Windows.Thickness 0, 3, 0, 0
-        Set-TextFg $sub 'TextMuted'
-        $stack.Children.Add($sub) | Out-Null
-    }
-
-    $Window.FindName('HeaderTitleArea').Children.Add($stack) | Out-Null
-}
-
-# Breadcrumb de una categoría: botón atrás + icono + ruta + título.
-# $OnBack es el nombre de la función a la que vuelve el botón.
-function Set-PageBreadcrumb {
-    param($Window, $Category, [string]$RootLabel = 'Optimizations')
-
-    $row = New-Object System.Windows.Controls.StackPanel
-    $row.Orientation = 'Horizontal'
-
-    # --- botón atrás ---
-    $back = New-Object System.Windows.Controls.Border
-    $back.Width = 34; $back.Height = 34
-    $back.CornerRadius = New-Object System.Windows.CornerRadius 9
-    $back.BorderThickness = New-Object System.Windows.Thickness 1
-    $back.Margin = New-Object System.Windows.Thickness 0, 0, 14, 0
-    $back.VerticalAlignment = 'Center'
-    $back.Cursor = 'Hand'
-    $back.ToolTip = T 'Back to the list'
-    Set-BoxBg $back 'Surface'
-    Set-BoxLine $back 'Stroke'
-    $back.Child = (New-Icon 'Back' 13 'TextMuted')
-    $back.Add_MouseLeftButtonUp({
-        param($s, $e)
-        Show-OptimizationsListView -Window ([System.Windows.Window]::GetWindow($s))
-    })
-    $row.Children.Add($back) | Out-Null
-
-    # --- icono de la categoría ---
-    $tile = New-IconTile $Category.Icon $Category.Accent $Category.AccentSoft 38
-    $tile.Margin = New-Object System.Windows.Thickness 0, 0, 13, 0
-    $row.Children.Add($tile) | Out-Null
-
-    # --- ruta pequeña + título ---
-    $texts = New-Object System.Windows.Controls.StackPanel
-    $texts.VerticalAlignment = 'Center'
-
-    $trail = New-Object System.Windows.Controls.StackPanel
-    $trail.Orientation = 'Horizontal'
-
-    $rootLink = New-Object System.Windows.Controls.TextBlock
-    $rootLink.Text = T $RootLabel
-    $rootLink.FontSize = 11
-    $rootLink.Cursor = 'Hand'
-    Set-TextFg $rootLink 'TextFaint'
-    $rootLink.Add_MouseLeftButtonUp({
-        param($s, $e)
-        Show-OptimizationsListView -Window ([System.Windows.Window]::GetWindow($s))
-    })
-    $trail.Children.Add($rootLink) | Out-Null
-
-    $sep = New-Icon 'ChevronRight' 8 'TextFaint'
-    $sep.Margin = New-Object System.Windows.Thickness 6, 1, 6, 0
-    $trail.Children.Add($sep) | Out-Null
-
-    $leaf = New-Object System.Windows.Controls.TextBlock
-    $leaf.Text = T $Category.Name
-    $leaf.FontSize = 11
-    Set-TextFg $leaf 'TextMuted'
-    $trail.Children.Add($leaf) | Out-Null
-
-    $texts.Children.Add($trail) | Out-Null
-
-    $title = New-Object System.Windows.Controls.TextBlock
-    $title.Text = T $Category.Name
-    $title.FontFamily = $Window.FindResource('DisplayFont')
-    $title.FontSize = 21
-    $title.FontWeight = 'Bold'
-    $title.Margin = New-Object System.Windows.Thickness 0, 1, 0, 0
-    Set-TextFg $title 'Text'
-    $texts.Children.Add($title) | Out-Null
-
-    $row.Children.Add($texts) | Out-Null
-    $Window.FindName('HeaderTitleArea').Children.Add($row) | Out-Null
-}
-
-# Cabecera de un bloque dentro del contenido ("General",
-# "Appearance"...). La usa la pantalla de Settings.
-function New-SectionHeader {
-    param($Window, [string]$Text)
-
-    $header = New-Object System.Windows.Controls.TextBlock
-    $header.Text = $Text
-    $header.FontFamily = $Window.FindResource('DisplayFont')
-    $header.FontSize = 12
-    $header.FontWeight = 'SemiBold'
-    $header.Margin = New-Object System.Windows.Thickness 4, 6, 0, 10
-    Set-TextFg $header 'TextFaint'
-    $header
-}
-
-# Añade un control a la zona de acciones (derecha).
-function Add-PageAction {
-    param($Window, $Element)
-    $Window.FindName('HeaderActionsArea').Children.Add($Element) | Out-Null
-}
-
-# Texto gris suelto en la zona de acciones ("6 settings").
-function Add-PageActionLabel {
-    param($Window, [string]$Text)
-    $t = New-Object System.Windows.Controls.TextBlock
-    $t.Text = $Text
-    $t.FontSize = 12
-    $t.VerticalAlignment = 'Center'
-    $t.Margin = New-Object System.Windows.Thickness 0, 0, 4, 0
-    Set-TextFg $t 'TextFaint'
-    Add-PageAction $Window $t
-}
-
-# ---- fin incluido: ui/Components/PageHeader.ps1 ----
-# ---- inicio incluido: ui/Components/PreferenceCard.ps1 ----
+# ---- fin incluido: ui/Components/Cards/CategoryCard.ps1 ----
+# ---- inicio incluido: ui/Components/Cards/PreferenceCard.ps1 ----
 # ============================================================
 # Componente: tarjeta de preferencia
 #
-# Dibuja una opción de ui/Preferences/. Mismo aspecto que las
+# Dibuja una opción de ui/Data/Preferences/. Mismo aspecto que las
 # tarjetas de ajuste de una categoría, pero conectada a los
 # scriptblocks Get y Set de la preferencia.
 # ============================================================
@@ -2043,8 +2722,8 @@ function New-PreferenceControl {
     $holder
 }
 
-# ---- fin incluido: ui/Components/PreferenceCard.ps1 ----
-# ---- inicio incluido: ui/Components/SettingCard.ps1 ----
+# ---- fin incluido: ui/Components/Cards/PreferenceCard.ps1 ----
+# ---- inicio incluido: ui/Components/Cards/SettingCard.ps1 ----
 # ============================================================
 # Componente: tarjeta de ajuste
 #
@@ -2054,9 +2733,14 @@ function New-PreferenceControl {
 #   [nombre + badge / descripción / etiquetas]  [indicadores + control]
 #
 # El control de la derecha lo decide el campo Type del ajuste,
-# que New-Setting deduce solo (ver ui/CategoryRegistry.ps1):
+# que New-Setting deduce solo (ver ui/Engine/CategoryRegistry.ps1):
 #     Toggle    -> interruptor animado
 #     Dropdown  -> desplegable
+#
+# Debajo puede colgar el pie plegable de detalles técnicos, que
+# construye ui/Components/Cards/TechnicalDetails.ps1. Sale o no según
+# la opción 'technical' del botón "Vista"; la insignia del título
+# hace lo propio con la opción 'badges'.
 # ============================================================
 
 function New-SettingCard {
@@ -2064,9 +2748,13 @@ function New-SettingCard {
 
     $card = New-Object System.Windows.Controls.Border
     $card.Style = $Window.FindResource('StaticCardStyle')
-    $card.Padding = New-Object System.Windows.Thickness 20, 15, 20, 16
+
+    # El relleno va en la fila, no en la tarjeta: así la línea
+    # separadora del pie llega de borde a borde.
+    $stack = New-Object System.Windows.Controls.StackPanel
 
     $grid = New-Object System.Windows.Controls.Grid
+    $grid.Margin = New-Object System.Windows.Thickness 20, 15, 20, 16
     Add-GridColumns $grid '*', 'Auto'
 
     Add-ToColumn $grid (New-SettingInfo $Window $Setting) 0
@@ -2081,7 +2769,15 @@ function New-SettingCard {
     }
     Add-ToColumn $grid $control 1
 
-    $card.Child = $grid
+    $stack.Children.Add($grid) | Out-Null
+
+    # El pie es de consulta, así que se enseña también en las
+    # secciones bloqueadas.
+    if (Get-ViewOption 'technical') {
+        $stack.Children.Add((New-TechnicalDetails $Window $Setting)) | Out-Null
+    }
+
+    $card.Child = $stack
     $card
 }
 
@@ -2103,7 +2799,9 @@ function New-SettingInfo {
     Set-TextFg $name 'Text'
     $nameRow.Children.Add($name) | Out-Null
 
-    if ($Setting.Badge) { $nameRow.Children.Add((New-Badge $Setting.Badge)) | Out-Null }
+    if ($Setting.Badge -and (Get-ViewOption 'badges')) {
+        $nameRow.Children.Add((New-Badge $Setting.Badge)) | Out-Null
+    }
     $left.Children.Add($nameRow) | Out-Null
 
     $desc = New-Object System.Windows.Controls.TextBlock
@@ -2157,7 +2855,14 @@ function New-SettingControl {
             $state.Margin = New-Object System.Windows.Thickness 0, 0, 10, 0
             Set-TextFg $state 'TextMuted'
             $right.Children.Add($state) | Out-Null
-            $right.Children.Add((New-ToggleSwitch -Window $Window -InitialState $Setting.Value -Label $state)) | Out-Null
+
+            $toggle = New-ToggleSwitch -Window $Window -InitialState $Setting.Value -Label $state
+            # Segundo manejador, además del que anima el interruptor:
+            # tocar un ajuste vuelve a contar el resumen de la cabecera.
+            # Hoy los números no se mueven porque las etiquetas son
+            # estáticas; el enganche ya está puesto para cuando lo sean.
+            $toggle.Add_MouseLeftButtonUp({ param($s, $e) Update-CategorySummary })
+            $right.Children.Add($toggle) | Out-Null
         }
         'Dropdown' {
             $combo = New-Object System.Windows.Controls.ComboBox
@@ -2165,6 +2870,9 @@ function New-SettingControl {
             $combo.Width = 262
             foreach ($opt in $Setting.Options) { $combo.Items.Add((T $opt)) | Out-Null }
             $combo.SelectedItem = T $Setting.Value
+            # Enganchado DESPUÉS de fijar la selección inicial, o
+            # saltaría al construir la tarjeta.
+            $combo.Add_SelectionChanged({ param($s, $e) Update-CategorySummary })
             $right.Children.Add($combo) | Out-Null
         }
     }
@@ -2172,12 +2880,1267 @@ function New-SettingControl {
     $right
 }
 
-# ---- fin incluido: ui/Components/SettingCard.ps1 ----
-# ---- inicio incluido: ui/Components/Sidebar.ps1 ----
+# ---- fin incluido: ui/Components/Cards/SettingCard.ps1 ----
+# ---- inicio incluido: ui/Components/Cards/TechnicalDetails.ps1 ----
+# ============================================================
+# Componente: detalle técnico de un ajuste
+#
+# La franja plegable del pie de cada tarjeta de ajuste. Enseña
+# qué claves del registro toca ese ajuste y con qué valores:
+#
+#   ---------------------------------------------
+#   (i) Detalles técnicos                       v
+#   ---------------------------------------------
+#      Cambios en el registro
+#      [/]  Ruta:  HKEY_LOCAL_MACHINE\...        Actual: 5
+#           Valor: ConsentPromptBehaviorAdmin    Recomendado: 0
+#                                                Predeterminado: 5
+#
+# Los datos salen del campo Registry del ajuste (ver -Registry
+# en New-Setting, ui/Engine/CategoryRegistry.ps1). Un ajuste que aún no
+# lo declare enseña un aviso en su lugar, para que se vea que la
+# fila existe pero le falta el dato.
+#
+# NADA de esto lee ni escribe el registro todavía: los valores
+# son los declarados en ui/Data/Categories/.
+# ============================================================
+
+function New-TechnicalDetails {
+    param($Window, $Setting)
+
+    $section = New-Object System.Windows.Controls.StackPanel
+
+    # --- línea separadora, de borde a borde de la tarjeta ---
+    $rule = New-Object System.Windows.Controls.Border
+    $rule.Height = 1
+    Set-BoxBg $rule 'Stroke'
+    $section.Children.Add($rule) | Out-Null
+
+    # --- cuerpo plegado (se construye ya, se enseña al pulsar) ---
+    $body = New-TechnicalBody $Window $Setting
+    $body.Visibility = 'Collapsed'
+
+    # Segunda línea, entre la fila y el cuerpo: solo tiene sentido
+    # con el cuerpo abierto, así que va y viene con él.
+    $split = New-Object System.Windows.Controls.Border
+    $split.Height = 1
+    $split.Margin = New-Object System.Windows.Thickness 0, 0, 0, 14
+    $split.Visibility = 'Collapsed'
+    Set-BoxBg $split 'Stroke'
+
+    # --- fila que pliega y despliega ---
+    $header = New-Object System.Windows.Controls.Border
+    $header.Padding = New-Object System.Windows.Thickness 20, 9, 18, 10
+    $header.Cursor = 'Hand'
+    $header.Background = [System.Windows.Media.Brushes]::Transparent
+
+    $grid = New-Object System.Windows.Controls.Grid
+    Add-GridColumns $grid 'Auto', '*', 'Auto'
+
+    $icon = New-Icon 'Info' 13 'TextFaint'
+    $icon.Margin = New-Object System.Windows.Thickness 0, 0, 9, 0
+    Add-ToColumn $grid $icon 0
+
+    $label = New-Object System.Windows.Controls.TextBlock
+    $label.Text = T 'Technical details'
+    $label.FontSize = 11.5
+    $label.VerticalAlignment = 'Center'
+    Set-TextFg $label 'TextMuted'
+    Add-ToColumn $grid $label 1
+
+    $chevron = New-Icon 'ChevronDown' 10 'TextFaint'
+    Add-ToColumn $grid $chevron 2
+
+    $header.Child = $grid
+
+    $header.Add_MouseEnter({ param($s, $e) Set-BoxBg $s 'SurfaceHover' })
+    $header.Add_MouseLeave({ param($s, $e) $s.Background = [System.Windows.Media.Brushes]::Transparent })
+
+    # Cuerpo, línea y chevron viajan en el Tag: nada de closures
+    # (regla 4 de CLAUDE.md).
+    $header.Tag = [PSCustomObject]@{ Body = $body; Split = $split; Chevron = $chevron }
+    $header.Add_MouseLeftButtonUp({
+        param($s, $e)
+        $info = $s.Tag
+        if ($info.Body.Visibility -eq 'Visible') {
+            $info.Body.Visibility = 'Collapsed'
+            $info.Split.Visibility = 'Collapsed'
+            $info.Chevron.Text = Glyph 'ChevronDown'
+        }
+        else {
+            $info.Body.Visibility = 'Visible'
+            $info.Split.Visibility = 'Visible'
+            $info.Chevron.Text = Glyph 'ChevronUp'
+            Start-EnterTransition $info.Body 170 6
+        }
+    })
+
+    $section.Children.Add($header) | Out-Null
+    $section.Children.Add($split)  | Out-Null
+    $section.Children.Add($body)   | Out-Null
+    $section
+}
+
+# El bloque que se despliega: título y una fila por clave.
+function New-TechnicalBody {
+    param($Window, $Setting)
+
+    $body = New-Object System.Windows.Controls.StackPanel
+    $body.Margin = New-Object System.Windows.Thickness 18, 0, 18, 16
+
+    $strip = New-Object System.Windows.Controls.Border
+    $strip.CornerRadius = New-Object System.Windows.CornerRadius 8
+    $strip.Padding = New-Object System.Windows.Thickness 12, 7, 12, 8
+    $strip.Margin = New-Object System.Windows.Thickness 0, 0, 0, 12
+    Set-BoxBg $strip 'SurfaceSunken'
+
+    $stripText = New-Object System.Windows.Controls.TextBlock
+    $stripText.Text = T 'Registry changes'
+    $stripText.FontSize = 11.5
+    $stripText.FontWeight = 'SemiBold'
+    Set-TextFg $stripText 'TextMuted'
+    $strip.Child = $stripText
+    $body.Children.Add($strip) | Out-Null
+
+    $keys = @($Setting.Registry)
+    if ($keys.Count -eq 0) {
+        $body.Children.Add((New-TechnicalPlaceholder)) | Out-Null
+        return $body
+    }
+
+    foreach ($key in $keys) {
+        $body.Children.Add((New-RegistryKeyRow $Window $key)) | Out-Null
+    }
+    $body
+}
+
+# Una clave: botón de abrir, ruta y valor, y los tres estados.
+function New-RegistryKeyRow {
+    param($Window, $Key)
+
+    $grid = New-Object System.Windows.Controls.Grid
+    $grid.Margin = New-Object System.Windows.Thickness 4, 0, 4, 14
+    Add-GridColumns $grid 'Auto', '*', 'Auto'
+
+    # --- columna 0: abrir en el Editor del registro ---
+    # Todavía no hace nada: la app es solo interfaz por ahora.
+    $open = New-Object System.Windows.Controls.Border
+    $open.Width = 28; $open.Height = 28
+    $open.CornerRadius = New-Object System.Windows.CornerRadius 8
+    $open.BorderThickness = New-Object System.Windows.Thickness 1
+    $open.Margin = New-Object System.Windows.Thickness 0, 1, 14, 0
+    $open.VerticalAlignment = 'Top'
+    $open.Cursor = 'Hand'
+    $open.ToolTip = T 'Open this key in Registry Editor'
+    Set-BoxBg   $open 'Surface'
+    Set-BoxLine $open 'Stroke'
+    $open.Child = (New-Icon 'OpenIn' 12 'TextMuted')
+    Add-ToColumn $grid $open 0
+
+    # --- columna 1: ruta y valor ---
+    $texts = New-Object System.Windows.Controls.StackPanel
+    $texts.Margin = New-Object System.Windows.Thickness 0, 0, 24, 0
+
+    $type = $null
+    if ($Key.Type) { $type = "($($Key.Type))" }
+    $texts.Children.Add((New-MonoLine $Window (T 'Path:')  $Key.Path)) | Out-Null
+    $texts.Children.Add((New-MonoLine $Window (T 'Value:') $Key.Name $type)) | Out-Null
+
+    Add-ToColumn $grid $texts 1
+
+    # --- columna 2: actual / recomendado / de fábrica ---
+    $states = New-Object System.Windows.Controls.StackPanel
+    $states.VerticalAlignment = 'Top'
+    $states.Children.Add((New-CurrentLine $Window $Key))                                          | Out-Null
+    $states.Children.Add((New-StateLine $Window (T 'Recommended:') $Key.Recommended 'Success'))   | Out-Null
+    $states.Children.Add((New-StateLine $Window (T 'Factory:')     $Key.Default     'TextMuted')) | Out-Null
+    Add-ToColumn $grid $states 2
+
+    $grid
+}
+
+<#
+    La línea "Actual:". A diferencia de las otras dos, que son
+    datos declarados, esta la rellena core/Registry/CategoryState.ps1 al
+    entrar en la sección, y puede haber salido de cuatro maneras.
+
+    Que un valor no exista NO es un fallo: quiere decir que Windows
+    está usando su valor interno, y se dice con esas palabras en
+    vez de con un guion, que no distinguiría "no está" de "no se
+    ha mirado".
+#>
+function New-CurrentLine {
+    param($Window, $Key)
+
+    $label = T 'Current:'
+
+    switch ($Key.State) {
+        'read'    { return (New-StateLine $Window $label $Key.Current            'Text') }
+        'missing' { return (New-StateLine $Window $label (T 'not set')           'TextFaint') }
+        'denied'  { return (New-StateLine $Window $label (T 'no access')         'Danger') }
+        'badpath' { return (New-StateLine $Window $label (T 'unknown root key')  'Danger') }
+    }
+
+    # Sin State: nadie ha leído todavía esta clave.
+    New-StateLine $Window $label (T 'not read') 'TextFaint'
+}
+
+# "Ruta:  HKEY_LOCAL_MACHINE\..." en tipografía monoespaciada,
+# con la etiqueta en negrita y el dato en color normal.
+function New-MonoLine {
+    param($Window, [string]$Label, [string]$Value, [string]$Suffix)
+
+    $line = New-Object System.Windows.Controls.TextBlock
+    $line.FontFamily = $Window.FindResource('MonoFont')
+    $line.FontSize = 11
+    $line.LineHeight = 17
+    $line.TextWrapping = 'Wrap'
+
+    $tag = New-Object System.Windows.Documents.Run ($Label + ' ')
+    $tag.FontWeight = 'SemiBold'
+    Set-TextFg $tag 'TextMuted'
+    $line.Inlines.Add($tag)
+
+    $data = New-Object System.Windows.Documents.Run $Value
+    Set-TextFg $data 'Text'
+    $line.Inlines.Add($data)
+
+    if ($Suffix) {
+        $extra = New-Object System.Windows.Documents.Run ('   ' + $Suffix)
+        Set-TextFg $extra 'TextFaint'
+        $line.Inlines.Add($extra)
+    }
+
+    $line
+}
+
+# "Actual: 5" alineado a la derecha.
+function New-StateLine {
+    param($Window, [string]$Label, [string]$Value, [string]$Fg)
+
+    $line = New-Object System.Windows.Controls.TextBlock
+    $line.FontFamily = $Window.FindResource('MonoFont')
+    $line.FontSize = 11
+    $line.LineHeight = 17
+    $line.TextAlignment = 'Right'
+    $line.HorizontalAlignment = 'Right'
+
+    $tag = New-Object System.Windows.Documents.Run ($Label + ' ')
+    Set-TextFg $tag 'TextFaint'
+    $line.Inlines.Add($tag)
+
+    $shown = $Value
+    if ([string]::IsNullOrEmpty($shown)) { $shown = '-' }
+
+    $data = New-Object System.Windows.Documents.Run $shown
+    $data.FontWeight = 'SemiBold'
+    Set-TextFg $data $Fg
+    $line.Inlines.Add($data)
+
+    $line
+}
+
+# Ajuste que todavía no declara sus claves.
+function New-TechnicalPlaceholder {
+    $note = New-Object System.Windows.Controls.TextBlock
+    $note.Text = T 'No registry keys declared for this setting yet.'
+    $note.FontSize = 11.5
+    $note.TextWrapping = 'Wrap'
+    $note.Margin = New-Object System.Windows.Thickness 4, 0, 4, 4
+    Set-TextFg $note 'TextFaint'
+    $note
+}
+
+# ---- fin incluido: ui/Components/Cards/TechnicalDetails.ps1 ----
+# ---- inicio incluido: ui/Components/Layout/Banner.ps1 ----
+# ============================================================
+# Componente: aviso
+#
+# Franja informativa que se coloca encima del contenido de una
+# pantalla. Ahora mismo la usa el detalle para avisar de que la
+# sección está bloqueada.
+# ============================================================
+
+function New-Banner {
+    param(
+        [string]$Icon,
+        [string]$Title,
+        [string]$Message,
+        [string]$Fg = 'Warn',
+        [string]$Bg = 'WarnSoft'
+    )
+
+    $banner = New-Object System.Windows.Controls.Border
+    $banner.CornerRadius = New-Object System.Windows.CornerRadius 12
+    $banner.Padding = New-Object System.Windows.Thickness 16, 13, 18, 14
+    $banner.Margin = New-Object System.Windows.Thickness 0, 0, 0, 14
+    Set-BoxBg $banner $Bg
+
+    $row = New-Object System.Windows.Controls.StackPanel
+    $row.Orientation = 'Horizontal'
+
+    $ic = New-Icon $Icon 17 $Fg
+    $ic.VerticalAlignment = 'Center'
+    $ic.Margin = New-Object System.Windows.Thickness 0, 0, 13, 0
+    $row.Children.Add($ic) | Out-Null
+
+    $texts = New-Object System.Windows.Controls.StackPanel
+    $texts.VerticalAlignment = 'Center'
+
+    $t = New-Object System.Windows.Controls.TextBlock
+    $t.Text = T $Title
+    $t.FontSize = 12.5
+    $t.FontWeight = 'SemiBold'
+    Set-TextFg $t $Fg
+    $texts.Children.Add($t) | Out-Null
+
+    if ($Message) {
+        $m = New-Object System.Windows.Controls.TextBlock
+        $m.Text = T $Message
+        $m.FontSize = 11.5
+        $m.TextWrapping = 'Wrap'
+        $m.Margin = New-Object System.Windows.Thickness 0, 2, 0, 0
+        Set-TextFg $m 'TextMuted'
+        $texts.Children.Add($m) | Out-Null
+    }
+
+    $row.Children.Add($texts) | Out-Null
+    $banner.Child = $row
+    $banner
+}
+
+# Aviso concreto de sección bloqueada.
+function New-LockedBanner {
+    New-Banner -Icon 'Lock' `
+        -Title 'Locked section' `
+        -Message 'Its settings are shown for reference only: they cannot be changed. To unlock it, set Locked = $false in ui/Index/CategoryIndex.ps1.'
+}
+
+# ---- fin incluido: ui/Components/Layout/Banner.ps1 ----
+# ---- inicio incluido: ui/Components/Layout/CategorySummary.ps1 ----
+# ============================================================
+# Componente: resumen de una sección
+#
+# La fila centrada que va bajo el título en la pantalla de
+# detalle. Una píldora por etiqueta, con los mismos colores que
+# las etiquetas de cada tarjeta y que las píldoras de la lista:
+#
+#     (estrella) Recomendado 6/6   (rejilla) De fábrica 5/6
+#     (mando) Personalizado 6/6
+#
+# Los números salen de Get-CategoryCounts (ui/Engine/CategoryRegistry.ps1),
+# que los cuenta sobre los Items reales del archivo de la sección.
+#
+# Update-CategorySummary vuelve a contar y repinta la fila. Está
+# enganchado a los controles de ui/Components/Cards/SettingCard.ps1, así
+# que en cuanto la lógica real cambie las etiquetas de un ajuste
+# el resumen se moverá solo.
+# ============================================================
+
+# Etiqueta -> icono y colores. Mismo criterio que New-Tag (UiKit).
+$SummaryStyles = @(
+    @{ Tag = 'Recommended'; Icon = 'StarFill'; Fg = 'Success';   Bg = 'SuccessSoft'
+       Tip = 'Recommended: {0} of {1}' }
+    @{ Tag = 'Default';     Icon = 'Grid';     Fg = 'TextMuted'; Bg = 'SurfaceSunken'
+       Tip = 'Factory defaults: {0} of {1}' }
+    @{ Tag = 'Custom';      Icon = 'Sliders';  Fg = 'Warn';      Bg = 'WarnSoft'
+       Tip = 'Customised: {0} of {1}' }
+)
+
+function New-CategorySummary {
+    param($Window, $Category)
+
+    $row = New-Object System.Windows.Controls.StackPanel
+    $row.Orientation = 'Horizontal'
+    $row.HorizontalAlignment = 'Center'
+    $row.Margin = New-Object System.Windows.Thickness 0, 14, 0, 0
+
+    # La categoría viaja en el Tag para que Update-CategorySummary
+    # pueda recontar sin closures (regla 4 de CLAUDE.md).
+    $row.Tag = $Category
+
+    $counts = Get-CategoryCounts $Category
+    $total = $counts.Total
+
+    foreach ($style in $SummaryStyles) {
+        $n = $counts.($style.Tag)
+
+        $pill = New-Pill $style.Icon "$n/$total" $style.Fg $style.Bg ((T $style.Tip) -f $n, $total)
+        $pill.Margin = New-Object System.Windows.Thickness 4, 0, 4, 0
+
+        # La píldora lleva su propio texto, así que el nombre de la
+        # etiqueta se añade delante dentro de la misma píldora.
+        $label = New-Object System.Windows.Controls.TextBlock
+        $label.Text = (T $style.Tag) + '  '
+        $label.FontSize = 11
+        $label.FontWeight = 'SemiBold'
+        $label.VerticalAlignment = 'Center'
+        Set-TextFg $label $style.Fg
+        $pill.Child.Children.Insert(1, $label)
+
+        $row.Children.Add($pill) | Out-Null
+    }
+
+    $row
+}
+
+<#
+    Vuelve a contar y repinta la fila del resumen.
+
+    No hace nada si la pantalla actual no la tiene (la lista y la
+    de Settings no la usan), así que se puede llamar sin comprobar
+    dónde estamos.
+#>
+function Update-CategorySummary {
+    $window = Get-AppWindow
+    if (-not $window) { return }
+
+    $area = $window.FindName('HeaderSummaryArea')
+    if (-not $area -or $area.Children.Count -eq 0) { return }
+
+    $category = $area.Children[0].Tag
+    if (-not $category) { return }
+
+    $area.Children.Clear()
+    $area.Children.Add((New-CategorySummary -Window $window -Category $category)) | Out-Null
+}
+
+# ---- fin incluido: ui/Components/Layout/CategorySummary.ps1 ----
+# ---- inicio incluido: ui/Components/Layout/PageHeader.ps1 ----
+# ============================================================
+# Componente: cabecera de página
+#
+# La franja superior del contenido, con tres zonas definidas en
+# MainWindow.xaml:
+#     HeaderTitleArea    -> izquierda: título o breadcrumb
+#     HeaderActionsArea  -> derecha:   buscador y botones
+#     HeaderSummaryArea  -> debajo y centrado: resumen de la sección
+#
+# Las vistas no tocan esas zonas directamente: usan estas
+# funciones. Así todas las pantallas comparten el mismo aspecto.
+# ============================================================
+
+# Vacía las tres zonas. Toda vista debe llamarla antes de pintar.
+function Clear-PageHeader {
+    param($Window)
+    $Window.FindName('HeaderTitleArea').Children.Clear()
+    $Window.FindName('HeaderActionsArea').Children.Clear()
+    $Window.FindName('HeaderSummaryArea').Children.Clear()
+}
+
+# Título grande + subtítulo gris (pantalla principal).
+function Set-PageTitle {
+    param($Window, [string]$Title, [string]$Subtitle)
+
+    $stack = New-Object System.Windows.Controls.StackPanel
+
+    $big = New-Object System.Windows.Controls.TextBlock
+    $big.Text = $Title
+    $big.FontFamily = $Window.FindResource('DisplayFont')
+    $big.FontSize = 27
+    $big.FontWeight = 'Bold'
+    Set-TextFg $big 'Text'
+    $stack.Children.Add($big) | Out-Null
+
+    if ($Subtitle) {
+        $sub = New-Object System.Windows.Controls.TextBlock
+        $sub.Text = $Subtitle
+        $sub.FontSize = 12.5
+        $sub.Margin = New-Object System.Windows.Thickness 0, 3, 0, 0
+        Set-TextFg $sub 'TextMuted'
+        $stack.Children.Add($sub) | Out-Null
+    }
+
+    $Window.FindName('HeaderTitleArea').Children.Add($stack) | Out-Null
+}
+
+# Breadcrumb de una categoría: botón atrás + icono + ruta + título.
+# $OnBack es el nombre de la función a la que vuelve el botón.
+function Set-PageBreadcrumb {
+    param($Window, $Category, [string]$RootLabel = 'Optimizations')
+
+    $row = New-Object System.Windows.Controls.StackPanel
+    $row.Orientation = 'Horizontal'
+
+    # --- botón atrás ---
+    $back = New-Object System.Windows.Controls.Border
+    $back.Width = 34; $back.Height = 34
+    $back.CornerRadius = New-Object System.Windows.CornerRadius 9
+    $back.BorderThickness = New-Object System.Windows.Thickness 1
+    $back.Margin = New-Object System.Windows.Thickness 0, 0, 14, 0
+    $back.VerticalAlignment = 'Center'
+    $back.Cursor = 'Hand'
+    $back.ToolTip = T 'Back to the list'
+    Set-BoxBg $back 'Surface'
+    Set-BoxLine $back 'Stroke'
+    $back.Child = (New-Icon 'Back' 13 'TextMuted')
+    # Por Show-View, no llamando a la vista (regla 17 de CLAUDE.md).
+    $back.Add_MouseLeftButtonUp({
+        param($s, $e)
+        Show-View -Name 'Show-OptimizationsListView'
+    })
+    $row.Children.Add($back) | Out-Null
+
+    # --- icono de la categoría ---
+    $tile = New-IconTile $Category.Icon $Category.Accent $Category.AccentSoft 38
+    $tile.Margin = New-Object System.Windows.Thickness 0, 0, 13, 0
+    $row.Children.Add($tile) | Out-Null
+
+    # --- ruta pequeña + título ---
+    $texts = New-Object System.Windows.Controls.StackPanel
+    $texts.VerticalAlignment = 'Center'
+
+    $trail = New-Object System.Windows.Controls.StackPanel
+    $trail.Orientation = 'Horizontal'
+
+    $rootLink = New-Object System.Windows.Controls.TextBlock
+    $rootLink.Text = T $RootLabel
+    $rootLink.FontSize = 11
+    $rootLink.Cursor = 'Hand'
+    Set-TextFg $rootLink 'TextFaint'
+    $rootLink.Add_MouseLeftButtonUp({
+        param($s, $e)
+        Show-View -Name 'Show-OptimizationsListView'
+    })
+    $trail.Children.Add($rootLink) | Out-Null
+
+    $sep = New-Icon 'ChevronRight' 8 'TextFaint'
+    $sep.Margin = New-Object System.Windows.Thickness 6, 1, 6, 0
+    $trail.Children.Add($sep) | Out-Null
+
+    $leaf = New-Object System.Windows.Controls.TextBlock
+    $leaf.Text = T $Category.Name
+    $leaf.FontSize = 11
+    Set-TextFg $leaf 'TextMuted'
+    $trail.Children.Add($leaf) | Out-Null
+
+    $texts.Children.Add($trail) | Out-Null
+
+    $title = New-Object System.Windows.Controls.TextBlock
+    $title.Text = T $Category.Name
+    $title.FontFamily = $Window.FindResource('DisplayFont')
+    $title.FontSize = 21
+    $title.FontWeight = 'Bold'
+    $title.Margin = New-Object System.Windows.Thickness 0, 1, 0, 0
+    Set-TextFg $title 'Text'
+    $texts.Children.Add($title) | Out-Null
+
+    $row.Children.Add($texts) | Out-Null
+    $Window.FindName('HeaderTitleArea').Children.Add($row) | Out-Null
+}
+
+# Cabecera de un bloque dentro del contenido ("General",
+# "Appearance"...). La usa la pantalla de Settings.
+function New-SectionHeader {
+    param($Window, [string]$Text)
+
+    $header = New-Object System.Windows.Controls.TextBlock
+    $header.Text = $Text
+    $header.FontFamily = $Window.FindResource('DisplayFont')
+    $header.FontSize = 12
+    $header.FontWeight = 'SemiBold'
+    $header.Margin = New-Object System.Windows.Thickness 4, 6, 0, 10
+    Set-TextFg $header 'TextFaint'
+    $header
+}
+
+# Añade un control a la zona de acciones (derecha).
+function Add-PageAction {
+    param($Window, $Element)
+    $Window.FindName('HeaderActionsArea').Children.Add($Element) | Out-Null
+}
+
+# Pone el resumen centrado bajo el título. Solo lo usa el detalle
+# de una sección; el resto de pantallas deja la zona vacía y no
+# ocupa alto.
+function Set-PageSummary {
+    param($Window, $Category)
+    $area = $Window.FindName('HeaderSummaryArea')
+    $area.Children.Clear()
+    $area.Children.Add((New-CategorySummary -Window $Window -Category $Category)) | Out-Null
+}
+
+# Texto gris suelto en la zona de acciones ("6 settings").
+function Add-PageActionLabel {
+    param($Window, [string]$Text)
+    $t = New-Object System.Windows.Controls.TextBlock
+    $t.Text = $Text
+    $t.FontSize = 12
+    $t.VerticalAlignment = 'Center'
+    $t.Margin = New-Object System.Windows.Thickness 0, 0, 4, 0
+    Set-TextFg $t 'TextFaint'
+    Add-PageAction $Window $t
+}
+
+# ---- fin incluido: ui/Components/Layout/PageHeader.ps1 ----
+# ---- inicio incluido: ui/Components/Shell/LogPanel.ps1 ----
+# ============================================================
+# Componente: registro de actividad (el botón "log")
+#
+# Un cajón que entra por la derecha con lo que el programa le ha
+# preguntado al sistema. Hoy eso es exactamente una cosa: las
+# lecturas del registro de Windows.
+#
+#   -------------------------------------------------
+#   (~) Registro de actividad                    [x]
+#       Lo que la app ha leído de tu sistema
+#   -------------------------------------------------
+#   [Vaciar] [Guardar en archivo]        23 entradas
+#   -------------------------------------------------
+#   20:14:03.118  [leyendo]  Regedit
+#                            9 keys
+#   20:14:03.120  [leído]    HKEY_LOCAL_MACHINE\...
+#                            \NetworkThrottlingIndex
+#                            4294967295 (0xFFFFFFFF) - DWord
+#   -------------------------------------------------
+#
+# La carcasa (LogOverlay / LogScrim / LogDrawer) está en
+# MainWindow.xaml, igual que la de la barra de progreso; lo de
+# dentro se construye aquí y se rehace cada vez que se abre, así
+# que sale siempre en el idioma actual y con lo último apuntado.
+#
+# NO se navega para verlo: el cajón se pone ENCIMA de la pantalla
+# en la que estabas y al cerrarlo sigues allí. Por eso no pasa
+# por ui/Engine/Router.ps1 ni cuenta como vista.
+#
+# Sobre el idioma: se traduce el marco -títulos, botones y las
+# etiquetas de color- pero NO las líneas. Una línea de log es una
+# ruta del registro y un valor: texto técnico que se copia y se
+# pega tal cual en un informe, y que traducido a medias sería
+# peor. Por eso core/Diagnostics/Log.ps1 guarda hechos y solo el Status viaja
+# como palabra suelta, para pasarla por T aquí.
+# ============================================================
+
+# Cuántas filas se pintan como mucho. El buffer guarda mil (ver
+# core/Diagnostics/Log.ps1); dibujarlas todas de golpe se notaría al abrir, y
+# nadie lee mil líneas: se enseñan las últimas y se avisa.
+$LogPanelMaxRows = 400
+
+# Cuánto oscurece el velo lo que hay detrás.
+$LogScrimOpacity = 0.32
+
+$LogPanelOpen = $false
+
+function Get-LogPanelOpen { $script:LogPanelOpen }
+
+# ---- Abrir y cerrar -----------------------------------------
+
+function Switch-LogPanel {
+    param($Window)
+    if ($LogPanelOpen) { Hide-LogPanel $Window } else { Show-LogPanel $Window }
+}
+
+function Show-LogPanel {
+    param($Window)
+
+    Update-LogPanel $Window
+
+    $overlay = $Window.FindName('LogOverlay')
+    $scrim   = $Window.FindName('LogScrim')
+    $drawer  = $Window.FindName('LogDrawer')
+
+    $script:LogPanelOpen = $true
+    $overlay.Visibility = 'Visible'
+
+    $scrim.BeginAnimation([System.Windows.UIElement]::OpacityProperty, (New-Anim 0 $LogScrimOpacity 220))
+    (Get-LogSlide $drawer).BeginAnimation(
+        [System.Windows.Media.TranslateTransform]::XProperty,
+        (New-Anim (Get-LogDrawerWidth $drawer) 0 240))
+}
+
+function Hide-LogPanel {
+    param($Window)
+
+    if (-not $LogPanelOpen) { return }
+    $script:LogPanelOpen = $false
+
+    $scrim  = $Window.FindName('LogScrim')
+    $drawer = $Window.FindName('LogDrawer')
+
+    (Get-LogSlide $drawer).BeginAnimation(
+        [System.Windows.Media.TranslateTransform]::XProperty,
+        (New-Anim 0 (Get-LogDrawerWidth $drawer) 200))
+
+    # El velo se apaga a la vez, y al terminar se colapsa todo:
+    # colapsado el cajón ya no existe para el ratón y se vuelve a
+    # poder pulsar lo que hay debajo.
+    $fade = New-Anim $LogScrimOpacity 0 200
+    $fade.Add_Completed({
+        param($s, $e)
+        Close-LogOverlay (Get-AppWindow)
+    })
+    $scrim.BeginAnimation([System.Windows.UIElement]::OpacityProperty, $fade)
+}
+
+<#
+    Retira el cajón de en medio. Es el último paso de cerrar, y
+    está aparte del manejador de la animación por dos motivos:
+
+      - Se puede llamar a mano. Las animaciones de WPF solo corren
+        con una ventana pintándose, así que sin esto no habría
+        forma de probar el cierre.
+      - Deja explícita la única condición que importa: si en esos
+        200 ms lo han vuelto a abrir, NO se colapsa. Hacerlo
+        escondería un cajón que ya está entrando otra vez.
+#>
+function Close-LogOverlay {
+    param($Window)
+
+    if (-not $Window) { return }
+    if (Get-LogPanelOpen) { return }
+    $Window.FindName('LogOverlay').Visibility = 'Collapsed'
+}
+
+# El desplazamiento del cajón. Se crea por control y no en un
+# Setter de estilo: un Freezable compartido no se puede animar
+# (regla 11 de CLAUDE.md).
+function Get-LogSlide {
+    param($Drawer)
+
+    if (-not ($Drawer.RenderTransform -is [System.Windows.Media.TranslateTransform])) {
+        $Drawer.RenderTransform = New-Object System.Windows.Media.TranslateTransform
+    }
+    $Drawer.RenderTransform
+}
+
+# El ancho declarado en el XAML. ActualWidth todavía es 0 la
+# primera vez, antes de que WPF haya medido nada.
+function Get-LogDrawerWidth {
+    param($Drawer)
+    if ([double]::IsNaN($Drawer.Width)) { 660.0 } else { $Drawer.Width }
+}
+
+# ---- Contenido ----------------------------------------------
+
+# Rehace el cajón entero. Se llama al abrirlo y al cambiar de
+# idioma; para refrescar solo las filas está Update-LogList.
+function Update-LogPanel {
+    param($Window)
+
+    $grid = New-Object System.Windows.Controls.Grid
+    $grid.RowDefinitions.Add((New-LogRowDef 'Auto')) | Out-Null
+    $grid.RowDefinitions.Add((New-LogRowDef 'Auto')) | Out-Null
+    $grid.RowDefinitions.Add((New-LogRowDef '*'))    | Out-Null
+    $grid.RowDefinitions.Add((New-LogRowDef 'Auto')) | Out-Null
+
+    Add-ToLogRow $grid (New-LogHeader  $Window) 0
+    Add-ToLogRow $grid (New-LogToolbar $Window) 1
+    Add-ToLogRow $grid (New-LogScroll  $Window) 2
+    Add-ToLogRow $grid (New-LogFooter  $Window) 3
+
+    $Window.FindName('LogDrawer').Child = $grid
+    Update-LogList $Window
+}
+
+function New-LogRowDef {
+    param([string]$Height)
+    $rd = New-Object System.Windows.Controls.RowDefinition
+    if ($Height -eq '*') { $rd.Height = [System.Windows.GridLength]::new(1, 'Star') }
+    else                 { $rd.Height = [System.Windows.GridLength]::Auto }
+    $rd
+}
+
+function Add-ToLogRow {
+    param($Grid, $Element, [int]$Row)
+    [System.Windows.Controls.Grid]::SetRow($Element, $Row)
+    $Grid.Children.Add($Element) | Out-Null
+}
+
+# --- fila 0: título y botón de cerrar ---
+function New-LogHeader {
+    param($Window)
+
+    $box = New-Object System.Windows.Controls.Border
+    $box.Padding = New-Object System.Windows.Thickness 18, 15, 10, 15
+    $box.BorderThickness = New-Object System.Windows.Thickness 0, 0, 0, 1
+    Set-BoxLine $box 'Stroke'
+
+    $grid = New-Object System.Windows.Controls.Grid
+    Add-GridColumns $grid 'Auto', '*', 'Auto'
+
+    $tile = New-IconTile 'Pulse' 'Accent' 'AccentSoft' 36
+    $tile.Margin = New-Object System.Windows.Thickness 0, 0, 13, 0
+    $tile.VerticalAlignment = 'Top'
+    Add-ToColumn $grid $tile 0
+
+    $texts = New-Object System.Windows.Controls.StackPanel
+    $texts.VerticalAlignment = 'Center'
+
+    $title = New-Object System.Windows.Controls.TextBlock
+    $title.Text = T 'Activity log'
+    $title.FontFamily = $Window.FindResource('DisplayFont')
+    $title.FontSize = 16
+    $title.FontWeight = 'Bold'
+    Set-TextFg $title 'Text'
+    $texts.Children.Add($title) | Out-Null
+
+    $sub = New-Object System.Windows.Controls.TextBlock
+    $sub.Text = T 'What the app has read from your system in this session'
+    $sub.FontSize = 11.5
+    $sub.TextWrapping = 'Wrap'
+    $sub.Margin = New-Object System.Windows.Thickness 0, 2, 0, 0
+    Set-TextFg $sub 'TextMuted'
+    $texts.Children.Add($sub) | Out-Null
+
+    Add-ToColumn $grid $texts 1
+
+    $close = New-Object System.Windows.Controls.Button
+    $close.Style = $Window.FindResource('GlyphButtonStyle')
+    $close.Content = Glyph 'Close'
+    $close.FontSize = 12
+    $close.VerticalAlignment = 'Top'
+    $close.ToolTip = T 'Close the log'
+    $close.Add_Click({
+        param($s, $e)
+        Hide-LogPanel ([System.Windows.Window]::GetWindow($s))
+    })
+    Add-ToColumn $grid $close 2
+
+    $box.Child = $grid
+    $box
+}
+
+# --- fila 1: vaciar, guardar y el recuento ---
+function New-LogToolbar {
+    param($Window)
+
+    $box = New-Object System.Windows.Controls.Border
+    $box.Padding = New-Object System.Windows.Thickness 18, 11, 18, 12
+    $box.BorderThickness = New-Object System.Windows.Thickness 0, 0, 0, 1
+    Set-BoxBg   $box 'Bg2'
+    Set-BoxLine $box 'Stroke'
+
+    $grid = New-Object System.Windows.Controls.Grid
+    Add-GridColumns $grid 'Auto', '*'
+
+    $buttons = New-Object System.Windows.Controls.StackPanel
+    $buttons.Orientation = 'Horizontal'
+
+    $clear = New-ChipButton $Window 'Clear' 'Trash'
+    $clear.Margin = New-Object System.Windows.Thickness 0
+    $clear.Height = 32
+    $clear.Add_Click({
+        param($s, $e)
+        Clear-AppLog
+        # Solo se rehacen las filas: la barra donde vive este mismo
+        # botón sigue en pie, así que no hay que aplazar nada.
+        Update-LogList ([System.Windows.Window]::GetWindow($s))
+    })
+    $buttons.Children.Add($clear) | Out-Null
+
+    $save = New-ChipButton $Window 'Save to file' 'Save'
+    $save.Height = 32
+    $save.Add_Click({
+        param($s, $e)
+        $window = [System.Windows.Window]::GetWindow($s)
+        $path = Export-AppLog
+        if ($path) { Set-LogFooterText $window ((T 'Saved to {0}') -f $path) 'Success' }
+        else       { Set-LogFooterText $window (T 'The log file could not be written') 'Danger' }
+    })
+    $buttons.Children.Add($save) | Out-Null
+
+    Add-ToColumn $grid $buttons 0
+
+    $count = New-Object System.Windows.Controls.TextBlock
+    $count.FontSize = 11.5
+    $count.HorizontalAlignment = 'Right'
+    $count.VerticalAlignment = 'Center'
+    Set-TextFg $count 'TextFaint'
+    Add-ToColumn $grid $count 1
+
+    Register-LogName $Window 'LogCount' $count
+
+    $box.Child = $grid
+    $box
+}
+
+# --- fila 2: las líneas ---
+function New-LogScroll {
+    param($Window)
+
+    $scroll = New-Object System.Windows.Controls.ScrollViewer
+    $scroll.VerticalScrollBarVisibility = 'Auto'
+    $scroll.Padding = New-Object System.Windows.Thickness 10, 8, 8, 12
+
+    $list = New-Object System.Windows.Controls.StackPanel
+    $scroll.Content = $list
+
+    Register-LogName $Window 'LogScroll' $scroll
+    Register-LogName $Window 'LogList'   $list
+
+    $scroll
+}
+
+# --- fila 3: el pie, donde se contesta a "guardar" ---
+function New-LogFooter {
+    param($Window)
+
+    $box = New-Object System.Windows.Controls.Border
+    $box.Padding = New-Object System.Windows.Thickness 18, 10, 18, 12
+    $box.BorderThickness = New-Object System.Windows.Thickness 0, 1, 0, 0
+    Set-BoxBg   $box 'Bg2'
+    Set-BoxLine $box 'Stroke'
+
+    $text = New-Object System.Windows.Controls.TextBlock
+    $text.FontSize = 11
+    $text.TextWrapping = 'Wrap'
+    Set-TextFg $text 'TextFaint'
+    $box.Child = $text
+
+    Register-LogName $Window 'LogFooterText' $text
+    $box
+}
+
+function Set-LogFooterText {
+    param($Window, [string]$Text, [string]$Fg = 'TextFaint')
+
+    $label = $Window.FindName('LogFooterText')
+    if (-not $label) { return }
+    $label.Text = $Text
+    Set-TextFg $label $Fg
+}
+
+# Los controles del cajón se registran con nombre, igual que los
+# botones del menú lateral, para que los manejadores los busquen
+# con FindName en vez de arrastrarlos en un closure (regla 4).
+# Como el cajón se rehace cada vez que se abre, el nombre viejo
+# hay que soltarlo antes.
+function Register-LogName {
+    param($Window, [string]$Name, $Element)
+    try { $Window.UnregisterName($Name) } catch { }
+    $Window.RegisterName($Name, $Element)
+}
+
+# ---- Las filas ----------------------------------------------
+
+<#
+    Vuelca las entradas en la lista y actualiza el recuento.
+
+    Se llama al abrir el cajón y después de vaciarlo. Rehacer
+    solo esto -y no el cajón entero- deja en pie la barra de
+    botones desde la que suele llamarse.
+#>
+function Update-LogList {
+    param($Window)
+
+    $list = $Window.FindName('LogList')
+    if (-not $list) { return }
+    $list.Children.Clear()
+
+    $total = Get-AppLogCount
+    $shown = @(Get-AppLog -Last $LogPanelMaxRows)
+
+    $count = $Window.FindName('LogCount')
+    if ($count) { $count.Text = (T '{0} entries') -f $total }
+
+    if ($total -eq 0) {
+        $list.Children.Add((New-LogEmptyState)) | Out-Null
+        Set-LogFooterText $Window (T 'Nothing has been read from your system yet')
+        return
+    }
+
+    if ($shown.Count -lt $total) {
+        $list.Children.Add((New-LogNotice ((T 'Showing the last {0} of {1} entries') -f $shown.Count, $total))) | Out-Null
+    }
+
+    foreach ($entry in $shown) {
+        $list.Children.Add((New-LogRow $Window $entry)) | Out-Null
+    }
+
+    $dropped = Get-AppLogDropped
+    if ($dropped -gt 0) {
+        Set-LogFooterText $Window ((T 'Only the last {0} entries are kept; {1} older ones were discarded') -f $AppLogCapacity, $dropped)
+    }
+    else {
+        Set-LogFooterText $Window (T 'Newest at the bottom')
+    }
+
+    # Al fondo, como una consola: lo último que ha pasado. Se
+    # aplaza porque el contenido recién metido todavía no está
+    # medido y el desplazamiento se recortaría a cero.
+    $Window.Dispatcher.BeginInvoke(
+        [System.Windows.Threading.DispatcherPriority]::Loaded,
+        [action]{
+            $scroll = (Get-AppWindow).FindName('LogScroll')
+            if ($scroll) { $scroll.ScrollToEnd() }
+        }) | Out-Null
+}
+
+<#
+    Una línea:
+
+        20:14:03.118  [ leído ]  HKEY_LOCAL_MACHINE\...\SystemProfile
+                                 \NetworkThrottlingIndex
+                                 4294967295 (0xFFFFFFFF) - DWord - 0,4 ms
+
+    La hora y el mensaje van en monoespaciada para que las rutas
+    queden alineadas unas debajo de otras y se vea de un vistazo
+    qué rama se estaba mirando.
+#>
+function New-LogRow {
+    param($Window, $Entry)
+
+    $row = New-Object System.Windows.Controls.Border
+    $row.CornerRadius = New-Object System.Windows.CornerRadius 8
+    $row.Padding = New-Object System.Windows.Thickness 8, 6, 8, 7
+    $row.Background = [System.Windows.Media.Brushes]::Transparent
+    $row.Add_MouseEnter({ param($s, $e) Set-BoxBg $s 'SurfaceSunken' })
+    $row.Add_MouseLeave({ param($s, $e) $s.Background = [System.Windows.Media.Brushes]::Transparent })
+
+    $grid = New-Object System.Windows.Controls.Grid
+    Add-GridColumns $grid 'Auto', 'Auto', '*'
+
+    # --- columna 0: la hora ---
+    $time = New-Object System.Windows.Controls.TextBlock
+    $time.Text = '{0:HH:mm:ss.fff}' -f $Entry.Time
+    $time.FontFamily = $Window.FindResource('MonoFont')
+    $time.FontSize = 10.5
+    $time.VerticalAlignment = 'Top'
+    $time.Margin = New-Object System.Windows.Thickness 0, 1, 10, 0
+    Set-TextFg $time 'TextFaint'
+    Add-ToColumn $grid $time 0
+
+    # --- columna 1: la etiqueta de estado ---
+    Add-ToColumn $grid (New-LogPill $Entry) 1
+
+    # --- columna 2: mensaje y detalle ---
+    $texts = New-Object System.Windows.Controls.StackPanel
+    $texts.Children.Add((New-LogMessage $Window $Entry.Message)) | Out-Null
+
+    if ($Entry.Detail) {
+        $detail = New-Object System.Windows.Controls.TextBlock
+        $detail.Text = $Entry.Detail
+        $detail.FontFamily = $Window.FindResource('MonoFont')
+        $detail.FontSize = 10.5
+        $detail.TextWrapping = 'Wrap'
+        $detail.Margin = New-Object System.Windows.Thickness 0, 2, 0, 0
+        Set-TextFg $detail 'TextFaint'
+        $texts.Children.Add($detail) | Out-Null
+    }
+
+    Add-ToColumn $grid $texts 2
+
+    $row.Child = $grid
+    $row
+}
+
+<#
+    El mensaje. Si es una clave del registro -ruta más nombre de
+    valor- se parte por la última barra y el nombre sale
+    destacado: la ruta se repite mucho y lo que cambia de una
+    línea a otra es justo el final.
+
+    Cualquier otro texto sale entero, sin más.
+#>
+function New-LogMessage {
+    param($Window, [string]$Text)
+
+    $line = New-Object System.Windows.Controls.TextBlock
+    $line.FontFamily = $Window.FindResource('MonoFont')
+    $line.FontSize = 11
+    $line.LineHeight = 16
+    $line.TextWrapping = 'Wrap'
+
+    $cut = $Text.LastIndexOf('\')
+    if ($cut -gt 0) {
+        $path = New-Object System.Windows.Documents.Run $Text.Substring(0, $cut + 1)
+        Set-TextFg $path 'TextMuted'
+        $line.Inlines.Add($path)
+
+        $name = New-Object System.Windows.Documents.Run $Text.Substring($cut + 1)
+        $name.FontWeight = 'SemiBold'
+        Set-TextFg $name 'Text'
+        $line.Inlines.Add($name)
+    }
+    else {
+        $whole = New-Object System.Windows.Documents.Run $Text
+        $whole.FontWeight = 'SemiBold'
+        Set-TextFg $whole 'Text'
+        $line.Inlines.Add($whole)
+    }
+
+    $line
+}
+
+<#
+    La etiqueta de color. El texto es el Status que trae la
+    entrada -una palabra en inglés, ver core/Diagnostics/Log.ps1- y aquí se
+    traduce; si no trae ninguno se usa el nivel.
+
+    El ancho mínimo es a propósito: con todas las etiquetas igual
+    de anchas, los mensajes empiezan en la misma columna.
+#>
+function New-LogPill {
+    param($Entry)
+
+    $colors = @{
+        'read'             = @{ Fg = 'Success';   Bg = 'SuccessSoft' }
+        'not set'          = @{ Fg = 'Warn';      Bg = 'WarnSoft' }
+        'no access'        = @{ Fg = 'Danger';    Bg = 'DangerSoft' }
+        'unknown root key' = @{ Fg = 'Danger';    Bg = 'DangerSoft' }
+        'reading'          = @{ Fg = 'Accent';    Bg = 'AccentSoft' }
+        'done'             = @{ Fg = 'Accent';    Bg = 'AccentSoft' }
+        'error'            = @{ Fg = 'Danger';    Bg = 'DangerSoft' }
+        'warn'             = @{ Fg = 'Warn';      Bg = 'WarnSoft' }
+        'info'             = @{ Fg = 'TextMuted'; Bg = 'SurfaceSunken' }
+    }
+
+    $word = $Entry.Status
+    if (-not $word) { $word = $Entry.Level }
+
+    $color = $colors[$word]
+    if (-not $color) { $color = $colors[$Entry.Level] }
+    if (-not $color) { $color = @{ Fg = 'TextMuted'; Bg = 'SurfaceSunken' } }
+
+    $pill = New-Object System.Windows.Controls.Border
+    $pill.CornerRadius = New-Object System.Windows.CornerRadius 6
+    $pill.Padding = New-Object System.Windows.Thickness 7, 1.5, 7, 2.5
+    $pill.Margin = New-Object System.Windows.Thickness 0, 0, 10, 0
+    $pill.MinWidth = 78
+    $pill.VerticalAlignment = 'Top'
+    Set-BoxBg $pill $color.Bg
+
+    $text = New-Object System.Windows.Controls.TextBlock
+    $text.Text = T $word
+    $text.FontSize = 10
+    $text.FontWeight = 'SemiBold'
+    $text.TextAlignment = 'Center'
+    Set-TextFg $text $color.Fg
+    $pill.Child = $text
+
+    $pill
+}
+
+# Aviso gris entre las filas ("se enseñan las últimas 400...").
+function New-LogNotice {
+    param([string]$Text)
+
+    $note = New-Object System.Windows.Controls.TextBlock
+    $note.Text = $Text
+    $note.FontSize = 11
+    $note.TextWrapping = 'Wrap'
+    $note.TextAlignment = 'Center'
+    $note.Margin = New-Object System.Windows.Thickness 8, 4, 8, 10
+    Set-TextFg $note 'TextFaint'
+    $note
+}
+
+# Lo que se ve nada más arrancar, antes de entrar en ninguna
+# sección: el log está vacío porque no se ha leído nada todavía.
+function New-LogEmptyState {
+    $box = New-Object System.Windows.Controls.StackPanel
+    $box.Margin = New-Object System.Windows.Thickness 0, 60, 0, 0
+    $box.HorizontalAlignment = 'Center'
+
+    $icon = New-Icon 'Pulse' 30 'TextFaint'
+    $box.Children.Add($icon) | Out-Null
+
+    $title = New-Object System.Windows.Controls.TextBlock
+    $title.Text = T 'Nothing logged yet'
+    $title.FontSize = 13
+    $title.FontWeight = 'SemiBold'
+    $title.HorizontalAlignment = 'Center'
+    $title.Margin = New-Object System.Windows.Thickness 0, 12, 0, 0
+    Set-TextFg $title 'TextMuted'
+    $box.Children.Add($title) | Out-Null
+
+    $hint = New-Object System.Windows.Controls.TextBlock
+    $hint.Text = T 'Open a section and its registry keys will show up here'
+    $hint.FontSize = 11.5
+    $hint.TextAlignment = 'Center'
+    $hint.TextWrapping = 'Wrap'
+    $hint.MaxWidth = 320
+    $hint.Margin = New-Object System.Windows.Thickness 0, 5, 0, 0
+    Set-TextFg $hint 'TextFaint'
+    $box.Children.Add($hint) | Out-Null
+
+    $box
+}
+
+# ---- fin incluido: ui/Components/Shell/LogPanel.ps1 ----
+# ---- inicio incluido: ui/Components/Shell/ProgressStrip.ps1 ----
+# ============================================================
+# Componente: barra de progreso
+#
+# La franja del pie de la ventana, para tareas que tardan. Hoy la
+# usa la lectura del registro al entrar en una sección; conforme
+# haya más claves que consultar, más se notará.
+#
+# El contenedor está en MainWindow.xaml y arranca colapsado: sin
+# alto, así que aparecer y desaparecer no mueve el contenido.
+#
+# Ojo con Set-ProgressStrip: obliga a WPF a repintar en mitad del
+# bucle que lo llama. Ver el comentario de Update-UiNow.
+# ============================================================
+
+function Show-ProgressStrip {
+    param($Window, [string]$Text)
+
+    $Window.FindName('ProgressText').Text = T $Text
+    $Window.FindName('ProgressCount').Text = ''
+    Set-ProgressFill $Window 0 1
+    $Window.FindName('ProgressStrip').Visibility = 'Visible'
+    Update-UiNow $Window
+}
+
+# Avance de la barra. $Total = 0 se ignora en vez de dividir por cero.
+function Set-ProgressStrip {
+    param($Window, [int]$Done, [int]$Total)
+
+    if ($Total -le 0) { return }
+
+    $Window.FindName('ProgressCount').Text = "$Done/$Total"
+    Set-ProgressFill $Window $Done $Total
+    Update-UiNow $Window
+}
+
+function Hide-ProgressStrip {
+    param($Window)
+    $Window.FindName('ProgressStrip').Visibility = 'Collapsed'
+}
+
+# El relleno son dos columnas estrella que se reparten el ancho:
+# hecho / lo que falta. Así no hay que medir la ventana.
+function Set-ProgressFill {
+    param($Window, [double]$Done, [double]$Total)
+
+    $left = $Total - $Done
+    if ($left -lt 0) { $left = 0 }
+
+    $Window.FindName('ProgressDone').Width = [System.Windows.GridLength]::new($Done, 'Star')
+    $Window.FindName('ProgressLeft').Width = [System.Windows.GridLength]::new($left, 'Star')
+}
+
+<#
+    Vacía la cola del Dispatcher para que lo pintado hasta ahora
+    llegue a la pantalla.
+
+    Hace falta porque la lectura del registro es SÍNCRONA: mientras
+    el bucle corre, el hilo de interfaz está ocupado y la barra no
+    se redibujaría sola; se vería saltar de 0 a 100 al terminar.
+
+    Es el equivalente del viejo DoEvents, con lo que eso implica:
+    durante la pausa WPF puede entregar eventos de ratón. Por eso
+    quien la usa deja la ventana bloqueada mientras dura (ver
+    Show-CategoryDetailView). Si algún día la lectura se va a un
+    hilo aparte, esta función sobra.
+#>
+function Update-UiNow {
+    param($Window)
+
+    $frame = New-Object System.Windows.Threading.DispatcherFrame
+    $Window.Dispatcher.BeginInvoke(
+        [System.Windows.Threading.DispatcherPriority]::Background,
+        [action]{ $frame.Continue = $false }) | Out-Null
+    [System.Windows.Threading.Dispatcher]::PushFrame($frame)
+}
+
+# ---- fin incluido: ui/Components/Shell/ProgressStrip.ps1 ----
+# ---- inicio incluido: ui/Components/Shell/Sidebar.ps1 ----
 # ============================================================
 # Componente: barra de navegación lateral
 #
-# Construye los botones a partir de ui/NavigationIndex.ps1 y
+# Construye los botones a partir de ui/Index/NavigationIndex.ps1 y
 # gestiona el plegado animado.
 #
 # El XAML solo aporta dos contenedores vacíos (NavTop y
@@ -2273,7 +4236,7 @@ function Set-NavSelection {
     $Button.Tag = 'sel'
     Update-NavColors $window
 
-    # Cada entrada declara su vista en ui/NavigationIndex.ps1.
+    # Cada entrada declara su vista en ui/Index/NavigationIndex.ps1.
     $item = Get-NavigationItem $Button.Uid
     if ($item -and $item.View) { Show-View -Name $item.View } else { Show-View -Name 'Show-OptimizationsListView' }
 }
@@ -2342,8 +4305,8 @@ function Switch-Sidebar {
 
 function Get-SidebarExpanded { $script:SidebarExpanded }
 
-# ---- fin incluido: ui/Components/Sidebar.ps1 ----
-# ---- inicio incluido: ui/Components/TitleBar.ps1 ----
+# ---- fin incluido: ui/Components/Shell/Sidebar.ps1 ----
+# ---- inicio incluido: ui/Components/Shell/TitleBar.ps1 ----
 # ============================================================
 # Componente: barra de título
 #
@@ -2358,6 +4321,7 @@ function Update-TitleBarTexts {
     $Window.FindName('BtnModeBuilder').Content = T 'Builder'
     $Window.FindName('BtnModeConfig').Content  = T 'Config Review'
 
+    $Window.FindName('BtnLog').ToolTip   = T 'Activity log'
     $Window.FindName('BtnTheme').ToolTip = T 'Change theme'
     $Window.FindName('BtnHelp').ToolTip  = T 'Help'
 
@@ -2375,20 +4339,202 @@ function Sync-ThemeButton {
     if ((Get-AppTheme) -eq 'Dark') { $button.Content = Glyph 'Sun' } else { $button.Content = Glyph 'Moon' }
 }
 
-# ---- fin incluido: ui/Components/TitleBar.ps1 ----
+# ---- fin incluido: ui/Components/Shell/TitleBar.ps1 ----
+# ---- inicio incluido: ui/Components/Shell/ViewMenu.ps1 ----
+# ============================================================
+# Componente: menú del botón "Vista"
+#
+# El chip "Vista" de la cabecera y el desplegable que abre. Las
+# filas salen de ui/Index/ViewOptionsIndex.ps1, así que este archivo
+# no sabe cuáles son ni cuántas hay.
+#
+# Devuelve un Grid con el botón y el Popup dentro. El Popup TIENE
+# que colgar de ese Grid: si se creara suelto quedaría fuera del
+# árbol lógico y los SetResourceReference del tema no resolverían.
+#
+# Cada fila cambia una opción de vista y repinta la pantalla
+# actual, porque las insignias y los detalles técnicos se deciden
+# al construir cada tarjeta.
+# ============================================================
 
+function New-ViewMenu {
+    param($Window, [string]$Label = 'View')
+
+    $shell = New-Object System.Windows.Controls.Grid
+    $shell.VerticalAlignment = 'Center'
+
+    $button = New-ChipButton $Window $Label 'Filter' -Chevron
+    $shell.Children.Add($button) | Out-Null
+
+    $popup = New-Object System.Windows.Controls.Primitives.Popup
+    $popup.PlacementTarget = $button
+    $popup.Placement = 'Bottom'
+    $popup.VerticalOffset = 4
+    $popup.StaysOpen = $false
+    $popup.AllowsTransparency = $true
+    $popup.PopupAnimation = 'Fade'
+    $popup.Child = (New-ViewMenuCard $Window $popup)
+    $shell.Children.Add($popup) | Out-Null
+
+    # El popup viaja en el Tag del botón: nada de closures
+    # (regla 4 de CLAUDE.md).
+    $button.Tag = $popup
+    $button.Add_Click({
+        param($s, $e)
+        $pop = $s.Tag
+        # El desplegable se alinea por la derecha con el botón,
+        # que vive pegado al borde de la ventana. El ancho real
+        # solo se conoce una vez medido, de ahí que se calcule
+        # aquí y no al construirlo.
+        $pop.HorizontalOffset = $s.ActualWidth - $ViewMenuWidth
+        $pop.IsOpen = -not $pop.IsOpen
+    })
+
+    $shell
+}
+
+# Ancho del desplegable. También lo usa el cálculo del offset.
+$ViewMenuWidth = 300.0
+
+# La tarjeta flotante: marco + una fila por opción.
+function New-ViewMenuCard {
+    param($Window, $Popup)
+
+    # AllowsTransparency recorta lo que se salga del Popup, así que
+    # la sombra necesita este margen para caber.
+    $room = New-Object System.Windows.Controls.Grid
+    $room.Margin = New-Object System.Windows.Thickness 10, 0, 10, 14
+
+    $card = New-Object System.Windows.Controls.Border
+    $card.Width = $ViewMenuWidth
+    $card.CornerRadius = New-Object System.Windows.CornerRadius 12
+    $card.BorderThickness = New-Object System.Windows.Thickness 1
+    $card.Padding = New-Object System.Windows.Thickness 6, 7, 6, 7
+    Set-BoxBg   $card 'Surface'
+    Set-BoxLine $card 'Stroke'
+
+    $shadow = New-Object System.Windows.Media.Effects.DropShadowEffect
+    $shadow.Color = [System.Windows.Media.Colors]::Black
+    $shadow.Direction = 270; $shadow.ShadowDepth = 3
+    $shadow.BlurRadius = 16; $shadow.Opacity = 0.18
+    $card.Effect = $shadow
+
+    $rows = New-Object System.Windows.Controls.StackPanel
+
+    $title = New-Object System.Windows.Controls.TextBlock
+    $title.Text = T 'Show on screen'
+    $title.FontSize = 10.5
+    $title.FontWeight = 'SemiBold'
+    $title.Margin = New-Object System.Windows.Thickness 11, 4, 0, 7
+    Set-TextFg $title 'TextFaint'
+    $rows.Children.Add($title) | Out-Null
+
+    foreach ($option in Get-ViewOptions) {
+        $rows.Children.Add((New-ViewMenuRow $Window $option $Popup)) | Out-Null
+    }
+
+    $card.Child = $rows
+    $room.Children.Add($card) | Out-Null
+    $room
+}
+
+# Una fila con casilla: [check] [icono] [etiqueta + pista]
+function New-ViewMenuRow {
+    param($Window, $Option, $Popup)
+
+    $checked = Get-ViewOption $Option.Id
+
+    $row = New-Object System.Windows.Controls.Border
+    $row.CornerRadius = New-Object System.Windows.CornerRadius 8
+    $row.Padding = New-Object System.Windows.Thickness 9, 8, 10, 9
+    $row.Cursor = 'Hand'
+    $row.Background = [System.Windows.Media.Brushes]::Transparent
+
+    $grid = New-Object System.Windows.Controls.Grid
+    Add-GridColumns $grid 'Auto', 'Auto', '*'
+
+    # --- columna 0: la marca de verificación ---
+    # Los dos iconos se alinean arriba para quedar a la altura del
+    # título, no del centro de la fila, que con la pista de debajo
+    # los dejaría junto al texto pequeño.
+    $check = New-Icon 'Check' 13 'Accent'
+    $check.Width = 18
+    $check.HorizontalAlignment = 'Left'
+    $check.VerticalAlignment = 'Top'
+    $check.Margin = New-Object System.Windows.Thickness 0, 2, 0, 0
+    if ($checked) { $check.Visibility = 'Visible' } else { $check.Visibility = 'Hidden' }
+    Add-ToColumn $grid $check 0
+
+    # --- columna 1: icono de la opción ---
+    $icon = New-Icon $Option.Icon 13 'TextMuted'
+    $icon.Margin = New-Object System.Windows.Thickness 0, 2, 9, 0
+    $icon.VerticalAlignment = 'Top'
+    Add-ToColumn $grid $icon 1
+
+    # --- columna 2: etiqueta y pista ---
+    $texts = New-Object System.Windows.Controls.StackPanel
+    $texts.VerticalAlignment = 'Center'
+
+    $label = New-Object System.Windows.Controls.TextBlock
+    $label.Text = T $Option.Label
+    $label.FontSize = 12.5
+    $label.FontWeight = 'SemiBold'
+    Set-TextFg $label 'Text'
+    $texts.Children.Add($label) | Out-Null
+
+    if ($Option.Hint) {
+        $hint = New-Object System.Windows.Controls.TextBlock
+        $hint.Text = T $Option.Hint
+        $hint.FontSize = 11
+        $hint.TextWrapping = 'Wrap'
+        $hint.Margin = New-Object System.Windows.Thickness 0, 2, 0, 0
+        Set-TextFg $hint 'TextMuted'
+        $texts.Children.Add($hint) | Out-Null
+    }
+
+    Add-ToColumn $grid $texts 2
+    $row.Child = $grid
+
+    $row.Add_MouseEnter({ param($s, $e) Set-BoxBg $s 'SurfaceSunken' })
+    $row.Add_MouseLeave({ param($s, $e) $s.Background = [System.Windows.Media.Brushes]::Transparent })
+
+    # Todo lo que hace falta al pulsar, por el Tag.
+    $row.Tag = [PSCustomObject]@{ Id = $Option.Id; Check = $check; Popup = $Popup }
+    $row.Add_MouseLeftButtonUp({
+        param($s, $e)
+        $info = $s.Tag
+        $new = -not (Get-ViewOption $info.Id)
+        Set-ViewOption $info.Id $new
+        if ($new) { $info.Check.Visibility = 'Visible' } else { $info.Check.Visibility = 'Hidden' }
+
+        $info.Popup.IsOpen = $false
+
+        # Repintar destruye la cabecera donde vive este mismo menú,
+        # así que se aplaza al Dispatcher para que el evento termine
+        # antes (mismo motivo que en Update-UiLanguage).
+        (Get-AppWindow).Dispatcher.BeginInvoke(
+            [System.Windows.Threading.DispatcherPriority]::Background,
+            [action]{ Show-CurrentView }) | Out-Null
+    })
+
+    $row
+}
+
+# ---- fin incluido: ui/Components/Shell/ViewMenu.ps1 ----
+
+# ---- 7. Pantallas: ensamblan las piezas ----
 # ---- inicio incluido: ui/Views/CategoryDetailView.ps1 ----
 # ============================================================
 # Vista: detalle de una categoría
 #
 # Misma idea que la lista: solo ensambla. La cabecera la pone
-# ui/Components/PageHeader.ps1 y cada fila la construye
-# ui/Components/SettingCard.ps1.
+# ui/Components/Layout/PageHeader.ps1 y cada fila la construye
+# ui/Components/Cards/SettingCard.ps1.
 #
 # Sirve para cualquier categoría sin saber nada de ella: recorre
 # su array Items y ya está.
 #
-# Si la sección está bloqueada en ui/CategoryIndex.ps1, se pinta
+# Si la sección está bloqueada en ui/Index/CategoryIndex.ps1, se pinta
 # igual pero con un aviso arriba y los controles deshabilitados.
 # ============================================================
 
@@ -2396,6 +4542,30 @@ function Show-CategoryDetailView {
     param($Window, $Category)
 
     $locked = [bool]$Category.Locked
+
+    # ---- 0. Preguntar al equipo qué hay en el registro ----
+    # Se hace ANTES de construir nada, para que las tarjetas ya
+    # nazcan con el valor real. Las secciones cuyos ajustes no
+    # declaren claves -hoy, todas menos Regedit- no leen nada y no
+    # enseñan la barra.
+    if ((Get-CategoryRegistryKeyCount $Category) -gt 0) {
+        # Update-UiNow cede el hilo para repintar la barra, y en esa
+        # pausa WPF puede entregar clics de la pantalla anterior.
+        # Sordo al ratón mientras dura: no se ve, y no hay forma de
+        # navegar a otro sitio a mitad de la lectura.
+        $Window.Content.IsHitTestVisible = $false
+        Show-ProgressStrip $Window 'Reading the registry...'
+        try {
+            Update-CategoryRegistryState -Category $Category -OnProgress {
+                param($Done, $Total)
+                Set-ProgressStrip (Get-AppWindow) $Done $Total
+            } | Out-Null
+        }
+        finally {
+            Hide-ProgressStrip $Window
+            $Window.Content.IsHitTestVisible = $true
+        }
+    }
 
     # ---- 1. Cabecera ----
     Clear-PageHeader $Window
@@ -2410,6 +4580,13 @@ function Show-CategoryDetailView {
         $reset.ToolTip = T 'Not available: the section is locked'
     }
     Add-PageAction $Window $reset
+
+    # El mismo menú que la pantalla principal: sus opciones son
+    # globales y se guardan, así que da igual desde dónde se toquen.
+    Add-PageAction $Window (New-ViewMenu $Window)
+
+    # Fila centrada con el recuento por etiqueta.
+    Set-PageSummary -Window $Window -Category $Category
 
     # ---- 2. Cuerpo ----
     $list = New-Object System.Windows.Controls.StackPanel
@@ -2431,11 +4608,11 @@ function Show-CategoryDetailView {
 # Vista: lista de optimizaciones (pantalla principal)
 #
 # Una vista solo ENSAMBLA, no dibuja: pide la cabecera a
-# ui/Components/PageHeader.ps1 y una tarjeta por categoría a
-# ui/Components/CategoryCard.ps1.
+# ui/Components/Layout/PageHeader.ps1 y una tarjeta por categoría a
+# ui/Components/Cards/CategoryCard.ps1.
 #
 # Las categorías salen del registro, así que esta pantalla se
-# adapta sola a las que haya en ui/Categories/.
+# adapta sola a las que haya en ui/Data/Categories/.
 # ============================================================
 
 function Show-OptimizationsListView {
@@ -2450,7 +4627,7 @@ function Show-OptimizationsListView {
     $search = New-SearchBox $Window
     Add-PageAction $Window $search.Root
     Add-PageAction $Window (New-ChipButton $Window 'Quick Actions' 'Bolt' -Chevron)
-    Add-PageAction $Window (New-ChipButton $Window 'View' 'Filter' -Chevron)
+    Add-PageAction $Window (New-ViewMenu $Window)
 
     # ---- 2. Cuerpo: una tarjeta por categoría ----
     $list = New-Object System.Windows.Controls.StackPanel
@@ -2469,7 +4646,7 @@ function Show-OptimizationsListView {
 # Vista: Settings
 #
 # Se dibuja sola a partir de lo que haya registrado en
-# ui/Preferences/: recorre los grupos y, dentro de cada uno,
+# ui/Data/Preferences/: recorre los grupos y, dentro de cada uno,
 # sus opciones. Añadir una opción nueva NO requiere tocar este
 # archivo.
 # ============================================================
@@ -2560,6 +4737,7 @@ $xamlString = @'
         <FontFamily x:Key="IconFont">Segoe Fluent Icons, Segoe MDL2 Assets</FontFamily>
         <FontFamily x:Key="DisplayFont">Segoe UI Variable Display, Segoe UI</FontFamily>
         <FontFamily x:Key="BodyFont">Segoe UI Variable Text, Segoe UI</FontFamily>
+        <FontFamily x:Key="MonoFont">Cascadia Mono, Consolas, Courier New</FontFamily>
 
         <!-- ================= BARRA DE DESPLAZAMIENTO FINA ================= -->
         <Style x:Key="ScrollThumbStyle" TargetType="Thumb">
@@ -2959,6 +5137,7 @@ $xamlString = @'
                 <RowDefinition Height="46"/>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
             <!-- ===== BARRA DE TITULO ===== -->
@@ -3008,6 +5187,7 @@ $xamlString = @'
 
                 <!-- acciones -->
                 <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,10,0">
+                    <Button x:Name="BtnLog"   Style="{StaticResource GlyphButtonStyle}" Content="&#xE9D9;" ToolTip="Activity log"/>
                     <Button x:Name="BtnTheme" Style="{StaticResource GlyphButtonStyle}" Content="&#xE708;" ToolTip="Change theme"/>
                     <Button x:Name="BtnHelp"  Style="{StaticResource GlyphButtonStyle}" Content="&#xE897;" ToolTip="Help"/>
                 </StackPanel>
@@ -3023,12 +5203,20 @@ $xamlString = @'
             <!-- ===== CABECERA DE CONTENIDO ===== -->
             <Border Grid.Row="1" Background="{DynamicResource Bg0}">
                 <Grid Margin="30,18,30,16">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
-                    <StackPanel x:Name="HeaderTitleArea" Grid.Column="0" VerticalAlignment="Center" Orientation="Horizontal"/>
-                    <StackPanel x:Name="HeaderActionsArea" Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center"/>
+                    <StackPanel x:Name="HeaderTitleArea" Grid.Row="0" Grid.Column="0" VerticalAlignment="Center" Orientation="Horizontal"/>
+                    <StackPanel x:Name="HeaderActionsArea" Grid.Row="0" Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center"/>
+                    <!-- Resumen centrado bajo el titulo. Vacio salvo en el
+                         detalle de una seccion; lo llena Set-PageSummary. -->
+                    <StackPanel x:Name="HeaderSummaryArea" Grid.Row="1" Grid.ColumnSpan="2"
+                                Orientation="Horizontal" HorizontalAlignment="Center"/>
                 </Grid>
             </Border>
 
@@ -3036,14 +5224,14 @@ $xamlString = @'
             <Grid Grid.Row="2">
                 <Grid.ColumnDefinitions>
                     <!-- Auto: la columna sigue al ancho del Border, que es lo
-                         que se anima al plegar (ver ui/Components/Sidebar.ps1) -->
+                         que se anima al plegar (ver ui/Components/Shell/Sidebar.ps1) -->
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
 
                 <!-- NAVEGACION LATERAL
                      Solo el contenedor: los botones los construye
-                     ui/Components/Sidebar.ps1 a partir de ui/NavigationIndex.ps1 -->
+                     ui/Components/Shell/Sidebar.ps1 a partir de ui/Index/NavigationIndex.ps1 -->
                 <Border x:Name="Sidebar" Grid.Column="0" Width="88" MinWidth="0"
                         ClipToBounds="True"
                         Background="{DynamicResource Bg1}"
@@ -3065,9 +5253,66 @@ $xamlString = @'
                 </Border>
 
                 <!-- CONTENIDO PRINCIPAL -->
-                <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto" Padding="30,2,22,26">
+                <!-- Con nombre porque ui/Engine/Router.ps1 guarda y restaura su
+                     posicion al repintar la misma pantalla. -->
+                <ScrollViewer x:Name="MainScroll" Grid.Column="1" VerticalScrollBarVisibility="Auto" Padding="30,2,22,26">
                     <ContentControl x:Name="MainContent"/>
                 </ScrollViewer>
+            </Grid>
+
+            <!-- ===== BARRA DE PROGRESO =====
+                 Solo el contenedor; lo mueve ui/Components/Shell/ProgressStrip.ps1.
+                 Colapsada no ocupa alto, asi que la fila Auto desaparece y
+                 el contenido no se mueve al aparecer y desaparecer. -->
+            <Border x:Name="ProgressStrip" Grid.Row="3" Visibility="Collapsed"
+                    Background="{DynamicResource Bg1}"
+                    BorderBrush="{DynamicResource Stroke}" BorderThickness="0,1,0,0">
+                <StackPanel Margin="30,9,30,10">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock x:Name="ProgressText" Grid.Column="0" FontSize="11.5"
+                                   Foreground="{DynamicResource TextMuted}"/>
+                        <TextBlock x:Name="ProgressCount" Grid.Column="1" FontSize="11.5" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextFaint}"/>
+                    </Grid>
+
+                    <!-- El relleno se mide con anchos estrella, no en pixeles:
+                         asi no hace falta saber el ancho real de la ventana. -->
+                    <Border Height="4" CornerRadius="2" Margin="0,7,0,0"
+                            Background="{DynamicResource SurfaceSunken}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition x:Name="ProgressDone" Width="0*"/>
+                                <ColumnDefinition x:Name="ProgressLeft" Width="1*"/>
+                            </Grid.ColumnDefinitions>
+                            <Border Grid.Column="0" CornerRadius="2" Background="{DynamicResource Accent}"/>
+                        </Grid>
+                    </Border>
+                </StackPanel>
+            </Border>
+
+            <!-- ===== REGISTRO DE ACTIVIDAD (LOG) =====
+                 Solo la carcasa: todo lo de dentro lo construye
+                 ui/Components/Shell/LogPanel.ps1, que es quien sabe que hay
+                 un log y como se pinta.
+
+                 Va DESPUES que todo lo demas y con RowSpan hasta el
+                 final para quedar por encima: en un Grid manda el orden
+                 del documento. Cubre de la fila 1 hacia abajo, asi que
+                 la barra de titulo sigue viva y su boton puede cerrarlo.
+
+                 Colapsado no existe para el raton, de modo que con el
+                 cajon cerrado no hay nada estorbando delante. -->
+            <Grid x:Name="LogOverlay" Grid.Row="1" Grid.RowSpan="3" Visibility="Collapsed">
+                <!-- El velo que oscurece lo de detras. Tambien se come
+                     los clics: con el cajon abierto no se navega. -->
+                <Border x:Name="LogScrim" Background="{DynamicResource Overlay}" Opacity="0"/>
+                <Border x:Name="LogDrawer" Width="660" HorizontalAlignment="Right"
+                        Background="{DynamicResource Bg1}"
+                        BorderBrush="{DynamicResource Stroke}" BorderThickness="1,0,0,0"/>
             </Grid>
         </Grid>
     </Border>
@@ -3132,6 +5377,25 @@ $Window.FindName('BtnTheme').Add_Click({
     & (Get-PreferenceById 'theme').Set $next
 })
 
+# ---- Registro de actividad ----
+# El cajón se pone encima de la pantalla actual, así que no pasa
+# por el router: al cerrarlo sigues donde estabas.
+$Window.FindName('BtnLog').Add_Click({
+    param($s, $e)
+    Switch-LogPanel ([System.Windows.Window]::GetWindow($s))
+})
+
+# Escape cierra el cajón. Es Preview para verlo antes que nadie:
+# si el foco está dentro del cajón, el evento normal no llegaría
+# hasta aquí.
+$Window.Add_PreviewKeyDown({
+    param($s, $e)
+    if ($e.Key -eq 'Escape' -and (Get-LogPanelOpen)) {
+        Hide-LogPanel $s
+        $e.Handled = $true
+    }
+})
+
 # ---- Selector de modo (solo visual por ahora) ----
 $Window.FindName('BtnModeNormal').Add_Click({ param($s, $e) Set-ModeSelection $s })
 $Window.FindName('BtnModeBuilder').Add_Click({ param($s, $e) Set-ModeSelection $s })
@@ -3147,8 +5411,8 @@ function Set-ModeSelection {
 }
 
 # ---- Menú lateral ----
-# Los botones se construyen a partir de ui/NavigationIndex.ps1;
-# la selección y el plegado los gestiona ui/Components/Sidebar.ps1.
+# Los botones se construyen a partir de ui/Index/NavigationIndex.ps1;
+# la selección y el plegado los gestiona ui/Components/Shell/Sidebar.ps1.
 Build-Sidebar -Window $Window
 
 $Window.FindName('BtnMenu').Add_Click({

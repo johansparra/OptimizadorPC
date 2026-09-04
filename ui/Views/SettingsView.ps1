@@ -2,7 +2,7 @@
 # Vista: Settings
 #
 # Se dibuja sola a partir de lo que haya registrado en
-# ui/Preferences/: recorre los grupos y, dentro de cada uno,
+# ui/Data/Preferences/: recorre los grupos y, dentro de cada uno,
 # sus opciones. Añadir una opción nueva NO requiere tocar este
 # archivo.
 # ============================================================

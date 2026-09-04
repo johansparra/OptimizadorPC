@@ -2,7 +2,7 @@
 
 Aplicación de escritorio para optimizar Windows 11 Pro. Interfaz **WPF** escrita íntegramente en **PowerShell 5.1** y empaquetada como un **`.exe` portable de un solo archivo** con [ps2exe](https://github.com/MScholtes/PS2EXE).
 
-> **Estado: maqueta de interfaz.** La navegación, las tarjetas, los toggles y los dropdowns funcionan visualmente, pero **ningún control aplica cambios reales al sistema todavía**. Los datos de `ui/Categories/` son estáticos.
+> **Estado: maqueta de interfaz.** La navegación, las tarjetas, los toggles y los dropdowns funcionan visualmente, pero **ningún control aplica cambios reales al sistema todavía**. Los datos de `ui/Data/Categories/` son estáticos.
 
 ---
 
@@ -17,88 +17,134 @@ Proyecto/
 ├── build.ps1                Empaquetador (inline) + compilador a .exe
 ├── OptimizadorPC.exe        Binario portable generado
 │
-├── ui/
+├── core/                    EL SISTEMA. Habla con Windows, no con la pantalla.
+│   ├── Registry/            Todo lo del registro de Windows
+│   │   ├── Reader.ps1           Lectura del registro (hoy, solo lectura)
+│   │   └── CategoryState.ps1    Vuelca en los ajustes lo que hay en el equipo
+│   └── Diagnostics/
+│       └── Log.ps1              Registro de actividad: qué se leyó y cuándo
+│
+├── ui/                      UNA CARPETA POR CAPA. Ver "Las capas" más abajo.
 │   ├── MainWindow.xaml      ESQUELETO + ESTILOS: barra de título, contenedores
 │   │                        vacíos y todas las plantillas visuales
-│   ├── Theme.ps1            Paletas claro/oscuro, catálogo de iconos, animaciones
-│   ├── UiKit.ps1            Piezas genéricas: icono, píldora, etiqueta,
-│   │                        interruptor, buscador, botón chip, rejillas
 │   │
-│   ├── CategoryIndex.ps1    ← PRINCIPAL: qué secciones se ven, en qué orden
-│   │                          y cuáles están bloqueadas
-│   ├── NavigationIndex.ps1  ← PRINCIPAL: los botones del menú lateral
-│   ├── LanguageIndex.ps1    ← PRINCIPAL: los idiomas disponibles
+│   ├── Design/              1. BASE. Por debajo de todo; no usan a nadie.
+│   │   ├── Theme.ps1            Paletas claro/oscuro, iconos, animaciones
+│   │   └── UiKit.ps1            Piezas genéricas: icono, píldora, etiqueta,
+│   │                            interruptor, buscador, botón chip, rejillas
 │   │
-│   ├── CategoryRegistry.ps1   Mecanismo para declarar secciones
-│   ├── PreferenceRegistry.ps1 Mecanismo para declarar opciones de Settings
-│   ├── Translation.ps1        Mecanismo de traducción (T, Register-Language)
-│   ├── AppSettings.ps1        Guardado en %APPDATA% entre sesiones
-│   ├── Router.ps1             Qué pantalla se ve y cómo repintarla
+│   ├── Engine/              2. MECANISMO. Registran, traducen, guardan, enrutan.
+│   │   ├── CategoryRegistry.ps1   Declarar secciones y sus ajustes
+│   │   ├── PreferenceRegistry.ps1 Declarar opciones de Settings
+│   │   ├── Translation.ps1        Traducción (T, Register-Language)
+│   │   ├── AppSettings.ps1        Guardado en %APPDATA% entre sesiones
+│   │   └── Router.ps1             Qué pantalla se ve y cómo repintarla
 │   │
-│   ├── Categories/          ← LOS DATOS. Un archivo por sección.
-│   │   ├── Privacy.ps1          Power.ps1        Gaming.ps1
-│   │   └── Update.ps1           Notifications.ps1  Sound.ps1
+│   ├── Index/               3. POLÍTICA. ← LOS ARCHIVOS PRINCIPALES
+│   │   ├── CategoryIndex.ps1    qué secciones se ven, en qué orden,
+│   │   │                        y cuáles están bloqueadas
+│   │   ├── NavigationIndex.ps1  los botones del menú lateral
+│   │   ├── LanguageIndex.ps1    los idiomas disponibles
+│   │   └── ViewOptionsIndex.ps1 las casillas del botón "Vista"
 │   │
-│   ├── Preferences/         ← LAS OPCIONES de Settings. Un archivo cada una.
-│   │   ├── 10-Language.ps1
-│   │   └── 20-Theme.ps1
+│   ├── Data/                5. LOS DATOS. Solo declaraciones, cero UI.
+│   │   ├── Categories/          Un archivo por sección
+│   │   │   ├── Regedit.ps1          Power.ps1          Gaming.ps1
+│   │   │   └── Update.ps1           Notifications.ps1  Sound.ps1
+│   │   ├── Preferences/         Un archivo por opción de Settings
+│   │   │   ├── 10-Language.ps1
+│   │   │   └── 20-Theme.ps1
+│   │   └── Lang/                Un archivo por idioma
+│   │       └── es.ps1               (el inglés es la fuente: no lleva archivo)
 │   │
-│   ├── Lang/                ← LOS IDIOMAS. Un archivo cada uno.
-│   │   └── es.ps1               (el inglés es la fuente: no lleva archivo)
+│   ├── Components/          6. LAS PIEZAS. Cómo se dibuja cada cosa.
+│   │   ├── Shell/               El marco de la ventana
+│   │   │   ├── TitleBar.ps1         textos e iconos de la barra de título
+│   │   │   ├── Sidebar.ps1          menú lateral: botones y plegado animado
+│   │   │   ├── ViewMenu.ps1         chip "Vista" y su desplegable
+│   │   │   ├── LogPanel.ps1         cajón del registro de actividad
+│   │   │   └── ProgressStrip.ps1    barra de progreso del pie
+│   │   ├── Cards/               Las tarjetas
+│   │   │   ├── CategoryCard.ps1     fila de la pantalla principal
+│   │   │   ├── SettingCard.ps1      fila de la pantalla de detalle
+│   │   │   ├── PreferenceCard.ps1   fila de la pantalla de Settings
+│   │   │   └── TechnicalDetails.ps1 pie plegable con las claves del registro
+│   │   └── Layout/              Piezas de página
+│   │       ├── PageHeader.ps1       cabecera: título, breadcrumb, acciones
+│   │       ├── Banner.ps1           avisos (p. ej. "sección bloqueada")
+│   │       └── CategorySummary.ps1  la fila de píldoras bajo el título
 │   │
-│   ├── Components/          ← LAS PIEZAS. Cómo se dibuja cada cosa.
-│   │   ├── PageHeader.ps1       cabecera: título, breadcrumb, acciones
-│   │   ├── CategoryCard.ps1     fila de la pantalla principal
-│   │   ├── SettingCard.ps1      fila de la pantalla de detalle
-│   │   ├── PreferenceCard.ps1   fila de la pantalla de Settings
-│   │   ├── Banner.ps1           avisos (p. ej. "sección bloqueada")
-│   │   ├── Sidebar.ps1          menú lateral: botones y plegado animado
-│   │   └── TitleBar.ps1         textos e iconos de la barra de título
-│   │
-│   └── Views/               ← LAS PANTALLAS. Solo ensamblan piezas.
+│   └── Views/               7. LAS PANTALLAS. Solo ensamblan piezas.
 │       ├── OptimizationsListView.ps1
 │       ├── CategoryDetailView.ps1
 │       └── SettingsView.ps1
+│
+├── tests/                   PRUEBAS. Sin dependencias, corren en 5.1 y en 7.
+│   ├── Run-Tests.ps1        El lanzador
+│   ├── Harness/             EL ARNÉS: no prueba, hace que se pueda probar
+│   │   ├── TestKit.ps1          Describe / It / Assert-*
+│   │   ├── AppHost.ps1          Carga la app sin abrir la ventana
+│   │   └── Fixtures.ps1         Claves de prueba, secciones de mentira
+│   ├── Core/                Pruebas de core/, contra el registro de verdad
+│   ├── Ui/                  Pruebas de ui/, con controles de WPF sin ventana
+│   ├── Source/              Pruebas del código fuente, sin ejecutarlo
+│   └── README.md            Cómo lanzarlas y qué cubren
 │
 └── build/
     └── _combined.ps1        GENERADO: todo el proyecto en un solo script
 ```
 
+### Las capas y su orden
+
+Los números del árbol son **el orden en que `main.ps1` carga las carpetas**, y es lo
+único que ese archivo decide sobre la estructura. Importa por una sola razón: los
+datos se registran al cargarse, así que su mecanismo tiene que existir antes
+(`ui/Data/Categories/` llama a `Register-Category`, que vive en `ui/Engine/`).
+`core/` va en el puesto 4, entre la política y los datos.
+
+**Cada capa se carga entera, subcarpetas incluidas.** Un `.ps1` nuevo en cualquiera de
+ellas entra solo, tanto al ejecutar `main.ps1` como al compilar el `.exe`: no hay que
+registrarlo en ningún sitio. Lo que **no** se puede es dejar un archivo suelto fuera
+de esas carpetas — no habría forma de meterlo en el ejecutable.
+
 ### ¿Dónde toco qué?
 
 | Quiero... | Voy a... |
 | --------- | -------- |
-| Reordenar, ocultar o bloquear secciones | `ui/CategoryIndex.ps1` — **el principal de las secciones** |
-| Reordenar, ocultar o bloquear botones del menú | `ui/NavigationIndex.ps1` — **el principal del menú** |
-| Añadir o quitar un idioma | `ui/Lang/` + `ui/LanguageIndex.ps1` |
-| Añadir una opción a Settings | Crear un archivo en `ui/Preferences/` |
-| Traducir un texto | `ui/Lang/es.ps1` |
-| Añadir una sección (Network, Storage...) | Crear un archivo en `ui/Categories/` |
+| Reordenar, ocultar o bloquear secciones | `ui/Index/CategoryIndex.ps1` — **el principal de las secciones** |
+| Reordenar, ocultar o bloquear botones del menú | `ui/Index/NavigationIndex.ps1` — **el principal del menú** |
+| Añadir o quitar una casilla del botón "Vista" | `ui/Index/ViewOptionsIndex.ps1` — **el principal de la vista** |
+| Añadir o quitar un idioma | `ui/Data/Lang/` + `ui/Index/LanguageIndex.ps1` |
+| Añadir una opción a Settings | Crear un archivo en `ui/Data/Preferences/` |
+| Traducir un texto | `ui/Data/Lang/es.ps1` |
+| Añadir una sección (Network, Storage...) | Crear un archivo en `ui/Data/Categories/` |
 | Añadir/quitar un ajuste dentro de una sección | Editar el array `Items` de ese archivo |
 | Cambiar el icono o el color de una sección | Campos `Icon` / `Accent` de ese archivo |
-| Cambiar cómo se ve una fila de la lista | `ui/Components/CategoryCard.ps1` |
-| Cambiar cómo se ve una fila del detalle | `ui/Components/SettingCard.ps1` |
-| Cambiar el título o los botones de la cabecera | `ui/Components/PageHeader.ps1` |
-| Cambiar el plegado del menú o su animación | `ui/Components/Sidebar.ps1` |
-| Cambiar colores, tipografías o iconos globales | `ui/Theme.ps1` |
+| Cambiar cómo se ve una fila de la lista | `ui/Components/Cards/CategoryCard.ps1` |
+| Cambiar cómo se ve una fila del detalle | `ui/Components/Cards/SettingCard.ps1` |
+| Cambiar el título o los botones de la cabecera | `ui/Components/Layout/PageHeader.ps1` |
+| Cambiar el plegado del menú o su animación | `ui/Components/Shell/Sidebar.ps1` |
+| Cambiar colores, tipografías o iconos globales | `ui/Design/Theme.ps1` |
 | Cambiar bordes, sombras o plantillas de controles | `ui/MainWindow.xaml` |
-| Añadir una pantalla nueva | Crear un archivo en `ui/Views/` y apuntarla desde `ui/NavigationIndex.ps1` |
+| Añadir una pantalla nueva | Crear un archivo en `ui/Views/` y apuntarla desde `ui/Index/NavigationIndex.ps1` |
+| Tocar cómo se lee el registro | `core/Registry/Reader.ps1` — nada de WPF aquí dentro |
+| Cambiar qué claves consulta un ajuste | El `-Registry` de ese ajuste en `ui/Data/Categories/` |
 
-**Las carpetas `Categories/`, `Components/` y `Views/` se cargan enteras.** Un `.ps1`
-nuevo dentro de ellas entra solo, por orden alfabético — no hay que registrarlo en
-`main.ps1` ni en `build.ps1`.
+**Las siete carpetas de capa se cargan enteras, subcarpetas incluidas.** Un `.ps1`
+nuevo dentro de cualquiera entra solo — no hay que registrarlo en `main.ps1` ni en
+`build.ps1`.
 
 ### El índice de secciones
 
-`ui/CategoryIndex.ps1` es **el archivo principal de las secciones**. Manda sobre
+`ui/Index/CategoryIndex.ps1` es **el archivo principal de las secciones**. Manda sobre
 cuáles se ven, en qué orden y cuáles están bloqueadas. El contenido de cada una
-sigue en su propio archivo de `ui/Categories/`.
+sigue en su propio archivo de `ui/Data/Categories/`.
 
 ```powershell
 $CategoryIndex = @(
 
     #  Id                    Visible          Bloqueada
-    @{ Id = 'privacy';       Visible = $true;  Locked = $false }
+    @{ Id = 'regedit';       Visible = $true;  Locked = $false }
     @{ Id = 'power';         Visible = $true;  Locked = $false }
     @{ Id = 'gaming';        Visible = $true;  Locked = $false }
     @{ Id = 'update';        Visible = $true;  Locked = $false }
@@ -116,7 +162,7 @@ $CategoryIndex = @(
 | Quitarla temporalmente | Comentar su línea con `#` |
 | Volver a ponerla | Descomentar la línea |
 
-Ocultar o quitar del índice **no borra nada**: el archivo de `ui/Categories/` sigue
+Ocultar o quitar del índice **no borra nada**: el archivo de `ui/Data/Categories/` sigue
 intacto y la sección vuelve en cuanto la reactivas.
 
 **Qué hace `Locked = $true`:** la sección aparece en la lista con un candado, se puede
@@ -131,9 +177,9 @@ el índice solo hace falta cuando quieres colocarla, ocultarla o bloquearla.
 
 ### El menú lateral
 
-`ui/NavigationIndex.ps1` hace con los botones de la izquierda lo mismo que
+`ui/Index/NavigationIndex.ps1` hace con los botones de la izquierda lo mismo que
 `CategoryIndex.ps1` con las secciones. Antes estaban escritos a mano en el XAML;
-ahora son datos y los dibuja `ui/Components/Sidebar.ps1`.
+ahora son datos y los dibuja `ui/Components/Shell/Sidebar.ps1`.
 
 ```powershell
 $NavigationIndex = @(
@@ -157,7 +203,7 @@ $NavigationIndex = @(
 | `Visible` | `$false` lo oculta sin borrar nada |
 | `Locked` | `$true` lo muestra con candado, en gris y sin responder al clic |
 | `Default` | El botón que sale marcado al arrancar |
-| `Icon` | Nombre de glifo del catálogo de `ui/Theme.ps1` |
+| `Icon` | Nombre de glifo del catálogo de `ui/Design/Theme.ps1` |
 
 Añadir una entrada al menú es añadir una línea aquí. Aunque los botones ya no estén
 en el XAML, siguen registrados con su nombre, así que `$Window.FindName('NavSettings')`
@@ -177,15 +223,15 @@ que si no el ancho nunca llegaría a cero del todo.
 ### Idiomas
 
 La traducción es **por texto original**, no por clave: el inglés es el idioma fuente y
-cada archivo de `ui/Lang/` es un diccionario `"texto en inglés" -> "texto traducido"`.
-Gracias a eso los archivos de `ui/Categories/` **no se tocan**: siguen leyéndose en
+cada archivo de `ui/Data/Lang/` es un diccionario `"texto en inglés" -> "texto traducido"`.
+Gracias a eso los archivos de `ui/Data/Categories/` **no se tocan**: siguen leyéndose en
 inglés claro, y aun así su contenido se traduce.
 
 ```powershell
-# ui/Lang/es.ps1
+# ui/Data/Lang/es.ps1
 Register-Language 'es' @{
     'Optimizations'      = 'Optimizaciones'
-    'Privacy & Security' = 'Privacidad y seguridad'
+    'Windows registry keys' = 'Claves de registro de Windows'
     'Game Mode'          = 'Modo de juego'
     '{0} settings'       = '{0} ajustes'
 }
@@ -204,28 +250,28 @@ queda pendiente, navega por la aplicación y ejecuta `Get-MissingTranslations 'e
 
 **Para añadir un idioma:**
 
-1. copiar `ui/Lang/es.ps1` como `ui/Lang/<código>.ps1` y traducir
-2. añadir su línea en `ui/LanguageIndex.ps1`
+1. copiar `ui/Data/Lang/es.ps1` como `ui/Data/Lang/<código>.ps1` y traducir
+2. añadir su línea en `ui/Index/LanguageIndex.ps1`
 
-Nada más. La carpeta `ui/Lang/` se carga entera, y el desplegable de Settings se
+Nada más. La carpeta `ui/Data/Lang/` se carga entera, y el desplegable de Settings se
 rellena solo desde el índice.
 
 > Los nombres de los idiomas (`English`, `Español`) **no** se traducen a propósito:
 > van siempre en su propio idioma, que es como los reconoce quien los busca. Eso lo
-> marca el campo `TranslateOptions = $false` de `ui/Preferences/10-Language.ps1`.
+> marca el campo `TranslateOptions = $false` de `ui/Data/Preferences/10-Language.ps1`.
 
 **Por qué hace falta repintar:** el tema claro/oscuro se actualiza solo porque el XAML
 usa `DynamicResource`, pero para el texto no existe equivalente. Al cambiar de idioma,
 `Update-UiLanguage` reconstruye el menú y vuelve a dibujar la pantalla actual usando
-el enrutador (`ui/Router.ps1`), que recuerda en qué vista estás.
+el enrutador (`ui/Engine/Router.ps1`), que recuerda en qué vista estás.
 
 ### Preferencias
 
-La pantalla Settings **se dibuja sola** a partir de `ui/Preferences/`. Añadir una
+La pantalla Settings **se dibuja sola** a partir de `ui/Data/Preferences/`. Añadir una
 opción es crear un archivo ahí; la vista no se toca.
 
 ```powershell
-# ui/Preferences/30-MiOpcion.ps1
+# ui/Data/Preferences/30-MiOpcion.ps1
 Register-Preference @{
     Order       = 30
     Id          = 'miopcion'
@@ -279,12 +325,12 @@ Register-Category @{
     Items = @(
         New-Setting -Name 'Nagle Algorithm' `
             -Description 'Disable packet coalescing to reduce input latency' `
-            -Tags 'Preference', 'Recommended' `
+            -Tags 'Recommended' `
             -Value $false
 
         New-Setting -Name 'DNS Provider' `
             -Description 'Choose which resolver Windows uses' `
-            -Tags 'Preference', 'Custom' `
+            -Tags 'Custom' `
             -Options 'Automatic (DHCP)', 'Cloudflare 1.1.1.1', 'Google 8.8.8.8' `
             -Value 'Cloudflare 1.1.1.1'
     )
@@ -305,23 +351,24 @@ graph TD
         COMB -.->|ps2exe| EXE["OptimizadorPC.exe"]
     end
 
-    MAIN["main.ps1<br/><i>arranque</i>"] --> XAML["MainWindow.xaml<br/><i>esqueleto + estilos</i>"]
-    MAIN --> THEME["Theme.ps1<br/><i>paletas · iconos</i>"]
-    MAIN --> KIT["UiKit.ps1<br/><i>piezas genéricas</i>"]
-    MAIN --> REG["CategoryRegistry.ps1<br/><i>mecanismo</i>"]
-    MAIN --> IDX["CategoryIndex.ps1<br/><b>orden · visible · bloqueo</b>"]
+    MAIN["main.ps1<br/><i>arranque · decide el ORDEN de las capas</i>"]
 
-    MAIN -->|carga la carpeta| CATS["Categories/*.ps1<br/><i>LOS DATOS</i>"]
-    MAIN -->|carga la carpeta| COMPS["Components/*.ps1<br/><i>LAS PIEZAS</i>"]
-    MAIN -->|carga la carpeta| VIEWS["Views/*.ps1<br/><i>LAS PANTALLAS</i>"]
+    MAIN -->|1| DESIGN["ui/Design/<br/><i>Theme · UiKit</i>"]
+    MAIN -->|2| ENGINE["ui/Engine/<br/><i>EL MECANISMO</i>"]
+    MAIN -->|3| IDX["ui/Index/<br/><b>orden · visible · bloqueo</b>"]
+    MAIN -->|4| CORE["core/<br/><i>EL SISTEMA</i>"]
+    MAIN -->|5| DATA["ui/Data/<br/><i>LOS DATOS</i>"]
+    MAIN -->|6| COMPS["ui/Components/<br/><i>LAS PIEZAS</i>"]
+    MAIN -->|7| VIEWS["ui/Views/<br/><i>LAS PANTALLAS</i>"]
+    MAIN --> XAML["MainWindow.xaml<br/><i>esqueleto + estilos</i>"]
 
-    CATS -->|Register-Category| REG
-    IDX -->|ordena y filtra| REG
-    VIEWS -->|Get-OptimizationCategories| REG
+    DATA -->|Register-Category| ENGINE
+    IDX -->|ordena y filtra| ENGINE
+    VIEWS -->|Get-OptimizationCategories| ENGINE
     VIEWS --> COMPS
-    COMPS --> KIT
-    KIT --> THEME
-    THEME -.->|pinceles| XAML
+    COMPS --> DESIGN
+    CORE -->|estado real del equipo| DATA
+    DESIGN -.->|pinceles| XAML
     VIEWS -.->|inyecta en MainContent| XAML
 
     BLD -->|lee| MAIN
@@ -330,11 +377,15 @@ graph TD
     classDef gen fill:#FFF3E0,stroke:#E67E22,color:#333
     classDef entry fill:#EAF2FF,stroke:#2D7DFB,color:#333
     classDef main fill:#FDEAEF,stroke:#E11D48,color:#333
-    class CATS data
+    class DATA data
     class COMB,EXE gen
     class MAIN,BLD entry
     class IDX main
 ```
+
+Las flechas numeradas son **el orden de carga**; las demás, quién usa a quién. Nótese
+que ninguna sale de `core/` hacia `ui/Components` o `ui/Views`: `core/` no conoce la
+interfaz.
 
 ### Sistema de diseño
 
@@ -378,7 +429,7 @@ flowchart LR
 | `HeaderActionsArea`  | Buscador, "Quick Actions", "View"              |
 | `MainContent`        | El cuerpo de la vista (lista de tarjetas)      |
 
-Las vistas no tocan esas zonas directamente: pasan por `ui/Components/PageHeader.ps1`, que las limpia y las repuebla. Así **cambiar de pantalla no recrea la ventana** y todas las pantallas comparten el mismo aspecto de cabecera.
+Las vistas no tocan esas zonas directamente: pasan por `ui/Components/Layout/PageHeader.ps1`, que las limpia y las repuebla. Así **cambiar de pantalla no recrea la ventana** y todas las pantallas comparten el mismo aspecto de cabecera.
 
 ### Efectos y transiciones
 
@@ -413,18 +464,20 @@ flowchart LR
 
 ### Categorías definidas
 
-Una fila por archivo de `ui/Categories/`. El orden mostrado es el de `ui/CategoryIndex.ps1`:
+Una fila por archivo de `ui/Data/Categories/`. El orden mostrado es el de `ui/Index/CategoryIndex.ps1`:
 
 | Archivo | Id | Categoría | Icono | Badge | Ajustes |
 | ------- | -- | --------- | ----- | ----- | ------- |
-| `Privacy.ps1` | `privacy` | Privacy & Security | `Shield` | NEW 45 | 6 |
+| `Regedit.ps1` | `regedit` | Regedit | `Shield` | NEW 3 *(contado)* | 6 |
 | `Power.ps1` | `power` | Power | `Power` | — | 3 |
-| `Gaming.ps1` | `gaming` | Gaming & Performance | `Game` | NEW 16 | 5 |
-| `Update.ps1` | `update` | Update | `Sync` | NEW 1 | 2 |
+| `Gaming.ps1` | `gaming` | Gaming & Performance | `Game` | NEW 16 *(a mano)* | 5 |
+| `Update.ps1` | `update` | Update | `Sync` | NEW 1 *(a mano)* | 2 |
 | `Notifications.ps1` | `notifications` | Notifications | `Bell` | — | 2 |
 | `Sound.ps1` | `sound` | Sound | `Volume` | — | 1 |
 
-> Los contadores de las píldoras (`29/88`, etc.) y los badges son **valores fijos declarados a mano**, no cuentan los ajustes reales del archivo. Cuando haya lógica real conviene calcularlos.
+> **El badge se cuenta solo** a partir de los ajustes que llevan su propio `-Badge 'NEW'`: una categoría que no declare `Badge` sale con `NEW <n>`, o sin badge si no hay ninguno marcado. `Gaming.ps1` y `Update.ps1` todavía lo declaran a mano; borrar esa línea los pasa al recuento automático.
+>
+> Los contadores de las píldoras (`29/88`, etc.) siguen siendo **valores fijos declarados a mano**, no cuentan los ajustes reales del archivo. Cuando haya lógica real conviene calcularlos.
 
 
 ---
@@ -437,15 +490,16 @@ Una fila por archivo de `ui/Categories/`. El orden mostrado es el de `ui/Categor
 sequenceDiagram
     participant B as build.ps1
     participant M as main.ps1
-    participant U as ui/*.ps1 + .xaml
+    participant U as ui/ + core/ + .xaml
     participant C as build/_combined.ps1
     participant P as ps2exe
 
     B->>M: lee línea por línea
     loop por cada línea
-        alt línea es `. (Join-Path $ScriptRoot 'ui\...')`
-            B->>U: leer archivo
-            U-->>C: pegar contenido en línea
+        alt línea es `# @@EMBED_DIR:carpeta@@`
+            B->>U: leer TODOS los .ps1, subcarpetas incluidas
+            U-->>C: pegar cada uno, por orden de ruta
+            B->>M: saltar hasta `# @@ENDEMBED@@`
         else línea es `# @@EMBED_XAML:...@@`
             B->>U: leer MainWindow.xaml
             U-->>C: pegar como aquí-string @'...'@
@@ -466,19 +520,39 @@ powershell -ExecutionPolicy Bypass -File .\main.ps1
 
 # Compilar el ejecutable portable
 powershell -ExecutionPolicy Bypass -File .\build.ps1
+
+# Solo empaquetar, sin llamar a ps2exe (rápido, para comprobar que todo entra)
+powershell -ExecutionPolicy Bypass -File .\build.ps1 -CombineOnly
 ```
 
 `build.ps1` instala el módulo `ps2exe` automáticamente en `CurrentUser` si falta (no requiere admin para instalarlo). El `.exe` resultante se compila con `-requireAdmin`, así que **pedirá elevación al abrirse**.
 
 ---
 
+## Pruebas
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\tests\Run-Tests.ps1   # Windows PowerShell 5.1
+pwsh       -ExecutionPolicy Bypass -File .\tests\Run-Tests.ps1   # PowerShell 7
+```
+
+Sin dependencias: no usan Pester ni hay nada que instalar. Pásalas en **los dos hosts**, por el mismo motivo de la convención 6.
+
+Cubren cuatro cosas:
+
+- **`core/`** contra el registro de Windows de verdad — los cuatro estados de lectura, el DWord con signo, y que nada suba una excepción hacia la ventana.
+- **La interfaz**, construyendo controles de WPF reales pero sin enseñar la ventana: que estén los nombres que busca `FindName`, que cada vista se pinte, que el cambio de tema repinte los pinceles y que no quede ni un texto sin traducir.
+- **El cableado de `main.ps1`**: levantan la ventana y pulsan los botones. Es la única forma de cazar la convención 4, porque un manejador con closure falla *al hacer clic* y solo ejecutando `main.ps1`.
+- **Las reglas del proyecto** que se comprueban leyendo el código: el BOM, los `.GetNewClosure()`, los glifos inventados, y que ningún archivo se quede fuera del `.exe`.
+
+Detalles en [`tests/README.md`](tests/README.md), que además explica **por qué Playwright no sirve aquí** (automatiza navegadores; esto es WPF) y qué haría falta para llegar a pruebas de extremo a extremo con UI Automation.
+
+---
+
 ## Convenciones importantes
 
 1. **Nunca edites `build/_combined.ps1`** — se regenera en cada build.
-2. **`build.ps1` parsea `main.ps1` con expresiones regulares.** Si agregas un archivo en `ui/`, el dot-source debe escribirse exactamente así o no entrará al `.exe`:
-   ```powershell
-   . (Join-Path $ScriptRoot 'ui\MiArchivo.ps1')
-   ```
+2. **`build.ps1` solo entiende dos marcadores de `main.ps1`:** `# @@EMBED_DIR:carpeta@@` (una capa entera, subcarpetas incluidas) y `# @@EMBED_XAML:ruta@@`, ambos cerrados con `# @@ENDEMBED@@`. **Un archivo nuevo va DENTRO de una de las siete carpetas de capa** y entonces entra solo; no hay forma de incluir uno suelto, y cargarlo a mano con un `. (Join-Path ...)` haría que el programa funcionase en desarrollo y fallara compilado. Hay una prueba que lo impide.
 3. **Guarda todo `.ps1` y `.xaml` en UTF-8 CON BOM.** Windows PowerShell 5.1 interpreta un script sin BOM como ANSI y rompe cualquier carácter no ASCII, fallando al parsear. Como PowerShell 7 sí asume UTF-8, un archivo puede funcionar en `pwsh` y reventar en `powershell`.
 4. **Los handlers de eventos no deben usar `.GetNewClosure()`.** El closure los liga a un módulo dinámico donde las funciones del script son invisibles (*"Show-CategoryDetailView is not recognized"* al hacer clic). Pasa el dato por `$control.Tag` y obtén la ventana con `[System.Windows.Window]::GetWindow($s)`.
 5. **Sin consola en el `.exe`**: `Write-Host` no se ve. Depura ejecutando `main.ps1` directamente.
@@ -489,9 +563,10 @@ powershell -ExecutionPolicy Bypass -File .\build.ps1
 ## Pendiente
 
 - [ ] Lógica real de tweaks (registro, servicios, planes de energía) en módulos separados de `ui/`
-- [ ] Leer el estado real del sistema en vez del `Value` estático de los archivos de `ui/Categories/`
+- [ ] Leer el estado real del sistema en vez del `Value` estático de los archivos de `ui/Data/Categories/`
 - [ ] Restauración / rollback por tweak
 - [ ] Diferenciar las 6 entradas del sidebar (hoy las seis abren la misma vista)
 - [ ] Funcionalidad de búsqueda, "Quick Actions", "View" y "Reset" (hoy son decorativos)
 - [ ] Recordar el tema elegido entre sesiones
 - [ ] Contadores de estadísticas calculados en vez de fijos
+- [ ] Prueba de humo sobre el `.exe` compilado con `System.Windows.Automation` (ver `tests/README.md`)

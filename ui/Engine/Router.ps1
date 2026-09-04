@@ -1,0 +1,122 @@
+﻿# ============================================================
+# Router.ps1
+# Sabe qué pantalla se está viendo y cómo volver a dibujarla.
+#
+# Hace falta por dos motivos:
+#
+#   1. Cada botón del menú lateral lleva a una vista distinta
+#      (campo View de ui/Index/NavigationIndex.ps1).
+#   2. Al cambiar de idioma hay que repintar la pantalla actual.
+#      Los colores se actualizan solos porque el XAML usa
+#      DynamicResource, pero para el texto no existe equivalente:
+#      hay que reconstruir la vista.
+#
+# Las vistas se invocan por nombre de función, así que añadir una
+# pantalla es crear su archivo en ui/Views/ y apuntar a ella
+# desde el índice de navegación. Nada que registrar aquí.
+# ============================================================
+
+$AppWindow = $null
+$CurrentView = @{ Name = 'Show-OptimizationsListView'; Arguments = @{} }
+
+# La ventana se guarda una vez al arrancar para que cualquier
+# capa pueda repintar sin ir pasándola de mano en mano.
+function Set-AppWindow {
+    param($Window)
+    $script:AppWindow = $Window
+}
+
+function Get-AppWindow { $script:AppWindow }
+
+<#
+    Muestra una vista y la recuerda.
+
+        Show-View 'Show-SettingsView'
+        Show-View 'Show-CategoryDetailView' @{ Category = $cat }
+#>
+function Show-View {
+    param(
+        [Parameter(Mandatory)][string]$Name,
+        [hashtable]$Arguments = @{}
+    )
+
+    if (-not (Get-Command $Name -ErrorAction SilentlyContinue)) {
+        throw "Router: la vista '$Name' no existe. Revisa el campo View de ui/Index/NavigationIndex.ps1."
+    }
+
+    $script:CurrentView = @{ Name = $Name; Arguments = $Arguments }
+
+    $all = @{ Window = $AppWindow }
+    foreach ($key in $Arguments.Keys) { $all[$key] = $Arguments[$key] }
+    & $Name @all
+
+    # Navegar empieza arriba. El ScrollViewer conserva su posición
+    # aunque le cambies el contenido, así que al entrar en una
+    # sección te dejaría a media página. Show-CurrentView deshace
+    # esto después, porque repintar no es navegar.
+    if ($AppWindow) {
+        $scroll = $AppWindow.FindName('MainScroll')
+        if ($scroll) { $scroll.ScrollToTop() }
+    }
+}
+
+<#
+    Vuelve a dibujar la pantalla actual con los mismos argumentos,
+    dejando el scroll donde estaba.
+
+    Repintar NO es navegar: sigues en la misma pantalla mirando lo
+    mismo, así que saltar al principio se siente como si la
+    aplicación te hubiera movido de sitio. Por eso la posición se
+    conserva aquí y no en Show-View, donde sí toca empezar arriba.
+
+    La restauración se aplaza: el contenido nuevo aún no está
+    medido y, mientras el alto sea 0, ScrollToVerticalOffset se
+    recorta a 0 y no haría nada.
+#>
+$PendingScroll = 0.0
+
+function Show-CurrentView {
+    $window = Get-AppWindow
+    $scroll = $null
+    if ($window) { $scroll = $window.FindName('MainScroll') }
+    if ($scroll) { $script:PendingScroll = $scroll.VerticalOffset }
+
+    Show-View -Name $CurrentView.Name -Arguments $CurrentView.Arguments
+
+    if ($scroll -and $PendingScroll -gt 0) {
+        $window.Dispatcher.BeginInvoke(
+            [System.Windows.Threading.DispatcherPriority]::Loaded,
+            [action]{
+                $sv = (Get-AppWindow).FindName('MainScroll')
+                # Si la pantalla ha encogido, ScrollViewer recorta
+                # solo al máximo posible.
+                $sv.ScrollToVerticalOffset($PendingScroll)
+            }) | Out-Null
+    }
+}
+
+function Get-CurrentViewName { $CurrentView.Name }
+
+# Repinta todo tras cambiar el idioma: el menú lateral (sus
+# etiquetas también se traducen) y la pantalla actual.
+#
+# Se aplaza al Dispatcher porque esto suele dispararse desde el
+# evento de un control que está dentro de la vista que vamos a
+# destruir; dejar que el evento termine primero evita sorpresas.
+function Update-UiLanguage {
+    $window = Get-AppWindow
+    if (-not $window) { return }
+
+    $window.Dispatcher.BeginInvoke(
+        [System.Windows.Threading.DispatcherPriority]::Background,
+        [action]{
+            Build-Sidebar -Window (Get-AppWindow)
+            Update-TitleBarTexts (Get-AppWindow)
+            Show-CurrentView
+
+            # El cajón del log no es una vista y Show-CurrentView no
+            # lo toca, así que si está abierto hay que rehacerlo
+            # aparte o se quedaría en el idioma anterior.
+            if (Get-LogPanelOpen) { Update-LogPanel (Get-AppWindow) }
+        }) | Out-Null
+}
