@@ -8,8 +8,8 @@
       "PowerShell(Get-ChildItem:*)",
       "PowerShell(Test-Path:*)",
       "PowerShell(Get-Module:*)",
-      "PowerShell(powershell -ExecutionPolicy Bypass -File .\build.ps1)",
-      "PowerShell(powershell -ExecutionPolicy Bypass -File .\main.ps1)"
+      "PowerShell(powershell -ExecutionPolicy Bypass -File .\\build.ps1)",
+      "PowerShell(powershell -ExecutionPolicy Bypass -File .\\main.ps1)"
     ],
     "deny": [
       "PowerShell(Remove-Item:*)",
