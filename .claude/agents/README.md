@@ -48,19 +48,33 @@ El siguiente **empieza leyendo ese documento**, no volviendo a decidir desde cer
    los roles es perder la ventaja de tenerlos separados.
 3. **Nadie cierra una tarea sin las dos suites verdes.**
    ```
-   powershell -ExecutionPolicy Bypass -File ./tests/Run-Tests.ps1
-   pwsh       -ExecutionPolicy Bypass -File ./tests/Run-Tests.ps1
+   pwsh -ExecutionPolicy Bypass -File ./tests/Run-Tests.ps1 -BothHosts   # 5.1 y 7 a la vez
    ```
 4. **Un agente que se queda sin contexto no vuelve a empezar.** Pídele el documento de
    entrega y pásaselo al siguiente.
 5. **Los agentes no ven esta conversación.** Arrancan en frío: dales el objetivo
    completo, no una referencia a algo que dijiste antes.
 
-## Cuándo NO usar un agente
+## Cuándo delegar, y cuándo no
 
-Un agente arranca sin contexto y tiene que redescubrir el proyecto. Para un cambio de
-dos líneas cuesta más de lo que ahorra. Úsalos cuando haya **varios archivos y varias
-capas** de por medio, o cuando quieras el trabajo aislado de la conversación principal.
+Un agente arranca **en frío**: no ve esta conversación y tiene que releer `CLAUDE.md`,
+los índices y el código antes de empezar. Eso cuesta tiempo y contexto, así que la
+cuenta solo sale a favor cuando hay trabajo suficiente para amortizarlo.
+
+| Situación | Qué sale más barato |
+| --- | --- |
+| Un archivo, una capa, un cambio localizado | Hacerlo en la conversación |
+| Varios archivos y varias capas, pero un solo frente | Hacerlo en la conversación, leyendo en paralelo |
+| **Dos o más frentes que no comparten archivos** | Un agente por frente, **lanzados a la vez** |
+| Algo largo que ensuciaría el hilo (una auditoría, un barrido) | Un agente, aunque sea uno solo |
+
+**Para que corran en paralelo hay que pedirlos en el MISMO mensaje.** Uno por mensaje
+se ejecutan en fila: se paga el arranque en frío de los dos y encima se espera dos
+veces.
+
+Antes de delegar nada, lo que casi siempre sobra: **agrupar en un mismo turno las
+llamadas que no dependen unas de otras**. Seis lecturas a la vez no necesitan agente,
+y las dos suites ya van juntas con `-BothHosts`.
 
 ## Skills que cargan
 
@@ -74,5 +88,15 @@ lo que toquen:
 | `windows-desktop-architect` | arquitecto, dev | Capas, recetas y trampas de WPF |
 | `refactoring-agent` | dev | Mover, renombrar y eliminar sin dejar restos |
 | `security-reviewer` | arquitecto, dev | Aplicación elevada, escrituras al registro, tweaks que bajan la seguridad |
+| `versionado` | dev | Confirmar en el repositorio local: verificar, preparar y redactar el commit |
 
 Si cambias una regla del proyecto, cámbiala en el **skill**, no en los tres agentes.
+
+## Lo demás que hay en `.claude/`
+
+| Ruta | Qué es |
+| --- | --- |
+| `agents/` | Los tres roles de arriba. |
+| `skills/` | El conocimiento que cargan. Si cambia una regla del proyecto, cámbiala **aquí**, no en los tres agentes. |
+| `hooks/Normalize-PsEncoding.ps1` | Deja todo `.ps1` y `.xaml` en UTF-8 con BOM y CRLF nada más escribirlo (regla 3 de `CLAUDE.md`). Enganchado como `PostToolUse` sobre las escrituras. |
+| `settings.local.json` | Permisos y hooks. **Es el freno principal de la velocidad**: un comando que no esté en `allow` detiene la sesión hasta que alguien lo apruebe. Si algo de solo lectura se repite, su sitio es esa lista. |

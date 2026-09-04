@@ -83,8 +83,7 @@ la capa que le toque, no una carpeta nueva al lado.
 
 ```bash
 file <cada .ps1 tocado>                                              # UTF-8 (with BOM)
-powershell -ExecutionPolicy Bypass -File ./tests/Run-Tests.ps1       # 5.1
-pwsh       -ExecutionPolicy Bypass -File ./tests/Run-Tests.ps1       # 7
+pwsh -ExecutionPolicy Bypass -File ./tests/Run-Tests.ps1 -BothHosts   # 5.1 y 7 a la vez
 ```
 
 Las dos suites, sin excepción: hay bugs que solo salen en uno de los hosts. Si tocas

@@ -27,8 +27,7 @@ Consecuencias directas:
   `main.ps1`. Nunca dejes diagnóstico que solo se vea por consola.
 - **Prueba SIEMPRE en los dos**, sin excepciones:
   ```powershell
-  powershell -ExecutionPolicy Bypass -File .\tests\Run-Tests.ps1
-  pwsh       -ExecutionPolicy Bypass -File .\tests\Run-Tests.ps1
+  pwsh -ExecutionPolicy Bypass -File ./tests/Run-Tests.ps1 -BothHosts   # 5.1 y 7 a la vez
   ```
 
 ## 2. Codificación: UTF-8 **con BOM**, siempre
@@ -58,6 +57,29 @@ Trampas relacionadas:
   ```
 - `tests/Source/Rules.Tests.ps1` ya comprueba el BOM de todo el árbol. Si lo rompes,
   las pruebas lo cazan — pero solo si las ejecutas.
+
+### Crear un archivo NUEVO desde Bash
+
+Un heredoc (`cat > archivo <<'EOF'`) escribe UTF-8 **sin BOM y con LF**, igual que las
+herramientas de edición: parsea en 7 y revienta en 5.1. Eso ya lo arregla solo el hook
+`PostToolUse` de `.claude/hooks/Normalize-PsEncoding.ps1`, que pone BOM y CRLF en
+cuanto el archivo se escribe. Si alguna vez no estuviera activo, a mano es:
+
+```powershell
+$t = [System.IO.File]::ReadAllText($ruta)
+$t = $t -replace "`r`n", "`n" -replace "`n", "`r`n"
+[System.IO.File]::WriteAllText($ruta, $t, (New-Object System.Text.UTF8Encoding($true)))
+```
+
+Dos trampas más de escribir desde Bash **en esta máquina**:
+
+- **`\` se colapsa a `\`** al pasar por el heredoc, y `\t` se convierte en tabulador.
+  Un JSON con rutas de Windows sale inválido —así se rompió una vez
+  `.claude/settings.local.json`— y un `sed` con `.\tests\` deja un tabulador dentro del
+  texto. Usa **barras normales**: PowerShell las acepta igual y no hay nada que
+  escapar.
+- **No hay `python`.** El `python.exe` del PATH es el atajo de la Microsoft Store y
+  falla al invocarlo. Para transformar archivos: `awk`, `sed`, `perl` o PowerShell.
 
 ## 3. Trampas que no dan error, dan resultado equivocado
 
@@ -143,6 +165,10 @@ pulsando los botones de verdad.
   que escape de ahí tumba la ventana.
 - Un error **no terminante** no entra en `catch`. Para capturarlo:
   `Cmdlet ... -ErrorAction Stop` dentro del `try`.
+  Pasó de verdad en `Export-AppLog`: el `New-Item` de la carpeta fallaba, soltaba un
+  error rojo por el flujo de errores y la función seguía como si nada hasta reventar
+  al escribir. Con `-ErrorAction Stop` lo recoge el `catch` y devuelve `$null` en
+  silencio, que es lo que promete.
 - `-ErrorAction SilentlyContinue` silencia el *mensaje*, no el fallo.
 - Un JSON corrupto en `settings.json` se ignora y se arranca con los valores por
   defecto: nunca dejes que una preferencia guardada impida abrir la aplicación.

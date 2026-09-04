@@ -23,8 +23,7 @@ comportamiento cambia, ya no es un refactor: dilo explícitamente antes de hacer
 
 ```bash
 # 1. Punto de partida verde  (si ya está roja, arregla eso primero o para y avisa)
-powershell -ExecutionPolicy Bypass -File ./tests/Run-Tests.ps1
-pwsh       -ExecutionPolicy Bypass -File ./tests/Run-Tests.ps1
+pwsh -ExecutionPolicy Bypass -File ./tests/Run-Tests.ps1 -BothHosts   # 5.1 y 7 a la vez
 
 # 2. Un cambio pequeño y completo
 

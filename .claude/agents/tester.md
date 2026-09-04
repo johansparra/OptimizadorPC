@@ -22,8 +22,7 @@ del código**, no hacerlo pasar.
 ## Ejecutar
 
 ```bash
-powershell -ExecutionPolicy Bypass -File ./tests/Run-Tests.ps1   # Windows PowerShell 5.1
-pwsh       -ExecutionPolicy Bypass -File ./tests/Run-Tests.ps1   # PowerShell 7
+pwsh -ExecutionPolicy Bypass -File ./tests/Run-Tests.ps1 -BothHosts   # 5.1 y 7 a la vez
 ```
 
 **Los dos, siempre.** El `.exe` corre sobre 5.1 con todo en ámbito global y `main.ps1`
