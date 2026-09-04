@@ -35,7 +35,7 @@ function Save-AppSettings {
     try {
         $folder = Split-Path -Parent $AppSettingsPath
         if (-not (Test-Path $folder)) {
-            New-Item -ItemType Directory -Path $folder -Force | Out-Null
+            New-Item -ItemType Directory -Path $folder -Force -ErrorAction Stop | Out-Null
         }
         $AppSettings | ConvertTo-Json | Set-Content -Path $AppSettingsPath -Encoding UTF8
         $true

@@ -181,7 +181,7 @@ function Export-AppLog {
 
         $folder = Split-Path -Parent $Path
         if ($folder -and -not (Test-Path $folder)) {
-            New-Item -ItemType Directory -Path $folder -Force | Out-Null
+            New-Item -ItemType Directory -Path $folder -Force -ErrorAction Stop | Out-Null
         }
 
         # UTF-8 con BOM, que es lo que espera el Bloc de notas de

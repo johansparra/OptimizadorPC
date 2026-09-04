@@ -1,9 +1,9 @@
-# Pruebas
+﻿# Pruebas
 
 ```powershell
 # Desde Proyecto\
-powershell -ExecutionPolicy Bypass -File .\tests\Run-Tests.ps1   # Windows PowerShell 5.1
-pwsh       -ExecutionPolicy Bypass -File .\tests\Run-Tests.ps1   # PowerShell 7
+pwsh -ExecutionPolicy Bypass -File ./tests/Run-Tests.ps1 -BothHosts   # los DOS hosts, en paralelo
+powershell -ExecutionPolicy Bypass -File ./tests/Run-Tests.ps1         # solo 5.1, para acotar
 ```
 
 **Pásalas en los dos hosts.** El `.exe` corre sobre 5.1 con todo en ámbito global y

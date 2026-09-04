@@ -13,7 +13,10 @@
 
 # ---- Claves de prueba en el registro ------------------------
 
-function Get-TestRegPath     { 'Software\OptimizadorPC\Tests' }
+# Una rama POR PROCESO. Las dos suites -5.1 y 7- se lanzan a la
+# vez con -BothHosts, y con una ruta fija la que terminase antes
+# le borraria el montaje a la otra a mitad de prueba.
+function Get-TestRegPath     { 'Software\OptimizadorPC\Tests\' + $PID }
 function Get-TestRegFullPath { 'HKEY_CURRENT_USER\' + (Get-TestRegPath) }
 
 <#
@@ -40,6 +43,10 @@ function New-TestRegFixture {
 
 function Remove-TestRegFixture {
     try { [Microsoft.Win32.Registry]::CurrentUser.DeleteSubKeyTree((Get-TestRegPath), $false) } catch { }
+    # Y el padre, si no queda nadie dentro: DeleteSubKey se queja
+    # cuando aun tiene hijos -otro proceso a medias- y ahi no hay
+    # nada que hacer.
+    try { [Microsoft.Win32.Registry]::CurrentUser.DeleteSubKey('Software\OptimizadorPC\Tests', $false) } catch { }
 }
 
 # ---- Categorías de mentira ----------------------------------

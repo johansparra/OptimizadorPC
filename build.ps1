@@ -23,9 +23,13 @@
     todo sigue entrando en el paquete sin esperar a ps2exe, que es
     lo lento; lo usa tests/Source/Rules.Tests.ps1 para verificar
     que el script combinado parsea antes de compilar nada.
+
+    -OutFile cambia donde se deja el script combinado. Las pruebas
+    lo mandan a un archivo por proceso, para que las dos suites
+    puedan correr a la vez sin pisarse el mismo archivo.
 #>
 
-param([switch]$CombineOnly)
+param([switch]$CombineOnly, [string]$OutFile)
 
 $root = $PSScriptRoot
 $buildDir = Join-Path $root 'build'
@@ -94,7 +98,7 @@ while ($i -lt $mainLines.Count) {
     $i++
 }
 
-$combinedPath = Join-Path $buildDir '_combined.ps1'
+$combinedPath = if ($OutFile) { $OutFile } else { Join-Path $buildDir '_combined.ps1' }
 # UTF-8 CON BOM obligatorio: Windows PowerShell 5.1 lee los scripts sin BOM
 # como ANSI y destroza los emoji/simbolos (el parser revienta).
 # Set-Content -Encoding UTF8 escribe BOM en 5.1 pero NO en PowerShell 7,

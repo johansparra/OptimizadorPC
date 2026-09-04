@@ -24,8 +24,72 @@
 
 param(
     [string]$Filter = '',
-    [string]$File   = '*'
+    [string]$File   = '*',
+    [switch]$BothHosts
 )
+
+# ---- -BothHosts: los dos interpretes a la vez ----------------
+# La regla 8 de CLAUDE.md pide pasar la suite en 5.1 Y en 7. Son
+# dos procesos independientes, asi que se lanzan en paralelo y se
+# espera a los dos: una sola orden, una sola aprobacion y la
+# mitad de tiempo de reloj.
+#
+# Cada hijo corre este mismo archivo SIN -BothHosts, de modo que
+# no hay recursion. Lo que permite el paralelo es que ya no
+# comparten nada: la rama del registro de tests/Harness/Fixtures.ps1
+# y el script combinado de tests/Source/Rules.Tests.ps1 llevan el
+# PID en el nombre.
+if ($BothHosts) {
+    $interpretes = @(
+        @{ Nombre = 'Windows PowerShell 5.1'; Exe = 'powershell' }
+        @{ Nombre = 'PowerShell 7';           Exe = 'pwsh' }
+    )
+
+    $lanzados = New-Object System.Collections.Generic.List[object]
+    foreach ($interprete in $interpretes) {
+        $salida = Join-Path ([System.IO.Path]::GetTempPath()) `
+                            ('optimizador-pruebas-{0}.txt' -f [Guid]::NewGuid())
+
+        $argumentos = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $PSCommandPath)
+        if ($Filter)       { $argumentos += @('-Filter', $Filter) }
+        if ($File -ne '*') { $argumentos += @('-File', $File) }
+
+        $proceso = Start-Process -FilePath $interprete.Exe -ArgumentList $argumentos `
+                                 -PassThru -NoNewWindow `
+                                 -RedirectStandardOutput $salida `
+                                 -RedirectStandardError ($salida + '.err')
+
+        $lanzados.Add(@{ Nombre = $interprete.Nombre; Proceso = $proceso; Salida = $salida })
+    }
+
+    $fallidos = 0
+    foreach ($lanzado in $lanzados) {
+        $lanzado.Proceso.WaitForExit()
+
+        Write-Host ''
+        Write-Host ('  ==== {0} ====' -f $lanzado.Nombre) -ForegroundColor White
+        Get-Content -Path $lanzado.Salida -ErrorAction SilentlyContinue | ForEach-Object { Write-Host $_ }
+
+        $errores = Get-Content -Path ($lanzado.Salida + '.err') -Raw -ErrorAction SilentlyContinue
+        if ($errores) { Write-Host $errores -ForegroundColor Red }
+
+        if ($lanzado.Proceso.ExitCode -ne 0) { $fallidos++ }
+
+        foreach ($tmp in @($lanzado.Salida, ($lanzado.Salida + '.err'))) {
+            if (Test-Path $tmp) { Remove-Item $tmp -Force -ErrorAction SilentlyContinue }
+        }
+    }
+
+    Write-Host ''
+    if ($fallidos -gt 0) {
+        Write-Host ('  {0} de {1} hosts en rojo.' -f $fallidos, $lanzados.Count) -ForegroundColor Red
+        Write-Host ''
+        exit 1
+    }
+    Write-Host '  Los dos hosts en verde.' -ForegroundColor Green
+    Write-Host ''
+    exit 0
+}
 
 # WPF necesita el hilo en STA. Los dos hosts arrancan así en
 # Windows, pero un runspace incrustado puede no hacerlo, y el

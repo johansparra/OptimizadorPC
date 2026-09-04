@@ -137,9 +137,13 @@ Describe 'reglas del proyecto - qué entra en el .exe' {
         # de verdad -sin llamar a ps2exe, que es lo lento- y se
         # comprueba que el resultado es un script válido con todos
         # los archivos y el XAML incrustados.
-        & (Join-Path (Get-AppRoot) 'build.ps1') -CombineOnly 6>$null | Out-Null
+        # A un archivo de ESTE proceso, no a build/_combined.ps1:
+        # con -BothHosts las dos suites empaquetan a la vez y con la
+        # ruta fija una leeria lo que la otra esta escribiendo. De
+        # paso, pasar las pruebas deja de ensuciar el arbol.
+        $combinado = Join-Path ([System.IO.Path]::GetTempPath()) ('optimizador-combinado-{0}.ps1' -f $PID)
+        & (Join-Path (Get-AppRoot) 'build.ps1') -CombineOnly -OutFile $combinado 6>$null | Out-Null
 
-        $combinado = Join-Path (Get-AppRoot) 'build\_combined.ps1'
         Assert-True (Test-Path $combinado) 'build.ps1 no ha dejado el script combinado'
 
         $errores = $null
@@ -161,6 +165,8 @@ Describe 'reglas del proyecto - qué entra en el .exe' {
         # abren línea: main.ps1 los nombra de pasada en un comentario.
         Assert-True ($texto -notmatch '(?m)^\s*# @@EMBED_') 'ha quedado un marcador sin resolver'
         Assert-True ($texto -notmatch '(?m)^\s*# @@ENDEMBED')  'ha quedado un cierre sin resolver'
+
+        Remove-Item -Path $combinado -Force -ErrorAction SilentlyContinue
     }
 
     It 'la carga es recursiva: los archivos anidados no se pierden' {
