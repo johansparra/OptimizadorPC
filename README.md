@@ -1,4 +1,4 @@
-# Optimizador PC
+﻿# Optimizador PC
 
 Aplicación de escritorio para optimizar Windows 11 Pro. Interfaz **WPF** escrita íntegramente en **PowerShell 5.1** y empaquetada como un **`.exe` portable de un solo archivo** con [ps2exe](https://github.com/MScholtes/PS2EXE).
 
@@ -63,6 +63,7 @@ Proyecto/
 │   │   │   ├── Sidebar.ps1          menú lateral: botones y plegado animado
 │   │   │   ├── ViewMenu.ps1         chip "Vista" y su desplegable
 │   │   │   ├── LogPanel.ps1         cajón del registro de actividad
+│   │   │   ├── LogWindow.ps1        el mismo registro, en ventana aparte
 │   │   │   └── ProgressStrip.ps1    barra de progreso del pie
 │   │   ├── Cards/               Las tarjetas
 │   │   │   ├── CategoryCard.ps1     fila de la pantalla principal

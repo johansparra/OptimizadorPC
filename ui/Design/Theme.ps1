@@ -26,6 +26,7 @@ $Glyphs = @{
     Moon = 0xE708; Help = 0xE897; Heart = 0xEB51; Check = 0xE73E
     Info = 0xE946; Bulb = 0xEA80; Lock = 0xE72E; Apps = 0xF0E2
     ChevronUp = 0xE70E; OpenIn = 0xE8A7; Person = 0xE77B
+    Dock = 0xE73F
     # registro de actividad (ui/Components/Shell/LogPanel.ps1)
     Pulse = 0xE9D9; Trash = 0xE74D; Save = 0xE74E; Alert = 0xE783
 }
@@ -116,6 +117,11 @@ function Get-AppTheme { $script:CurrentTheme }
 function Set-TextFg  { param($El, [string]$Key) $El.SetResourceReference([System.Windows.Controls.TextBlock]::ForegroundProperty, $Key) }
 function Set-BoxBg   { param($El, [string]$Key) $El.SetResourceReference([System.Windows.Controls.Border]::BackgroundProperty, $Key) }
 function Set-BoxLine { param($El, [string]$Key) $El.SetResourceReference([System.Windows.Controls.Border]::BorderBrushProperty, $Key) }
+
+# La Background de una ventana o de un control con plantilla NO es
+# la del Border: son propiedades distintas y con la de Border no
+# pasa nada. Lo usa la ventana aparte del registro de actividad.
+function Set-WinBg { param($El, [string]$Key) $El.SetResourceReference([System.Windows.Controls.Control]::BackgroundProperty, $Key) }
 
 function Get-Brush { param($Window, [string]$Key) $Window.FindResource($Key) }
 

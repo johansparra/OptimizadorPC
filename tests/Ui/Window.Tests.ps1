@@ -245,6 +245,52 @@ Describe 'ui/Views - las pantallas se pintan' {
     }
 }
 
+Describe 'ui/Views/CategoryDetailView.ps1 - refrescar' {
+
+    It 'toda sección trae el botón, apagado si no hay nada que leer' {
+        $ventana = New-AppWindow
+
+        foreach ($cat in Get-OptimizationCategories) {
+            Show-View -Name 'Show-CategoryDetailView' -Arguments @{ Category = $cat }
+
+            $boton = $ventana.FindName('BtnRefresh')
+            Assert-NotNull $boton "la sección '$($cat.Id)' no ha puesto el botón"
+
+            # Leer no cambia nada, así que el bloqueo de la sección
+            # no lo apaga: lo apaga no tener claves declaradas.
+            $hayClaves = (Get-CategoryRegistryKeyCount $cat) -gt 0
+            Assert-Equal $hayClaves $boton.IsEnabled "en la sección '$($cat.Id)'"
+        }
+    }
+
+    It 'pulsarlo vuelve a leer el registro entero y lo dice' {
+        $ventana = New-AppWindow -Language 'en'
+        $cat = Get-CategoryById 'regedit'
+        Show-View -Name 'Show-CategoryDetailView' -Arguments @{ Category = $cat }
+
+        # Desde cero para poder contar exactamente lo que deja la
+        # segunda lectura, sin lo que hayan apuntado las de arriba.
+        Clear-AppLog
+        $boton = $ventana.FindName('BtnRefresh')
+        $boton.RaiseEvent((New-Object System.Windows.RoutedEventArgs ([System.Windows.Controls.Primitives.ButtonBase]::ClickEvent)))
+
+        # El repintado se aplaza al Dispatcher, como el cambio de
+        # idioma: sin bombear la cola no ha pasado nada todavía.
+        Sync-Dispatcher 'Background'
+
+        # Una línea por clave, más la cabecera del bloque y su resumen.
+        $esperadas = (Get-CategoryRegistryKeyCount $cat) + 2
+        Assert-Equal $esperadas (Get-AppLogCount) 'la segunda lectura no ha leído todas las claves'
+
+        $texto = Get-VisualText $ventana.FindName('HeaderActionsArea')
+        Assert-Match 'Registry values updated' $texto 'no se avisa de que ya se ha refrescado'
+        Assert-Match 'Updated \d\d:\d\d:\d\d' $texto 'falta la hora de la última lectura'
+
+        Assert-Equal 'Collapsed' ([string]$ventana.FindName('ProgressStrip').Visibility)
+        Assert-True $ventana.Content.IsHitTestVisible 'la ventana tiene que volver a oír al ratón'
+    }
+}
+
 Describe 'ui/Engine/Router.ps1' {
 
     It 'recuerda la pantalla en la que estás' {

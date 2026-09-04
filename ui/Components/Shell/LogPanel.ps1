@@ -49,8 +49,21 @@ function Get-LogPanelOpen { $script:LogPanelOpen }
 
 # ---- Abrir y cerrar -----------------------------------------
 
+<#
+    Abre o cierra el registro, esté donde esté.
+
+    Si está sacado a su propia ventana, el botón de la barra de
+    título manda sobre ESA ventana y no sobre el cajón: sería
+    absurdo abrir el cajón teniendo el log delante en una ventana.
+#>
 function Switch-LogPanel {
     param($Window)
+
+    if (Get-LogFloating) {
+        if (Get-LogWindow) { Close-LogWindow } else { Open-LogWindow }
+        return
+    }
+
     if ($LogPanelOpen) { Hide-LogPanel $Window } else { Show-LogPanel $Window }
 }
 
@@ -136,10 +149,20 @@ function Get-LogDrawerWidth {
 
 # ---- Contenido ----------------------------------------------
 
-# Rehace el cajón entero. Se llama al abrirlo y al cambiar de
-# idioma; para refrescar solo las filas está Update-LogList.
-function Update-LogPanel {
-    param($Window)
+<#
+    Arma el contenido del registro: cabecera, barra de botones,
+    lista y pie.
+
+    Es el MISMO contenido para el cajón y para la ventana aparte;
+    lo único que cambia es qué botones lleva la cabecera y si esa
+    cabecera arrastra la ventana. Que sea uno solo es lo que hace
+    que las dos vistas no puedan quedarse desparejadas.
+
+    Los nombres se registran en $Window, así que hay que pasarle
+    la ventana que va a alojarlo, no siempre la principal.
+#>
+function New-LogContent {
+    param($Window, [switch]$Floating)
 
     $grid = New-Object System.Windows.Controls.Grid
     $grid.RowDefinitions.Add((New-LogRowDef 'Auto')) | Out-Null
@@ -147,12 +170,20 @@ function Update-LogPanel {
     $grid.RowDefinitions.Add((New-LogRowDef '*'))    | Out-Null
     $grid.RowDefinitions.Add((New-LogRowDef 'Auto')) | Out-Null
 
-    Add-ToLogRow $grid (New-LogHeader  $Window) 0
+    Add-ToLogRow $grid (New-LogHeader  $Window -Floating:$Floating) 0
     Add-ToLogRow $grid (New-LogToolbar $Window) 1
     Add-ToLogRow $grid (New-LogScroll  $Window) 2
     Add-ToLogRow $grid (New-LogFooter  $Window) 3
 
-    $Window.FindName('LogDrawer').Child = $grid
+    $grid
+}
+
+# Rehace el cajón entero. Se llama al abrirlo y al cambiar de
+# idioma; para refrescar solo las filas está Update-LogList.
+function Update-LogPanel {
+    param($Window)
+
+    $Window.FindName('LogDrawer').Child = New-LogContent $Window
     Update-LogList $Window
 }
 
@@ -170,14 +201,24 @@ function Add-ToLogRow {
     $Grid.Children.Add($Element) | Out-Null
 }
 
-# --- fila 0: título y botón de cerrar ---
+<#
+    Fila 0: el título y los botones que mandan sobre el registro.
+
+    Es la misma cabecera acoplada y flotante; solo cambia la
+    esquina derecha. Y en la ventana aparte hace además de barra
+    de título: arrastra, y el doble clic maximiza. No hay otra,
+    porque la ventana se crea sin cromo de Windows para que se
+    parezca al resto del programa.
+#>
 function New-LogHeader {
-    param($Window)
+    param($Window, [switch]$Floating)
 
     $box = New-Object System.Windows.Controls.Border
     $box.Padding = New-Object System.Windows.Thickness 18, 15, 10, 15
     $box.BorderThickness = New-Object System.Windows.Thickness 0, 0, 0, 1
     Set-BoxLine $box 'Stroke'
+
+    if ($Floating) { Add-LogWindowDrag $box }
 
     $grid = New-Object System.Windows.Controls.Grid
     Add-GridColumns $grid 'Auto', '*', 'Auto'
@@ -207,21 +248,80 @@ function New-LogHeader {
     $texts.Children.Add($sub) | Out-Null
 
     Add-ToColumn $grid $texts 1
-
-    $close = New-Object System.Windows.Controls.Button
-    $close.Style = $Window.FindResource('GlyphButtonStyle')
-    $close.Content = Glyph 'Close'
-    $close.FontSize = 12
-    $close.VerticalAlignment = 'Top'
-    $close.ToolTip = T 'Close the log'
-    $close.Add_Click({
-        param($s, $e)
-        Hide-LogPanel ([System.Windows.Window]::GetWindow($s))
-    })
-    Add-ToColumn $grid $close 2
+    Add-ToColumn $grid (New-LogHeaderButtons $Window -Floating:$Floating) 2
 
     $box.Child = $grid
     $box
+}
+
+<#
+    Los botones de la esquina.
+
+    Acoplado          sacar, cerrar
+    Ventana aparte    acoplar, minimizar, maximizar, cerrar
+
+    Se registran con nombre en la ventana que los aloja, igual que
+    los del menú lateral: así los manejadores -y las pruebas- los
+    encuentran con FindName sin arrastrarlos en un closure. El de
+    maximizar además lo necesita el StateChanged de la ventana
+    (ver LogWindow.ps1) para cambiarle el glifo a "restaurar".
+#>
+function New-LogHeaderButtons {
+    param($Window, [switch]$Floating)
+
+    $strip = New-Object System.Windows.Controls.StackPanel
+    $strip.Orientation = 'Horizontal'
+    $strip.VerticalAlignment = 'Top'
+
+    if (-not $Floating) {
+        Add-LogHeaderButton $Window $strip 'LogBtnPopOut' 'OpenIn' 'Open the log in its own window' {
+            param($s, $e)
+            Open-LogWindow
+        }
+        Add-LogHeaderButton $Window $strip 'LogBtnClose' 'Close' 'Close the log' {
+            param($s, $e)
+            Hide-LogPanel ([System.Windows.Window]::GetWindow($s))
+        }
+        return $strip
+    }
+
+    Add-LogHeaderButton $Window $strip 'LogBtnDock' 'Dock' 'Dock the log back into the main window' {
+        param($s, $e)
+        Join-LogPanel
+    }
+    Add-LogHeaderButton $Window $strip 'LogBtnMinimize' 'Minimize' 'Minimize' {
+        param($s, $e)
+        ([System.Windows.Window]::GetWindow($s)).WindowState = 'Minimized'
+    }
+    Add-LogHeaderButton $Window $strip 'LogBtnMaximize' 'Maximize' 'Maximize' {
+        param($s, $e)
+        Switch-LogWindowState ([System.Windows.Window]::GetWindow($s))
+    }
+    Add-LogHeaderButton $Window $strip 'LogBtnClose' 'Close' 'Close the log' {
+        param($s, $e)
+        ([System.Windows.Window]::GetWindow($s)).Close()
+    }
+
+    $strip
+}
+
+# Un botón de glifo de la cabecera: se crea, se registra y se
+# cuelga. El manejador llega como scriptblock suelto -sin capturar
+# nada- para que siga valiendo la regla 4: lo que necesite sale del
+# emisor.
+function Add-LogHeaderButton {
+    param($Window, $Strip, [string]$Name, [string]$Icon, [string]$Tip, [scriptblock]$OnClick)
+
+    $btn = New-Object System.Windows.Controls.Button
+    $btn.Style = $Window.FindResource('GlyphButtonStyle')
+    $btn.Content = Glyph $Icon
+    $btn.FontSize = 12
+    $btn.VerticalAlignment = 'Top'
+    $btn.ToolTip = T $Tip
+    $btn.Add_Click($OnClick)
+
+    Register-LogName $Window $Name $btn
+    $Strip.Children.Add($btn) | Out-Null
 }
 
 # --- fila 1: vaciar, guardar y el recuento ---
@@ -385,7 +485,7 @@ function Update-LogList {
     $Window.Dispatcher.BeginInvoke(
         [System.Windows.Threading.DispatcherPriority]::Loaded,
         [action]{
-            $scroll = (Get-AppWindow).FindName('LogScroll')
+            $scroll = (Get-LogHostWindow).FindName('LogScroll')
             if ($scroll) { $scroll.ScrollToEnd() }
         }) | Out-Null
 }

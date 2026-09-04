@@ -37,6 +37,10 @@ Register-Language 'es' @{
     # del registro y valores, texto técnico para copiar y pegar.
     'What the app has read from your system in this session' = 'Lo que el programa ha leído de tu sistema en esta sesión'
     'Close the log'   = 'Cerrar el registro'
+    'Open the log in its own window' = 'Abrir el registro en su propia ventana'
+    'Dock the log back into the main window' = 'Volver a acoplar el registro en la ventana principal'
+    'Minimize'        = 'Minimizar'
+    'Maximize'        = 'Maximizar'
     'Clear'           = 'Vaciar'
     'Save to file'    = 'Guardar en archivo'
     '{0} entries'     = '{0} entradas'
@@ -92,7 +96,11 @@ Register-Language 'es' @{
 
     # ---- Pantalla de detalle ----
     '{0} settings' = '{0} ajustes'
-    'Reset'        = 'Restablecer'
+    'Refresh'      = 'Refrescar'
+    'Read the registry keys again' = 'Volver a leer las claves del registro'
+    'This section does not read the registry yet' = 'Esta sección todavía no lee el registro'
+    'Updated {0}'  = 'Actualizado {0}'
+    'Registry values updated' = 'Valores del registro actualizados'
     'Back to the list' = 'Volver a la lista'
 
     # ---- Etiquetas de clasificación ----
@@ -114,7 +122,6 @@ Register-Language 'es' @{
     'Locked section' = 'Sección bloqueada'
     'Its settings are shown for reference only: they cannot be changed. To unlock it, set Locked = $false in ui/Index/CategoryIndex.ps1.' = 'Sus ajustes se muestran solo como consulta: no se pueden modificar. Para desbloquearla, pon Locked = $false en ui/Index/CategoryIndex.ps1.'
     'Locked section: you can look, not change' = 'Sección bloqueada: se puede consultar, no modificar'
-    'Not available: the section is locked'     = 'No disponible: la sección está bloqueada'
     '{0}: locked' = '{0}: bloqueado'
 
     # ---- Pantalla de Settings ----

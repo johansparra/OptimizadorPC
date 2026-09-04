@@ -141,6 +141,14 @@ function Add-PageAction {
     $Window.FindName('HeaderActionsArea').Children.Add($Element) | Out-Null
 }
 
+# Lo mismo, pero por delante de lo que ya hubiera. Lo usa el aviso
+# efímero de Toast.ps1: sale a la izquierda de los botones, que es
+# donde queda sitio sin moverlos de su esquina.
+function Add-PageActionFirst {
+    param($Window, $Element)
+    $Window.FindName('HeaderActionsArea').Children.Insert(0, $Element)
+}
+
 # Pone el resumen centrado bajo el título. Solo lo usa el detalle
 # de una sección; el resto de pantallas deja la zona vacía y no
 # ocupa alto.

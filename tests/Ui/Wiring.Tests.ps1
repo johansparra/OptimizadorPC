@@ -56,6 +56,27 @@ function Get-WiringProbe {
         'Push-Boton $Window.FindName(''BtnModeBuilder'')'
         'Write-Host ("MODO-BUILDER={0} MODO-NORMAL={1}" -f $Window.FindName(''BtnModeBuilder'').Tag, $Window.FindName(''BtnModeNormal'').Tag)'
         ''
+        ''
+        '# Refrescar: la misma lectura de la entrada, otra vez.'
+        'Clear-AppLog'
+        'Push-Boton $Window.FindName(''BtnRefresh'')'
+        '# El repintado va aplazado al Dispatcher; aquí no hay bucle'
+        '# de mensajes todavía, así que hay que bombear la cola.'
+        'Update-UiNow $Window'
+        '$acciones = $Window.FindName(''HeaderActionsArea'')'
+        'Write-Host ("REFRESCO-LINEAS={0} ESPERADAS={1} AVISO={2}" -f (Get-AppLogCount), ($claves + 2), ($acciones.Children[0] -is [System.Windows.Controls.Border]))'
+        ''
+        '# Sacar el log a su ventana y volver a acoplarlo. Es lo unico'
+        '# que caza un closure en estos manejadores: fallan AL PULSAR.'
+        '# La ventana aparece un instante en pantalla y se cierra sola'
+        '# al acoplar; es el precio de pulsar botones de verdad.'
+        'Show-LogPanel $Window'
+        'Push-Boton $Window.FindName(''LogBtnPopOut'')'
+        'Write-Host ("LOG-FUERA={0} CAJON={1}" -f (Get-LogDetached), (Get-LogPanelOpen))'
+        '$vlog = Get-LogWindow'
+        'Push-Boton $vlog.FindName(''LogBtnDock'')'
+        'Write-Host ("LOG-DENTRO={0} CAJON-OTRA-VEZ={1}" -f (Get-LogDetached), (Get-LogPanelOpen))'
+        'Hide-LogPanel $Window'
         'Write-Host "SONDA-COMPLETA"'
     )
 }
@@ -140,6 +161,19 @@ Describe 'main.ps1 - los botones responden' {
 
     It 'el selector de modo mueve la selección' {
         Assert-Match 'MODO-BUILDER=sel MODO-NORMAL=\s*$' ($WiringOutput -split "`r?`n" | Where-Object { $_ -like 'MODO-*' })
+    }
+
+    It 'el botón de refrescar vuelve a leer el registro y avisa' {
+        if ($WiringOutput -match 'REFRESCO-LINEAS=(\d+) ESPERADAS=(\d+) AVISO=(\w+)') {
+            Assert-Equal $Matches[2] $Matches[1] 'líneas dejadas por la segunda lectura'
+            Assert-Equal 'True' $Matches[3] 'no ha aparecido el aviso de refrescado'
+        }
+        else { throw 'la sonda no ha dicho nada del refresco' }
+    }
+
+    It 'el log sale a su ventana y vuelve al cajón' {
+        Assert-Match 'LOG-FUERA=True CAJON=False' $WiringOutput 'sacarlo debería cerrar el cajón'
+        Assert-Match 'LOG-DENTRO=False CAJON-OTRA-VEZ=True' $WiringOutput 'acoplarlo debería reabrirlo'
     }
 
     It 'ningún manejador ha lanzado' {

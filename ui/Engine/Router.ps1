@@ -116,7 +116,9 @@ function Update-UiLanguage {
 
             # El cajón del log no es una vista y Show-CurrentView no
             # lo toca, así que si está abierto hay que rehacerlo
-            # aparte o se quedaría en el idioma anterior.
+            # aparte o se quedaría en el idioma anterior. Lo mismo
+            # si está sacado a su propia ventana.
             if (Get-LogPanelOpen) { Update-LogPanel (Get-AppWindow) }
+            if (Get-LogDetached)  { Update-LogWindow }
         }) | Out-Null
 }

@@ -67,6 +67,7 @@ $Glyphs = @{
     Moon = 0xE708; Help = 0xE897; Heart = 0xEB51; Check = 0xE73E
     Info = 0xE946; Bulb = 0xEA80; Lock = 0xE72E; Apps = 0xF0E2
     ChevronUp = 0xE70E; OpenIn = 0xE8A7; Person = 0xE77B
+    Dock = 0xE73F
     # registro de actividad (ui/Components/Shell/LogPanel.ps1)
     Pulse = 0xE9D9; Trash = 0xE74D; Save = 0xE74E; Alert = 0xE783
 }
@@ -157,6 +158,11 @@ function Get-AppTheme { $script:CurrentTheme }
 function Set-TextFg  { param($El, [string]$Key) $El.SetResourceReference([System.Windows.Controls.TextBlock]::ForegroundProperty, $Key) }
 function Set-BoxBg   { param($El, [string]$Key) $El.SetResourceReference([System.Windows.Controls.Border]::BackgroundProperty, $Key) }
 function Set-BoxLine { param($El, [string]$Key) $El.SetResourceReference([System.Windows.Controls.Border]::BorderBrushProperty, $Key) }
+
+# La Background de una ventana o de un control con plantilla NO es
+# la del Border: son propiedades distintas y con la de Border no
+# pasa nada. Lo usa la ventana aparte del registro de actividad.
+function Set-WinBg { param($El, [string]$Key) $El.SetResourceReference([System.Windows.Controls.Control]::BackgroundProperty, $Key) }
 
 function Get-Brush { param($Window, [string]$Key) $Window.FindResource($Key) }
 
@@ -524,7 +530,7 @@ function Save-AppSettings {
     try {
         $folder = Split-Path -Parent $AppSettingsPath
         if (-not (Test-Path $folder)) {
-            New-Item -ItemType Directory -Path $folder -Force | Out-Null
+            New-Item -ItemType Directory -Path $folder -Force -ErrorAction Stop | Out-Null
         }
         $AppSettings | ConvertTo-Json | Set-Content -Path $AppSettingsPath -Encoding UTF8
         $true
@@ -981,8 +987,10 @@ function Update-UiLanguage {
 
             # El cajón del log no es una vista y Show-CurrentView no
             # lo toca, así que si está abierto hay que rehacerlo
-            # aparte o se quedaría en el idioma anterior.
+            # aparte o se quedaría en el idioma anterior. Lo mismo
+            # si está sacado a su propia ventana.
             if (Get-LogPanelOpen) { Update-LogPanel (Get-AppWindow) }
+            if (Get-LogDetached)  { Update-LogWindow }
         }) | Out-Null
 }
 
@@ -1515,7 +1523,7 @@ function Export-AppLog {
 
         $folder = Split-Path -Parent $Path
         if ($folder -and -not (Test-Path $folder)) {
-            New-Item -ItemType Directory -Path $folder -Force | Out-Null
+            New-Item -ItemType Directory -Path $folder -Force -ErrorAction Stop | Out-Null
         }
 
         # UTF-8 con BOM, que es lo que espera el Bloc de notas de
@@ -2203,6 +2211,10 @@ Register-Language 'es' @{
     # del registro y valores, texto técnico para copiar y pegar.
     'What the app has read from your system in this session' = 'Lo que el programa ha leído de tu sistema en esta sesión'
     'Close the log'   = 'Cerrar el registro'
+    'Open the log in its own window' = 'Abrir el registro en su propia ventana'
+    'Dock the log back into the main window' = 'Volver a acoplar el registro en la ventana principal'
+    'Minimize'        = 'Minimizar'
+    'Maximize'        = 'Maximizar'
     'Clear'           = 'Vaciar'
     'Save to file'    = 'Guardar en archivo'
     '{0} entries'     = '{0} entradas'
@@ -2258,7 +2270,11 @@ Register-Language 'es' @{
 
     # ---- Pantalla de detalle ----
     '{0} settings' = '{0} ajustes'
-    'Reset'        = 'Restablecer'
+    'Refresh'      = 'Refrescar'
+    'Read the registry keys again' = 'Volver a leer las claves del registro'
+    'This section does not read the registry yet' = 'Esta sección todavía no lee el registro'
+    'Updated {0}'  = 'Actualizado {0}'
+    'Registry values updated' = 'Valores del registro actualizados'
     'Back to the list' = 'Volver a la lista'
 
     # ---- Etiquetas de clasificación ----
@@ -2280,7 +2296,6 @@ Register-Language 'es' @{
     'Locked section' = 'Sección bloqueada'
     'Its settings are shown for reference only: they cannot be changed. To unlock it, set Locked = $false in ui/Index/CategoryIndex.ps1.' = 'Sus ajustes se muestran solo como consulta: no se pueden modificar. Para desbloquearla, pon Locked = $false en ui/Index/CategoryIndex.ps1.'
     'Locked section: you can look, not change' = 'Sección bloqueada: se puede consultar, no modificar'
-    'Not available: the section is locked'     = 'No disponible: la sección está bloqueada'
     '{0}: locked' = '{0}: bloqueado'
 
     # ---- Pantalla de Settings ----
@@ -3450,6 +3465,14 @@ function Add-PageAction {
     $Window.FindName('HeaderActionsArea').Children.Add($Element) | Out-Null
 }
 
+# Lo mismo, pero por delante de lo que ya hubiera. Lo usa el aviso
+# efímero de Toast.ps1: sale a la izquierda de los botones, que es
+# donde queda sitio sin moverlos de su esquina.
+function Add-PageActionFirst {
+    param($Window, $Element)
+    $Window.FindName('HeaderActionsArea').Children.Insert(0, $Element)
+}
+
 # Pone el resumen centrado bajo el título. Solo lo usa el detalle
 # de una sección; el resto de pantallas deja la zona vacía y no
 # ocupa alto.
@@ -3473,6 +3496,78 @@ function Add-PageActionLabel {
 }
 
 # ---- fin incluido: ui/Components/Layout/PageHeader.ps1 ----
+# ---- inicio incluido: ui/Components/Layout/Toast.ps1 ----
+# ============================================================
+# Componente: aviso efímero
+#
+# La pastilla que aparece un momento en la cabecera para decir
+# que algo acaba de terminar -hoy, que se han vuelto a leer las
+# claves del registro-.
+#
+# No es lo mismo que Banner.ps1: aquel se queda mientras dure la
+# condición que avisa (una sección bloqueada lo está siempre),
+# este cuenta un hecho que ya pasó y se va solo.
+#
+# Se descuelga con un DispatcherTimer y no desde el Completed de
+# la animación: ese evento trae el reloj como emisor, no el
+# control, y llegar hasta el control obligaría a capturarlo en el
+# scriptblock (regla 4). El temporizador sí tiene Tag.
+# ============================================================
+
+<#
+    Enseña la pastilla al principio de la zona de acciones y deja
+    programada su marcha de una vez: se desvanece a los $Ms
+    -animación aplazada con BeginTime- y se descuelga 320 ms más
+    tarde, cuando ya no se ve.
+
+        Show-PageToast -Window $w -Text 'Registry values updated'
+
+    Sin ventana pintándose ni bucle de mensajes -las pruebas- ni
+    la animación avanza ni el temporizador dispara: la pastilla se
+    queda puesta, que es exactamente lo que hay que poder mirar.
+#>
+function Show-PageToast {
+    param(
+        $Window,
+        [string]$Text,
+        [string]$Icon = 'Check',
+        [int]$Ms = 2400
+    )
+
+    $pill = New-Pill -Icon $Icon -Text (T $Text) -Fg 'Success' -Bg 'SuccessSoft'
+    $pill.Margin = New-Object System.Windows.Thickness 0, 0, 8, 0
+    Add-PageActionFirst $Window $pill
+
+    # Entra deslizando desde la derecha. Se anima el
+    # desplazamiento y no la opacidad porque la opacidad la tiene
+    # reservada la salida: dos BeginAnimation sobre la misma
+    # propiedad y el segundo se lleva por delante al primero.
+    $slide = New-Object System.Windows.Media.TranslateTransform
+    $pill.RenderTransform = $slide
+    $slide.BeginAnimation(
+        [System.Windows.Media.TranslateTransform]::XProperty, (New-Anim 12 0 220))
+
+    $fade = New-Anim 1 0 300
+    $fade.BeginTime = [TimeSpan]::FromMilliseconds($Ms)
+    $pill.BeginAnimation([System.Windows.UIElement]::OpacityProperty, $fade)
+
+    $timer = New-Object System.Windows.Threading.DispatcherTimer
+    $timer.Interval = [TimeSpan]::FromMilliseconds($Ms + 320)
+    $timer.Tag = $pill
+    $timer.Add_Tick({
+        param($s, $e)
+        $s.Stop()
+        $gone = $s.Tag
+        # Puede que ya no cuelgue de nadie: repintar la pantalla
+        # vacía la cabecera y se lleva la pastilla con ella.
+        if ($gone -and $gone.Parent) { $gone.Parent.Children.Remove($gone) }
+    })
+    $timer.Start()
+
+    $pill
+}
+
+# ---- fin incluido: ui/Components/Layout/Toast.ps1 ----
 # ---- inicio incluido: ui/Components/Shell/LogPanel.ps1 ----
 # ============================================================
 # Componente: registro de actividad (el botón "log")
@@ -3525,8 +3620,21 @@ function Get-LogPanelOpen { $script:LogPanelOpen }
 
 # ---- Abrir y cerrar -----------------------------------------
 
+<#
+    Abre o cierra el registro, esté donde esté.
+
+    Si está sacado a su propia ventana, el botón de la barra de
+    título manda sobre ESA ventana y no sobre el cajón: sería
+    absurdo abrir el cajón teniendo el log delante en una ventana.
+#>
 function Switch-LogPanel {
     param($Window)
+
+    if (Get-LogFloating) {
+        if (Get-LogWindow) { Close-LogWindow } else { Open-LogWindow }
+        return
+    }
+
     if ($LogPanelOpen) { Hide-LogPanel $Window } else { Show-LogPanel $Window }
 }
 
@@ -3612,10 +3720,20 @@ function Get-LogDrawerWidth {
 
 # ---- Contenido ----------------------------------------------
 
-# Rehace el cajón entero. Se llama al abrirlo y al cambiar de
-# idioma; para refrescar solo las filas está Update-LogList.
-function Update-LogPanel {
-    param($Window)
+<#
+    Arma el contenido del registro: cabecera, barra de botones,
+    lista y pie.
+
+    Es el MISMO contenido para el cajón y para la ventana aparte;
+    lo único que cambia es qué botones lleva la cabecera y si esa
+    cabecera arrastra la ventana. Que sea uno solo es lo que hace
+    que las dos vistas no puedan quedarse desparejadas.
+
+    Los nombres se registran en $Window, así que hay que pasarle
+    la ventana que va a alojarlo, no siempre la principal.
+#>
+function New-LogContent {
+    param($Window, [switch]$Floating)
 
     $grid = New-Object System.Windows.Controls.Grid
     $grid.RowDefinitions.Add((New-LogRowDef 'Auto')) | Out-Null
@@ -3623,12 +3741,20 @@ function Update-LogPanel {
     $grid.RowDefinitions.Add((New-LogRowDef '*'))    | Out-Null
     $grid.RowDefinitions.Add((New-LogRowDef 'Auto')) | Out-Null
 
-    Add-ToLogRow $grid (New-LogHeader  $Window) 0
+    Add-ToLogRow $grid (New-LogHeader  $Window -Floating:$Floating) 0
     Add-ToLogRow $grid (New-LogToolbar $Window) 1
     Add-ToLogRow $grid (New-LogScroll  $Window) 2
     Add-ToLogRow $grid (New-LogFooter  $Window) 3
 
-    $Window.FindName('LogDrawer').Child = $grid
+    $grid
+}
+
+# Rehace el cajón entero. Se llama al abrirlo y al cambiar de
+# idioma; para refrescar solo las filas está Update-LogList.
+function Update-LogPanel {
+    param($Window)
+
+    $Window.FindName('LogDrawer').Child = New-LogContent $Window
     Update-LogList $Window
 }
 
@@ -3646,14 +3772,24 @@ function Add-ToLogRow {
     $Grid.Children.Add($Element) | Out-Null
 }
 
-# --- fila 0: título y botón de cerrar ---
+<#
+    Fila 0: el título y los botones que mandan sobre el registro.
+
+    Es la misma cabecera acoplada y flotante; solo cambia la
+    esquina derecha. Y en la ventana aparte hace además de barra
+    de título: arrastra, y el doble clic maximiza. No hay otra,
+    porque la ventana se crea sin cromo de Windows para que se
+    parezca al resto del programa.
+#>
 function New-LogHeader {
-    param($Window)
+    param($Window, [switch]$Floating)
 
     $box = New-Object System.Windows.Controls.Border
     $box.Padding = New-Object System.Windows.Thickness 18, 15, 10, 15
     $box.BorderThickness = New-Object System.Windows.Thickness 0, 0, 0, 1
     Set-BoxLine $box 'Stroke'
+
+    if ($Floating) { Add-LogWindowDrag $box }
 
     $grid = New-Object System.Windows.Controls.Grid
     Add-GridColumns $grid 'Auto', '*', 'Auto'
@@ -3683,21 +3819,80 @@ function New-LogHeader {
     $texts.Children.Add($sub) | Out-Null
 
     Add-ToColumn $grid $texts 1
-
-    $close = New-Object System.Windows.Controls.Button
-    $close.Style = $Window.FindResource('GlyphButtonStyle')
-    $close.Content = Glyph 'Close'
-    $close.FontSize = 12
-    $close.VerticalAlignment = 'Top'
-    $close.ToolTip = T 'Close the log'
-    $close.Add_Click({
-        param($s, $e)
-        Hide-LogPanel ([System.Windows.Window]::GetWindow($s))
-    })
-    Add-ToColumn $grid $close 2
+    Add-ToColumn $grid (New-LogHeaderButtons $Window -Floating:$Floating) 2
 
     $box.Child = $grid
     $box
+}
+
+<#
+    Los botones de la esquina.
+
+    Acoplado          sacar, cerrar
+    Ventana aparte    acoplar, minimizar, maximizar, cerrar
+
+    Se registran con nombre en la ventana que los aloja, igual que
+    los del menú lateral: así los manejadores -y las pruebas- los
+    encuentran con FindName sin arrastrarlos en un closure. El de
+    maximizar además lo necesita el StateChanged de la ventana
+    (ver LogWindow.ps1) para cambiarle el glifo a "restaurar".
+#>
+function New-LogHeaderButtons {
+    param($Window, [switch]$Floating)
+
+    $strip = New-Object System.Windows.Controls.StackPanel
+    $strip.Orientation = 'Horizontal'
+    $strip.VerticalAlignment = 'Top'
+
+    if (-not $Floating) {
+        Add-LogHeaderButton $Window $strip 'LogBtnPopOut' 'OpenIn' 'Open the log in its own window' {
+            param($s, $e)
+            Open-LogWindow
+        }
+        Add-LogHeaderButton $Window $strip 'LogBtnClose' 'Close' 'Close the log' {
+            param($s, $e)
+            Hide-LogPanel ([System.Windows.Window]::GetWindow($s))
+        }
+        return $strip
+    }
+
+    Add-LogHeaderButton $Window $strip 'LogBtnDock' 'Dock' 'Dock the log back into the main window' {
+        param($s, $e)
+        Join-LogPanel
+    }
+    Add-LogHeaderButton $Window $strip 'LogBtnMinimize' 'Minimize' 'Minimize' {
+        param($s, $e)
+        ([System.Windows.Window]::GetWindow($s)).WindowState = 'Minimized'
+    }
+    Add-LogHeaderButton $Window $strip 'LogBtnMaximize' 'Maximize' 'Maximize' {
+        param($s, $e)
+        Switch-LogWindowState ([System.Windows.Window]::GetWindow($s))
+    }
+    Add-LogHeaderButton $Window $strip 'LogBtnClose' 'Close' 'Close the log' {
+        param($s, $e)
+        ([System.Windows.Window]::GetWindow($s)).Close()
+    }
+
+    $strip
+}
+
+# Un botón de glifo de la cabecera: se crea, se registra y se
+# cuelga. El manejador llega como scriptblock suelto -sin capturar
+# nada- para que siga valiendo la regla 4: lo que necesite sale del
+# emisor.
+function Add-LogHeaderButton {
+    param($Window, $Strip, [string]$Name, [string]$Icon, [string]$Tip, [scriptblock]$OnClick)
+
+    $btn = New-Object System.Windows.Controls.Button
+    $btn.Style = $Window.FindResource('GlyphButtonStyle')
+    $btn.Content = Glyph $Icon
+    $btn.FontSize = 12
+    $btn.VerticalAlignment = 'Top'
+    $btn.ToolTip = T $Tip
+    $btn.Add_Click($OnClick)
+
+    Register-LogName $Window $Name $btn
+    $Strip.Children.Add($btn) | Out-Null
 }
 
 # --- fila 1: vaciar, guardar y el recuento ---
@@ -3861,7 +4056,7 @@ function Update-LogList {
     $Window.Dispatcher.BeginInvoke(
         [System.Windows.Threading.DispatcherPriority]::Loaded,
         [action]{
-            $scroll = (Get-AppWindow).FindName('LogScroll')
+            $scroll = (Get-LogHostWindow).FindName('LogScroll')
             if ($scroll) { $scroll.ScrollToEnd() }
         }) | Out-Null
 }
@@ -4058,6 +4253,245 @@ function New-LogEmptyState {
 }
 
 # ---- fin incluido: ui/Components/Shell/LogPanel.ps1 ----
+# ---- inicio incluido: ui/Components/Shell/LogWindow.ps1 ----
+# ============================================================
+# Componente: el registro de actividad, en su propia ventana
+#
+# El mismo contenido que el cajón de LogPanel.ps1, pero sacado a
+# una ventana aparte que se puede mover, redimensionar, minimizar,
+# maximizar y cerrar, y volver a acoplar cuando estorbe menos
+# dentro. Sirve para dejar el log a la vista en otro monitor
+# mientras se navega por las secciones.
+#
+#   cajón  --[sacar]-->  ventana  --[acoplar]-->  cajón
+#
+# Lo que hay que saber de esta ventana:
+#
+# - Se construye POR CÓDIGO, no en XAML. build.ps1 solo sabe
+#   incrustar UN xaml (el de la ventana principal): un segundo
+#   archivo .xaml funcionaría en desarrollo y faltaría en el .exe.
+#   Es el mismo motivo por el que el menú lateral se arma a mano.
+#
+# - Es HIJA de la principal (Owner). Eso le da dos cosas gratis:
+#   se cierra sola cuando se cierra el programa -si no, quedaría
+#   una ventana viva impidiendo salir- y sigue siendo usable
+#   aunque la principal se muestre con ShowDialog, que si no
+#   dejaría inservible cualquier otra ventana.
+#
+# - COMPARTE LOS RECURSOS del tema por MergedDictionaries, así que
+#   alternar claro/oscuro la repinta a la vez que a la principal
+#   sin que haya que enterarse aquí.
+#
+# - NO TIENE CROMO de Windows (WindowStyle None + WindowChrome),
+#   igual que la ventana principal: los bordes de redimensión son
+#   los nativos y la barra de título es la propia cabecera del
+#   registro, que ya trae los botones.
+# ============================================================
+
+# La ventana, mientras exista. $null cuando el log está acoplado
+# o cerrado.
+$LogWindow = $null
+
+# Dónde se abre el log al pulsar el botón de la barra de título.
+# Se recuerda dentro de la sesión: si lo sacaste y lo cerraste, la
+# próxima vez vuelve a salir fuera. No se guarda en settings.json a
+# propósito, para que arrancar el programa empiece siempre con el
+# log recogido.
+$LogFloating = $false
+
+function Get-LogWindow   { $script:LogWindow }
+function Get-LogFloating { $script:LogFloating }
+function Get-LogDetached { $null -ne $script:LogWindow }
+
+# Quién aloja ahora mismo las filas del registro. Lo usa
+# Update-LogList para encontrar su ScrollViewer sin que le importe
+# dónde está pintado.
+function Get-LogHostWindow {
+    if ($script:LogWindow) { $script:LogWindow } else { Get-AppWindow }
+}
+
+# ---- Sacar, acoplar, cerrar ---------------------------------
+
+<#
+    Saca el registro a su propia ventana.
+
+    Si ya está fuera no crea otra: la trae al frente, que es lo
+    que espera quien vuelve a pulsar el botón.
+#>
+function Open-LogWindow {
+    if ($script:LogWindow) { Show-LogWindowFront; return }
+
+    $main = Get-AppWindow
+    if (-not $main) { return }
+
+    # El cajón se retira sin esperar a su animación: Close-LogOverlay
+    # colapsa ya, porque Hide-LogPanel deja el panel marcado como
+    # cerrado antes de animar nada.
+    Hide-LogPanel $main
+    Close-LogOverlay $main
+
+    $script:LogFloating = $true
+    $script:LogWindow = New-LogWindow $main
+
+    # Después de guardar la ventana, no antes: Update-LogList
+    # pregunta por Get-LogHostWindow para dejar el scroll al final.
+    Update-LogList $script:LogWindow
+
+    $script:LogWindow.Show()
+    $script:LogWindow.Activate() | Out-Null
+}
+
+# Devuelve el registro al cajón de la ventana principal.
+function Join-LogPanel {
+    $win = $script:LogWindow
+    $script:LogFloating = $false
+
+    # Al cerrarse, su manejador Closed deja $LogWindow en $null, de
+    # modo que el cajón ya cuenta como alojamiento actual.
+    if ($win) { $win.Close() }
+
+    Show-LogPanel (Get-AppWindow)
+}
+
+# Cierra la ventana sin acoplar: el log queda escondido, y el botón
+# de la barra de título lo volverá a sacar fuera.
+function Close-LogWindow {
+    if ($script:LogWindow) { $script:LogWindow.Close() }
+}
+
+# La trae al frente, restaurándola si estaba minimizada.
+function Show-LogWindowFront {
+    $win = $script:LogWindow
+    if (-not $win) { return }
+    if ($win.WindowState -eq 'Minimized') { $win.WindowState = 'Normal' }
+    $win.Activate() | Out-Null
+}
+
+function Switch-LogWindowState {
+    param($Window)
+    if ($Window.WindowState -eq 'Maximized') { $Window.WindowState = 'Normal' }
+    else                                     { $Window.WindowState = 'Maximized' }
+}
+
+# Arrastrar la ventana desde su cabecera, y doble clic para
+# maximizar. Igual que la barra de título de la principal.
+#
+# Los botones de la cabecera no se ven afectados: un Button marca
+# como tratado el MouseLeftButtonDown, así que no llega hasta aquí.
+function Add-LogWindowDrag {
+    param($Element)
+
+    $Element.Add_MouseLeftButtonDown({
+        param($s, $e)
+        $win = [System.Windows.Window]::GetWindow($s)
+        if (-not $win) { return }
+
+        if ($e.ClickCount -eq 2) { Switch-LogWindowState $win; return }
+        # DragMove lanza si el botón ya no está pulsado.
+        if ($e.ButtonState -eq 'Pressed') { $win.DragMove() }
+    })
+}
+
+# ---- La ventana ---------------------------------------------
+
+<#
+    Construye la ventana. No la enseña ni toca el estado: eso es de
+    Open-LogWindow, para que las pruebas puedan armar el árbol sin
+    que aparezca nada en pantalla.
+#>
+function New-LogWindow {
+    param($Main)
+
+    $win = New-Object System.Windows.Window
+    $win.Title = T 'Activity log'
+    $win.Width = 760
+    $win.Height = 640
+    $win.MinWidth = 460
+    $win.MinHeight = 320
+    $win.WindowStyle = 'None'
+    $win.ResizeMode = 'CanResize'
+    $win.ShowInTaskbar = $true
+    $win.FontFamily = $Main.FontFamily
+    $win.SnapsToDevicePixels = $true
+    $win.UseLayoutRounding = $true
+
+    # Una ventana creada por código no trae NameScope -el de la
+    # principal lo monta el cargador de XAML-, y sin él RegisterName
+    # lanza con "No se encontró ningún NameScope". Tiene que estar
+    # puesto ANTES de construir nada que se registre.
+    [System.Windows.NameScope]::SetNameScope($win, (New-Object System.Windows.NameScope))
+
+    # Mismo diccionario que la principal: un cambio de tema muta
+    # esos pinceles y los DynamicResource de aquí se enteran solos.
+    $win.Resources.MergedDictionaries.Add($Main.Resources)
+    Set-WinBg $win 'Bg1'
+
+    # Owner solo admite una ventana que ya se haya mostrado. En las
+    # pruebas no se muestra ninguna, así que ahí se queda huérfana
+    # -y entonces centrarla sobre la principal tampoco tendría
+    # sentido-.
+    $helper = New-Object System.Windows.Interop.WindowInteropHelper $Main
+    if ($helper.Handle -ne [IntPtr]::Zero) {
+        $win.Owner = $Main
+        $win.WindowStartupLocation = 'CenterOwner'
+    }
+    else {
+        $win.WindowStartupLocation = 'CenterScreen'
+    }
+
+    # Bordes de redimensión nativos sin barra de título de Windows,
+    # igual que MainWindow.xaml.
+    $chrome = New-Object System.Windows.Shell.WindowChrome
+    $chrome.CaptionHeight = 0
+    $chrome.ResizeBorderThickness = New-Object System.Windows.Thickness 6
+    $chrome.GlassFrameThickness = New-Object System.Windows.Thickness 0
+    $chrome.CornerRadius = New-Object System.Windows.CornerRadius 0
+    $chrome.UseAeroCaptionButtons = $false
+    [System.Windows.Shell.WindowChrome]::SetWindowChrome($win, $chrome)
+
+    $root = New-Object System.Windows.Controls.Border
+    $root.BorderThickness = New-Object System.Windows.Thickness 1
+    Set-BoxBg   $root 'Bg1'
+    Set-BoxLine $root 'Stroke'
+    $root.Child = New-LogContent $win -Floating
+    $win.Content = $root
+
+    # El glifo de maximizar alterna con el de restaurar, como en la
+    # ventana principal.
+    $win.Add_StateChanged({
+        param($s, $e)
+        $btn = $s.FindName('LogBtnMaximize')
+        if (-not $btn) { return }
+        if ($s.WindowState -eq 'Maximized') { $btn.Content = Glyph 'Restore' }
+        else                                { $btn.Content = Glyph 'Maximize' }
+    })
+
+    # Se cierre como se cierre -su botón, Alt+F4, o al salir del
+    # programa por ser hija- el estado tiene que quedar limpio, o el
+    # botón de la barra de título intentaría enfocar una ventana
+    # muerta.
+    $win.Add_Closed({
+        param($s, $e)
+        Clear-LogWindowState
+    })
+
+    $win
+}
+
+function Clear-LogWindowState { $script:LogWindow = $null }
+
+# Rehace el contenido de la ventana. Lo llama el cambio de idioma,
+# igual que Update-LogPanel rehace el cajón.
+function Update-LogWindow {
+    $win = $script:LogWindow
+    if (-not $win) { return }
+
+    $win.Title = T 'Activity log'
+    $win.Content.Child = New-LogContent $win -Floating
+    Update-LogList $win
+}
+
+# ---- fin incluido: ui/Components/Shell/LogWindow.ps1 ----
 # ---- inicio incluido: ui/Components/Shell/ProgressStrip.ps1 ----
 # ============================================================
 # Componente: barra de progreso
@@ -4538,17 +4972,26 @@ function New-ViewMenuRow {
 # igual pero con un aviso arriba y los controles deshabilitados.
 # ============================================================
 
+# Cuándo se leyó por última vez el registro de cada sección, para
+# poder decirlo en la cabecera. Es dato de pantalla: core/ apunta
+# la lectura en el log, pero no sabe de relojes ni de cabeceras.
+$CategoryReadAt = @{}
+
 function Show-CategoryDetailView {
     param($Window, $Category)
 
     $locked = [bool]$Category.Locked
+    $keys = Get-CategoryRegistryKeyCount $Category
 
     # ---- 0. Preguntar al equipo qué hay en el registro ----
     # Se hace ANTES de construir nada, para que las tarjetas ya
     # nazcan con el valor real. Las secciones cuyos ajustes no
     # declaren claves -hoy, todas menos Regedit- no leen nada y no
     # enseñan la barra.
-    if ((Get-CategoryRegistryKeyCount $Category) -gt 0) {
+    #
+    # Este mismo paso es el que repite el botón de refrescar: no
+    # tiene camino propio, vuelve a entrar por aquí.
+    if ($keys -gt 0) {
         # Update-UiNow cede el hilo para repintar la barra, y en esa
         # pausa WPF puede entregar clics de la pantalla anterior.
         # Sordo al ratón mientras dura: no se ve, y no hay forma de
@@ -4560,6 +5003,7 @@ function Show-CategoryDetailView {
                 param($Done, $Total)
                 Set-ProgressStrip (Get-AppWindow) $Done $Total
             } | Out-Null
+            $script:CategoryReadAt[[string]$Category.Id] = Get-Date
         }
         finally {
             Hide-ProgressStrip $Window
@@ -4573,13 +5017,15 @@ function Show-CategoryDetailView {
 
     Add-PageActionLabel $Window ((T '{0} settings') -f $Category.Items.Count)
 
-    $reset = New-ChipButton $Window 'Reset' 'Sync'
-    if ($locked) {
-        $reset.IsEnabled = $false
-        $reset.Opacity = 0.45
-        $reset.ToolTip = T 'Not available: the section is locked'
+    # La hora de la última lectura: es lo que dice si lo que hay en
+    # pantalla es de ahora mismo o de hace un rato.
+    $readAt = $script:CategoryReadAt[[string]$Category.Id]
+    if ($readAt) {
+        $stamp = (T 'Updated {0}') -f $readAt.ToString('HH:mm:ss')
+        Add-PageActionLabel $Window $stamp
     }
-    Add-PageAction $Window $reset
+
+    Add-PageAction $Window (New-RefreshButton -Window $Window -Keys $keys)
 
     # El mismo menú que la pantalla principal: sus opciones son
     # globales y se guardan, así que da igual desde dónde se toquen.
@@ -4600,6 +5046,65 @@ function Show-CategoryDetailView {
     # ---- 3. Pintar con transición de entrada ----
     $Window.FindName('MainContent').Content = $list
     Start-EnterTransition $list
+}
+
+<#
+    El botón de refrescar de la cabecera.
+
+    Leer no es tocar nada, así que sigue disponible en las
+    secciones bloqueadas: ahí lo único que no se puede es cambiar
+    valores. Lo que sí lo apaga es que la sección no declare
+    ninguna clave, porque entonces no hay nada que volver a leer.
+
+    Se registra con nombre para que $Window.FindName('BtnRefresh')
+    lo encuentre -lo usan las pruebas-, y como la cabecera se
+    rehace en cada pintada hay que soltar el nombre anterior.
+#>
+function New-RefreshButton {
+    param($Window, [int]$Keys)
+
+    $refresh = New-ChipButton $Window 'Refresh' 'Sync'
+
+    if ($Keys -gt 0) {
+        $refresh.ToolTip = T 'Read the registry keys again'
+        $refresh.Add_Click({ param($s, $e) Invoke-CategoryRefresh })
+    }
+    else {
+        $refresh.IsEnabled = $false
+        $refresh.Opacity = 0.45
+        $refresh.ToolTip = T 'This section does not read the registry yet'
+    }
+
+    try { $Window.UnregisterName('BtnRefresh') } catch { }
+    $Window.RegisterName('BtnRefresh', $refresh)
+
+    $refresh
+}
+
+<#
+    Refrescar = volver a entrar en la sección.
+
+    No repite la lectura: repinta la pantalla actual, y al
+    repintarse la vista pasa otra vez por su paso 0 con la misma
+    barra de progreso. Así no hay dos caminos que puedan acabar
+    haciendo cosas distintas.
+
+    Se aplaza al Dispatcher por el mismo motivo que
+    Update-UiLanguage: el clic sale de un botón que vive en la
+    cabecera que estamos a punto de vaciar, y conviene dejar que
+    el evento termine antes. El aviso va después del repintado
+    porque Clear-PageHeader se lo llevaría por delante.
+#>
+function Invoke-CategoryRefresh {
+    $window = Get-AppWindow
+    if (-not $window) { return }
+
+    $window.Dispatcher.BeginInvoke(
+        [System.Windows.Threading.DispatcherPriority]::Background,
+        [action]{
+            Show-CurrentView
+            Show-PageToast -Window (Get-AppWindow) -Text 'Registry values updated'
+        }) | Out-Null
 }
 
 # ---- fin incluido: ui/Views/CategoryDetailView.ps1 ----

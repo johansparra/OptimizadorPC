@@ -1,4 +1,4 @@
-# CLAUDE.md
+﻿# CLAUDE.md
 
 Contexto para trabajar en **Optimizador PC**. Ver `README.md` para la estructura completa y los diagramas.
 
@@ -60,9 +60,11 @@ powershell -ExecutionPolicy Bypass -File .\main.ps1
 # Compilar el .exe portable
 powershell -ExecutionPolicy Bypass -File .\build.ps1
 
-# Pruebas (sin dependencias). Pásalas en LOS DOS hosts: ver la regla 8.
-powershell -ExecutionPolicy Bypass -File .\tests\Run-Tests.ps1
-pwsh       -ExecutionPolicy Bypass -File .\tests\Run-Tests.ps1
+# Pruebas (sin dependencias). Los DOS hosts a la vez -regla 8-, en una sola orden:
+pwsh -ExecutionPolicy Bypass -File .\tests\Run-Tests.ps1 -BothHosts
+
+# Uno solo, para acotar mientras investigas:
+powershell -ExecutionPolicy Bypass -File .\tests\Run-Tests.ps1 -File 'Core*'
 ```
 
 **Hay pruebas y no hay linter.** Viven en `tests/`, no usan Pester (Windows solo trae
@@ -86,6 +88,32 @@ antes que el `.exe`.
 **Toca las pruebas al mismo tiempo que el código.** Si añades una sección, una
 opción o un componente, lo normal es que no haya que escribir nada: casi todo se
 recorre solo a partir de los índices.
+
+## Cómo se trabaja rápido aquí
+
+Por orden de lo que más tiempo ahorra:
+
+1. **Las llamadas independientes van en el mismo turno.** Leer seis archivos para
+   entender una zona son seis llamadas a la vez, no seis turnos. Solo se espera
+   cuando el resultado de una decide cuál es la siguiente.
+2. **Las pruebas, con `-BothHosts`.** Los dos intérpretes en paralelo, una sola orden
+   y una sola aprobación. Pueden correr a la vez porque ya no comparten nada: la rama
+   del registro de `tests/Harness/Fixtures.ps1` y el script combinado de
+   `tests/Source/Rules.Tests.ps1` llevan el PID en el nombre.
+3. **La codificación se arregla sola.** El hook `PostToolUse` de
+   `.claude/hooks/Normalize-PsEncoding.ps1` deja cada `.ps1` y `.xaml` en UTF-8 con
+   BOM y CRLF en cuanto se escribe (regla 3). Ya no hay que normalizar a mano;
+   verificar con `file` sigue siendo gratis.
+
+**El freno de verdad son los permisos.** Un comando que no esté en la lista de
+`.claude/settings.local.json` detiene la sesión hasta que alguien lo apruebe. Si algo
+se repite y es de solo lectura, su sitio es esa lista y no cada turno.
+
+**Delegar en agentes cuesta contexto.** Un agente arranca en frío y tiene que
+redescubrir el proyecto: para un cambio de uno o dos archivos sale más caro que
+hacerlo. Se delega cuando hay **dos o más frentes que no se tocan entre sí** —una
+sección nueva y una auditoría de pruebas, por ejemplo— y entonces se lanzan **a la
+vez**, no en fila. Ver `.claude/agents/README.md`.
 
 ## Reglas del proyecto
 
@@ -176,5 +204,27 @@ título abre el cajón que las enseña (`ui/Components/Shell/LogPanel.ps1`).
   hay que mirar.
 - `Read-RegistryValue` solo cronometra y apunta; la lectura pelada es
   `Read-RegistryValueRaw`.
+
+**El log puede vivir en dos sitios**: el cajón de siempre y una ventana aparte
+(`ui/Components/Shell/LogWindow.ps1`), con un botón para sacarlo y otro para volver a
+acoplarlo. Lo que hay que saber:
+
+- **El contenido lo arma una sola función**, `New-LogContent`. Lo único que cambia es
+  la esquina de botones de la cabecera; en la ventana suelta esa misma cabecera hace
+  además de barra de título (arrastra, y el doble clic maximiza). Si algún día se
+  duplica esa construcción, las dos vistas acabarán desparejadas.
+- **La ventana se construye por código, no en XAML.** `build.ps1` solo sabe incrustar
+  UN xaml: un segundo `.xaml` funcionaría con `main.ps1` y faltaría en el `.exe`. Es
+  el mismo motivo que el del menú lateral (regla 13).
+- **Es hija de la principal (`Owner`).** Eso le da dos cosas: se cierra sola al salir
+  del programa —si no, quedaría una ventana viva impidiendo terminar— y sigue siendo
+  usable pese a que la principal se muestre con `ShowDialog`, que de otro modo
+  inutiliza cualquier otra ventana de la aplicación. `Owner` solo admite una ventana
+  ya mostrada, así que en las pruebas se queda sin dueño a propósito.
+- **Hereda el tema por `MergedDictionaries`**, de modo que alternar claro/oscuro la
+  repinta a la vez que a la principal sin que haya que enterarse allí.
+- **Una ventana creada por código no trae `NameScope`** —el de la principal lo monta
+  el cargador de XAML— y sin él `RegisterName` lanza. Hay que ponérselo antes de
+  construir nada que se registre.
 
 **`Update-UiNow` (ProgressStrip) es un `DoEvents`.** Cede el hilo para que la barra de progreso se pinte durante una lectura síncrona, y en esa pausa WPF entrega eventos de ratón. Quien la use debe dejar la ventana sorda mientras dura (`$Window.Content.IsHitTestVisible = $false`), o un clic a mitad de carga navega a otro sitio dejando la lectura a medias. Si algún día la lectura se va a un hilo aparte, esa función sobra.

@@ -66,6 +66,15 @@ Describe 'ui/Lang - no falta ninguna traducción' {
             Show-View -Name 'Show-CategoryDetailView' -Arguments @{ Category = $cat }
         }
 
+        # El aviso de refrescado no sale al pintar la pantalla:
+        # solo aparece tras pulsar, así que hay que pedirlo aquí o
+        # su texto no pasaría nunca por el diccionario.
+        Show-PageToast -Window $ventana -Text 'Registry values updated' | Out-Null
+
+        # La cabecera flotante del log tiene sus propios botones, y
+        # solo se construyen al sacarlo fuera.
+        New-LogContent $ventana -Floating | Out-Null
+
         New-TestLogEntries 2
         Show-LogPanel $ventana
         Hide-LogPanel $ventana
