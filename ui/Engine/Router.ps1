@@ -50,6 +50,12 @@ function Show-View {
     foreach ($key in $Arguments.Keys) { $all[$key] = $Arguments[$key] }
     & $Name @all
 
+    # El menú tiene que marcar lo que se está enseñando, se haya
+    # llegado pulsándolo o no: a la búsqueda se entra también con
+    # Enter desde la caja de la cabecera. Lo resuelve el menú, que es
+    # quien sabe de botones; aquí solo se le dice dónde estamos.
+    Sync-NavSelection -Window $AppWindow -ViewName $Name
+
     # Navegar empieza arriba. El ScrollViewer conserva su posición
     # aunque le cambies el contenido, así que al entrar en una
     # sección te dejaría a media página. Show-CurrentView deshace
@@ -110,6 +116,12 @@ function Update-UiLanguage {
     $window.Dispatcher.BeginInvoke(
         [System.Windows.Threading.DispatcherPriority]::Background,
         [action]{
+            # El índice del buscador guarda TAMBIÉN el texto traducido
+            # -quien usa la aplicación en español busca en español-,
+            # así que en otro idioma ya no vale. Antes de repintar,
+            # para que la pantalla de resultados se rehaga con él.
+            Reset-SearchIndex
+
             Build-Sidebar -Window (Get-AppWindow)
             Update-TitleBarTexts (Get-AppWindow)
             Show-CurrentView

@@ -301,10 +301,20 @@ function New-SearchBox {
     $shell.Children.Add($ph) | Out-Null
 
     # El marcador se oculta en cuanto hay texto.
-    $tb.Tag = $ph
+    #
+    # Se busca entre los hermanos y NO por el Tag de la caja, aunque
+    # sería más corto: el Tag de esta caja se lo queda quien la
+    # envuelve -ui/Components/Shell/SearchBar.ps1 mete ahí su
+    # desplegable-, y dos dueños para el mismo hueco acaban pisándose.
     $tb.Add_TextChanged({
         param($s, $e)
-        if ($s.Text.Length -gt 0) { $s.Tag.Visibility = 'Collapsed' } else { $s.Tag.Visibility = 'Visible' }
+        $panel = $s.Parent
+        if (-not $panel) { return }
+        $visible = 'Visible'
+        if ($s.Text.Length -gt 0) { $visible = 'Collapsed' }
+        foreach ($hermano in $panel.Children) {
+            if ($hermano -is [System.Windows.Controls.StackPanel]) { $hermano.Visibility = $visible }
+        }
     })
 
     [PSCustomObject]@{ Root = $shell; Box = $tb }

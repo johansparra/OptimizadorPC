@@ -25,10 +25,19 @@
 # ============================================================
 
 function New-SettingCard {
-    param($Window, $Setting, [switch]$Locked)
+    param($Window, $Setting, [switch]$Locked, [switch]$Highlight)
 
     $card = New-Object System.Windows.Controls.Border
     $card.Style = $Window.FindResource('StaticCardStyle')
+
+    # Se llega aquí desde un resultado de búsqueda: la sección puede
+    # tener veinte filas y hay que ver CUÁL es. El borde de acento se
+    # pone como valor local, que gana al disparador de IsMouseOver del
+    # estilo, así que la marca no se pierde al pasar el ratón.
+    if ($Highlight) {
+        $card.BorderThickness = New-Object System.Windows.Thickness 1.6
+        Set-BoxLine $card 'Accent'
+    }
 
     # El relleno va en la fila, no en la tarjeta: así la línea
     # separadora del pie llega de borde a borde.

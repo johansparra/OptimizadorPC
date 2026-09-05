@@ -18,8 +18,9 @@ function Show-OptimizationsListView {
         -Title (T 'Optimizations') `
         -Subtitle (T 'Optimize your Windows system performance, privacy and power usage')
 
-    $search = New-SearchBox $Window
-    Add-PageAction $Window $search.Root
+    # La barra de búsqueda, no la caja pelada: trae el desplegable de
+    # resultados y el Enter que lleva a la página completa.
+    Add-PageAction $Window (New-SearchBar -Window $Window)
     Add-PageAction $Window (New-ChipButton $Window 'Quick Actions' 'Bolt' -Chevron)
     Add-PageAction $Window (New-ViewMenu $Window)
 

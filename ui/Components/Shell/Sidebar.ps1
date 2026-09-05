@@ -100,14 +100,45 @@ function Set-NavSelection {
     $item = Get-NavigationItem $Button.Uid
     if (-not $item -or -not $item.View) { return }
 
-    $window = [System.Windows.Window]::GetWindow($Button)
-    foreach ($nav in Get-NavigationItems) {
-        $window.FindName((Get-NavElementName $nav.Id)).Tag = $null
-    }
-    $Button.Tag = 'sel'
-    Update-NavColors $window
-
+    # Marcar el botón NO se hace aquí: lo hace Sync-NavSelection al
+    # terminar de navegar. Así hay un solo sitio que decida qué está
+    # marcado, y da igual si se ha llegado pulsando o de otra forma.
     Show-View -Name $item.View
+}
+
+<#
+    Deja marcada la entrada del menú que enseña la pantalla actual.
+
+    Hace falta porque a una vista se puede llegar SIN pulsar su
+    botón: a la de búsqueda se entra también con Enter desde la caja
+    de la cabecera. Sin esto el menú marcaría "Optimizar" mientras la
+    pantalla enseña la búsqueda — exactamente lo que la regla 13 pide
+    evitar.
+
+    Si la pantalla actual no es la de ninguna entrada -el detalle de
+    una sección, por ejemplo- NO se toca nada: se sigue marcando
+    aquella desde la que se entró, que es lo que uno espera al bajar
+    un nivel.
+#>
+function Sync-NavSelection {
+    param($Window, [string]$ViewName)
+
+    if (-not $Window -or -not $ViewName) { return }
+
+    $item = @(Get-NavigationItems | Where-Object { $_.View -eq $ViewName })[0]
+    if (-not $item) { return }
+
+    $button = $Window.FindName((Get-NavElementName $item.Id))
+    # Sin menú construido no hay nada que marcar: pasa en las pruebas,
+    # que pintan vistas sobre una ventana pelada.
+    if (-not $button) { return }
+
+    foreach ($nav in Get-NavigationItems) {
+        $otro = $Window.FindName((Get-NavElementName $nav.Id))
+        if ($otro) { $otro.Tag = $null }
+    }
+    $button.Tag = 'sel'
+    Update-NavColors $Window
 }
 
 # El estilo del XAML pinta el fondo del botón seleccionado; el

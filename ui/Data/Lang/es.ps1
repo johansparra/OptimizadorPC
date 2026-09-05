@@ -257,4 +257,33 @@ Register-Language 'es' @{
     'Startup Sound' = 'Sonido de inicio'
     'Play the Windows startup sound when signing in' = 'Reproducir el sonido de inicio de Windows al iniciar sesión'
 
+    # ---- Búsqueda ----
+    'Search' = 'Buscar'
+    'Everything in the app, by name, description or registry key' = 'Todo lo que hay en la aplicación: por nombre, descripción o clave del registro'
+    'See all {0} results'   = 'Ver los {0} resultados'
+    '{0} results for "{1}"' = '{0} resultados de «{1}»'
+    '1 result for "{0}"'    = '1 resultado de «{0}»'
+    'Nothing matches "{0}"' = 'Nada coincide con «{0}»'
+    'Try another word, or part of a registry path' = 'Prueba con otra palabra, o con un trozo de una ruta del registro'
+    'Type to search' = 'Escribe para buscar'
+    'Sections, settings, registry keys and their values' = 'Secciones, ajustes, claves del registro y sus valores'
+
+    # Por qué ha salido cada resultado. Son las etiquetas, no los
+    # datos: la ruta y el valor se enseñan tal cual, que para eso se
+    # copian y se pegan.
+    'Name'           = 'Nombre'
+    'Description'    = 'Descripción'
+    'Section'        = 'Sección'
+    'Tags'           = 'Etiquetas'
+    'Options'        = 'Opciones'
+    'Value'          = 'Valor'
+    'Registry path'  = 'Ruta del registro'
+    'Registry value' = 'Valor del registro'
+    'Type'           = 'Tipo'
+    'Current value'  = 'Valor actual'
+    'Factory'        = 'De fábrica'
+    'Status'         = 'Estado'
+    # 'Recommended' ya está más arriba, con las etiquetas de
+    # clasificación: es la misma palabra.
+
 }

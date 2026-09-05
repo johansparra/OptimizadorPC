@@ -153,7 +153,9 @@ vez**, no en fila. **Esa decisión la toma Claude solo**, sin preguntar. Ver
 
 13. **El menú lateral se construye por código, no en el XAML.** `MainWindow.xaml` solo aporta el `Border` llamado `Sidebar` con dos `StackPanel` vacíos (`NavTop` y `NavBottom`); los botones los crea `Build-Sidebar` a partir de `ui/Index/NavigationIndex.ps1`. Cada botón se registra con `$Window.RegisterName('Nav<Id>', ...)`, así que `FindName('NavSettings')` sigue funcionando — si añades uno nuevo, respeta ese nombrado.
 
-    **Una entrada sin `View` no navega, y es a propósito.** Hoy solo Optimize y Settings tienen pantalla; las otras cuatro siguen en el menú para conservar la estructura, se ven igual que las demás (ni en gris ni con candado) y `Set-NavSelection` sale antes de tocar nada: ni cambia de vista, ni repinta, ni mueve la marca del menú. **No las mandes a una vista de relleno** — el menú marcaría una cosa y la pantalla enseñaría otra. Activar una es escribir el nombre de su función de vista en `View`.
+    **Una entrada sin `View` no navega, y es a propósito.** Hoy tienen pantalla Search, Optimize y Settings; las otras cuatro siguen en el menú para conservar la estructura, se ven igual que las demás (ni en gris ni con candado) y `Set-NavSelection` sale antes de tocar nada: ni cambia de vista, ni repinta, ni mueve la marca del menú. **No las mandes a una vista de relleno** — el menú marcaría una cosa y la pantalla enseñaría otra. Activar una es escribir el nombre de su función de vista en `View`.
+
+    **Quién está marcado lo decide `Sync-NavSelection`, y lo llama `Show-View`.** No el botón al pulsarse: a una pantalla se puede llegar sin tocar el menú —a la de búsqueda se entra con Enter desde la caja de la cabecera—, y con la marca puesta en el clic el menú acabaría señalando otra cosa. Si la vista actual no es la de ninguna entrada (el detalle de una sección), no se toca nada: sigue marcada aquella desde la que entraste.
 14. **Al plegar el menú se anima el ancho del `Border`, nunca la columna del `Grid`.** La columna es `Auto` y sigue al `Border` sola; animar un `GridLength` exigiría escribir una animación propia porque WPF no trae ninguna. El borde derecho de 1px se pone a 0 al plegar, o el ancho nunca llegaría a cero.
 
 15. **Todo texto visible pasa por `T`.** El inglés es el idioma fuente y se traduce por texto original, no por clave (ver `ui/Engine/Translation.ps1`). Un literal sin `T` sale siempre en inglés y no aparece en `Get-MissingTranslations`, así que es un fallo silencioso. El XAML no puede llamar a `T`: sus textos se fijan en `ui/Components/Shell/TitleBar.ps1`.
@@ -243,3 +245,46 @@ acoplarlo. Lo que hay que saber:
   construir nada que se registre.
 
 **`Update-UiNow` (ProgressStrip) es un `DoEvents`.** Cede el hilo para que la barra de progreso se pinte durante una lectura síncrona, y en esa pausa WPF entrega eventos de ratón. Quien la use debe dejar la ventana sorda mientras dura (`$Window.Content.IsHitTestVisible = $false`), o un clic a mitad de carga navega a otro sitio dejando la lectura a medias. Si algún día la lectura se va a un hilo aparte, esa función sobra.
+
+## El buscador global (la caja de la cabecera)
+
+`ui/Engine/Search.ps1` arma **un índice plano** con una entrada por sección y otra por
+ajuste, cada una con su `Haystack` en minúsculas. Buscar es mirar si están dentro
+todos los términos, así que la coincidencia es parcial y sin distinguir mayúsculas:
+medio nombre de valor encuentra la clave entera.
+
+- **No sabe qué secciones hay**: se las pregunta a `Get-OptimizationCategories`. Una
+  sección nueva entra en el buscador sola, sin tocar ese archivo.
+- **El índice se guarda y se reutiliza.** Se tira con `Reset-SearchIndex`, y hoy eso
+  pasa en dos sitios: al leer el registro de una sección (aparecen `Current` y
+  `Status`, que se indexan) y al cambiar de idioma. Si algún día se indexa algo más
+  que cambie en caliente, ahí es donde hay que avisar.
+- **Se indexa el texto traducido Y el original.** Quien usa la aplicación en español
+  busca en español, pero `telemetry` tiene que seguir encontrando lo mismo. Lo
+  técnico —rutas, nombres de valor, números— no se traduce nunca.
+- **Lo que se junta se traduce ANTES de juntarse.** Las etiquetas y las opciones de un
+  desplegable pasan por `New-SearchListField`, que traduce uno a uno; juntarlas antes
+  y pasar la frase por `T` no traduce nada y ensucia `Get-MissingTranslations`.
+
+Dos trampas que ya han mordido una vez:
+
+- **El `Tag` de la caja es del desplegable, no del marcador.** `New-SearchBox`
+  (`ui/Design/UiKit.ps1`) esconde su "Buscar optimizaciones..." buscando entre los
+  hermanos justamente para dejar el `Tag` libre, porque ahí mete su `Popup`
+  `New-SearchBar`. Dos dueños para el mismo hueco y una de las dos cosas deja de
+  funcionar.
+- **Al escribir se repinta el cuerpo, nunca la cabecera.** Rehacer la cabecera
+  destruye la caja de texto en la que se está escribiendo, y con ella el foco y el
+  cursor. Por eso hay dos caminos —`Show-SearchResultsView` entra y pinta las dos
+  cosas, `Update-SearchResults` solo el cuerpo— y por eso el recuento
+  ("12 resultados") va en el cuerpo y no en el subtítulo.
+
+Escribir abre un desplegable con las primeras filas (`$SearchPopupMax`), `Enter` lleva
+a la página con todas y `Escape` lo cierra —pero solo se queda la tecla si había algo
+abierto, o dejaría de cerrarse el cajón del log. Hay antirrebote
+(`$SearchDebounceMs`): diez pulsaciones son una búsqueda, no diez.
+
+Pulsar un resultado abre su sección con **el ajuste marcado** (`New-SettingCard
+-Highlight`, borde de acento) y lo trae a la vista. El desplazamiento va aplazado al
+`Dispatcher` a propósito: `Show-View` manda el scroll arriba DESPUÉS de que la vista
+termine, así que hacerlo en el sitio no serviría de nada.

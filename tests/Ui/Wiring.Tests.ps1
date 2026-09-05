@@ -85,6 +85,29 @@ function Get-WiringProbe {
         'Push-Boton $Window.FindName(''NavSoftware'')'
         'Write-Host ("NAV-SIN-PANTALLA={0} MARCA={1}" -f (Get-CurrentViewName), ($null -ne $Window.FindName(''NavSoftware'').Tag))'
         ''
+        '# La busqueda, pulsando de verdad. Sus manejadores llaman a'
+        '# funciones del script -Open-SearchResult, Show-View- y eso'
+        '# es justo lo que un closure rompe solo aqui: en el .exe las'
+        '# funciones quedan en ambito global y no se nota.'
+        '#'
+        '# No se abre el desplegable a proposito: un Popup con'
+        '# IsOpen se crea su propia ventana y esta sonda corre sin'
+        '# ninguna a la vista.'
+        '#'
+        '# El termino sale de los datos, no escrito a mano: asi la'
+        '# sonda no se queda coja el dia que cambie un ajuste.'
+        '$ajuste = @((Get-CategoryById ''regedit'').Items)[0]'
+        'Set-SearchQuery $ajuste.Name'
+        'Show-View -Name ''Show-SearchResultsView'''
+        '$cuerpo = $Window.FindName(''MainContent'').Content'
+        '$tarjetas = @($cuerpo.Children | Where-Object { $_.Tag -and $_.Tag.PSObject.Properties[''Category''] })'
+        'Write-Host ("BUSQUEDA-VISTA={0} TARJETAS={1}" -f (Get-CurrentViewName), $tarjetas.Count)'
+        ''
+        '$clic = New-Object System.Windows.Input.MouseButtonEventArgs ([System.Windows.Input.Mouse]::PrimaryDevice), 0, ([System.Windows.Input.MouseButton]::Left)'
+        '$clic.RoutedEvent = [System.Windows.UIElement]::MouseLeftButtonUpEvent'
+        '$tarjetas[0].RaiseEvent($clic)'
+        'Write-Host ("BUSQUEDA-CLIC={0}" -f (Get-CurrentViewName))'
+        ''
         'Write-Host "SONDA-COMPLETA"'
     )
 }
@@ -187,6 +210,16 @@ Describe 'main.ps1 - los botones responden' {
     It 'una entrada del menú sin pantalla no lleva a ninguna parte' {
         Assert-Match 'NAV-CON-PANTALLA=Show-SettingsView' $WiringOutput 'Ajustes sí debería navegar'
         Assert-Match 'NAV-SIN-PANTALLA=Show-SettingsView MARCA=False' $WiringOutput 'Software no debía moverse de sitio ni marcarse'
+    }
+
+    It 'la búsqueda pinta resultados y pulsarlos lleva a su sección' {
+        if ($WiringOutput -match 'BUSQUEDA-VISTA=(\S+) TARJETAS=(\d+)') {
+            Assert-Equal 'Show-SearchResultsView' $Matches[1]
+            Assert-True ([int]$Matches[2] -gt 0) 'buscar el nombre de un ajuste no ha pintado ninguna tarjeta'
+        }
+        else { throw 'la sonda no ha dicho nada de la búsqueda' }
+
+        Assert-Match 'BUSQUEDA-CLIC=Show-CategoryDetailView' $WiringOutput 'pulsar un resultado no ha llevado a su sección'
     }
 
     It 'ningún manejador ha lanzado' {

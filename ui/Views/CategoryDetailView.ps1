@@ -17,8 +17,13 @@
 # la lectura en el log, pero no sabe de relojes ni de cabeceras.
 $CategoryReadAt = @{}
 
+# La tarjeta que hay que traer a la vista al entrar desde un
+# resultado de búsqueda. Vive fuera de la función porque quien la
+# usa corre después, ya en el Dispatcher.
+$CategoryHighlightCard = $null
+
 function Show-CategoryDetailView {
-    param($Window, $Category)
+    param($Window, $Category, $Highlight)
 
     $locked = [bool]$Category.Locked
     $keys = Get-CategoryRegistryKeyCount $Category
@@ -44,6 +49,13 @@ function Show-CategoryDetailView {
                 Set-ProgressStrip (Get-AppWindow) $Done $Total
             } | Out-Null
             $script:CategoryReadAt[[string]$Category.Id] = Get-Date
+
+            # Acaban de aparecer Current y Status donde antes no había
+            # nada, y el buscador indexa los dos. El índice guardado se
+            # ha quedado viejo: se tira y se rehará al siguiente
+            # tecleo. Se avisa desde aquí y no desde core/, que no sabe
+            # -ni debe saber- que existe un buscador.
+            Reset-SearchIndex
         }
         finally {
             Hide-ProgressStrip $Window
@@ -79,13 +91,51 @@ function Show-CategoryDetailView {
 
     if ($locked) { $list.Children.Add((New-LockedBanner)) | Out-Null }
 
+    # $Highlight llega desde un resultado de búsqueda: es el ajuste
+    # que hay que enseñar. Se compara por nombre y no por referencia
+    # porque el ajuste puede venir del índice del buscador, que no
+    # tiene por qué ser el mismo objeto.
+    $buscado = ''
+    if ($Highlight) { $buscado = [string]$Highlight.Name }
+
+    $script:CategoryHighlightCard = $null
+
     foreach ($setting in $Category.Items) {
-        $list.Children.Add((New-SettingCard -Window $Window -Setting $setting -Locked:$locked)) | Out-Null
+        $marcar = ($buscado -ne '' -and [string]$setting.Name -eq $buscado)
+        $card = New-SettingCard -Window $Window -Setting $setting -Locked:$locked -Highlight:$marcar
+        if ($marcar) { $script:CategoryHighlightCard = $card }
+        $list.Children.Add($card) | Out-Null
     }
 
     # ---- 3. Pintar con transición de entrada ----
     $Window.FindName('MainContent').Content = $list
     Start-EnterTransition $list
+
+    Show-HighlightedSetting $Window
+}
+
+<#
+    Lleva a la vista el ajuste marcado, si lo hay.
+
+    Se aplaza por dos motivos, y hacen falta los dos:
+
+      - El contenido todavía no está medido; con alto 0 no hay
+        adónde desplazarse.
+      - Show-View manda el scroll arriba DESPUÉS de que esta vista
+        termine, así que hacerlo aquí mismo no serviría de nada.
+#>
+function Show-HighlightedSetting {
+    param($Window)
+
+    if (-not $script:CategoryHighlightCard) { return }
+
+    $Window.Dispatcher.BeginInvoke(
+        [System.Windows.Threading.DispatcherPriority]::Loaded,
+        [action]{
+            $card = $script:CategoryHighlightCard
+            $script:CategoryHighlightCard = $null
+            if ($card) { $card.BringIntoView() }
+        }) | Out-Null
 }
 
 <#

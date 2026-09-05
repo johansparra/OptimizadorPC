@@ -551,10 +551,20 @@ function New-SearchBox {
     $shell.Children.Add($ph) | Out-Null
 
     # El marcador se oculta en cuanto hay texto.
-    $tb.Tag = $ph
+    #
+    # Se busca entre los hermanos y NO por el Tag de la caja, aunque
+    # sería más corto: el Tag de esta caja se lo queda quien la
+    # envuelve -ui/Components/Shell/SearchBar.ps1 mete ahí su
+    # desplegable-, y dos dueños para el mismo hueco acaban pisándose.
     $tb.Add_TextChanged({
         param($s, $e)
-        if ($s.Text.Length -gt 0) { $s.Tag.Visibility = 'Collapsed' } else { $s.Tag.Visibility = 'Visible' }
+        $panel = $s.Parent
+        if (-not $panel) { return }
+        $visible = 'Visible'
+        if ($s.Text.Length -gt 0) { $visible = 'Collapsed' }
+        foreach ($hermano in $panel.Children) {
+            if ($hermano -is [System.Windows.Controls.StackPanel]) { $hermano.Visibility = $visible }
+        }
     })
 
     [PSCustomObject]@{ Root = $shell; Box = $tb }
@@ -1062,6 +1072,12 @@ function Show-View {
     foreach ($key in $Arguments.Keys) { $all[$key] = $Arguments[$key] }
     & $Name @all
 
+    # El menú tiene que marcar lo que se está enseñando, se haya
+    # llegado pulsándolo o no: a la búsqueda se entra también con
+    # Enter desde la caja de la cabecera. Lo resuelve el menú, que es
+    # quien sabe de botones; aquí solo se le dice dónde estamos.
+    Sync-NavSelection -Window $AppWindow -ViewName $Name
+
     # Navegar empieza arriba. El ScrollViewer conserva su posición
     # aunque le cambies el contenido, así que al entrar en una
     # sección te dejaría a media página. Show-CurrentView deshace
@@ -1122,6 +1138,12 @@ function Update-UiLanguage {
     $window.Dispatcher.BeginInvoke(
         [System.Windows.Threading.DispatcherPriority]::Background,
         [action]{
+            # El índice del buscador guarda TAMBIÉN el texto traducido
+            # -quien usa la aplicación en español busca en español-,
+            # así que en otro idioma ya no vale. Antes de repintar,
+            # para que la pantalla de resultados se rehaga con él.
+            Reset-SearchIndex
+
             Build-Sidebar -Window (Get-AppWindow)
             Update-TitleBarTexts (Get-AppWindow)
             Show-CurrentView
@@ -1136,6 +1158,269 @@ function Update-UiLanguage {
 }
 
 # ---- fin incluido: ui/Engine/Router.ps1 ----
+# ---- inicio incluido: ui/Engine/Search.ps1 ----
+# ============================================================
+# Search.ps1
+# El buscador global. Mecanismo, no datos.
+#
+# No sabe qué secciones hay ni qué ajustes existen: se los pregunta
+# al registro de categorías, así que una sección nueva entra en el
+# buscador sola, sin tocar este archivo.
+#
+# Cómo funciona
+# -------------
+# Se arma UN índice plano con una entrada por cada cosa buscable
+# -cada sección y cada ajuste-, y cada entrada trae:
+#
+#   Fields     los datos que se pueden buscar, con su etiqueta. Es lo
+#              que permite decir POR QUÉ ha salido un resultado.
+#   Haystack   todos esos datos en minúsculas y en una sola cadena.
+#              Buscar es mirar si están dentro todos los términos.
+#
+# El índice se guarda y se reutiliza; se tira cuando cambia lo que
+# hay dentro. Hoy eso pasa en dos sitios, y los dos llaman a
+# Reset-SearchIndex:
+#
+#   - Leer el registro de una sección, que rellena Current y Status.
+#   - Cambiar de idioma: el índice guarda TAMBIÉN el texto traducido,
+#     porque quien usa la aplicación en español busca en español.
+#
+# Lo técnico -rutas, nombres de valor, números- no se traduce nunca,
+# ni aquí ni en pantalla: es texto para copiar y pegar.
+# ============================================================
+
+$SearchQuery = ''
+$SearchIndex = $null
+
+# Lo que se está buscando ahora mismo. Vive aquí y no en el control
+# para que la vista se pueda repintar -al cambiar de idioma, por
+# ejemplo- sin que nadie tenga que ir a leer la caja de texto.
+function Set-SearchQuery { param([string]$Text) $script:SearchQuery = [string]$Text }
+function Get-SearchQuery { $script:SearchQuery }
+
+function Reset-SearchIndex { $script:SearchIndex = $null }
+
+function Get-SearchIndex {
+    if ($null -eq $script:SearchIndex) { $script:SearchIndex = New-SearchIndex }
+    $script:SearchIndex
+}
+
+<#
+    Un campo buscable: la etiqueta con la que se enseña y su texto.
+
+    -Translate para lo que en pantalla pasa por T (nombres,
+    descripciones, etiquetas): así "Recomendado" encuentra lo mismo
+    que "Recommended" y el buscador funciona en los dos idiomas. Lo
+    técnico se queda tal cual.
+#>
+function New-SearchField {
+    param([string]$Label, $Value, [switch]$Translate)
+
+    $text = [string]$Value
+    if ([string]::IsNullOrWhiteSpace($text)) { return $null }
+
+    $shown = $text
+    $extra = ''
+    if ($Translate) {
+        $shown = T $text
+        if ($shown -ne $text) { $extra = $text }   # el original también busca
+    }
+
+    [PSCustomObject]@{ Label = $Label; Text = $shown; Also = $extra }
+}
+
+<#
+    Un campo hecho de varios valores sueltos: las etiquetas de un
+    ajuste, las opciones de un desplegable.
+
+    Se traduce CADA UNO y luego se juntan. Juntarlos antes y pasar
+    la frase entera por T no traduciría nada -esa frase no está en
+    ningún diccionario ni tiene por qué estar- y de paso ensuciaría
+    la lista de textos pendientes que enseña Get-MissingTranslations.
+#>
+function New-SearchListField {
+    param([string]$Label, $Values)
+
+    $items = @(@($Values) | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) })
+    if ($items.Count -eq 0) { return $null }
+
+    $original = ($items -join ' ')
+    $mostrado = (@($items | ForEach-Object { T ([string]$_) }) -join ' ')
+
+    $extra = ''
+    if ($mostrado -ne $original) { $extra = $original }
+
+    [PSCustomObject]@{ Label = $Label; Text = $mostrado; Also = $extra }
+}
+
+# Los campos de un ajuste: lo suyo, lo de su sección y lo de cada
+# clave del registro que declare.
+function Get-SettingSearchFields {
+    param($Category, $Setting)
+
+    $fields = New-Object System.Collections.Generic.List[object]
+
+    $fields.Add((New-SearchField 'Name'        $Setting.Name        -Translate))
+    $fields.Add((New-SearchField 'Description' $Setting.Description -Translate))
+    $fields.Add((New-SearchField 'Section'     $Category.Name       -Translate))
+    $fields.Add((New-SearchListField 'Tags' $Setting.Tags))
+
+    # El valor de un interruptor es $true/$false y no aporta nada;
+    # el de un desplegable sí, y además se traduce.
+    if ($Setting.Options) {
+        $fields.Add((New-SearchListField 'Options' $Setting.Options))
+        $fields.Add((New-SearchField     'Value'   $Setting.Value -Translate))
+    }
+
+    foreach ($key in @($Setting.Registry)) {
+        $fields.Add((New-SearchField 'Registry path'  $key.Path))
+        $fields.Add((New-SearchField 'Registry value' $key.Name))
+        $fields.Add((New-SearchField 'Type'           $key.Type))
+        $fields.Add((New-SearchField 'Current value'  $key.Current))
+        $fields.Add((New-SearchField 'Recommended'    $key.Recommended))
+        $fields.Add((New-SearchField 'Factory'        $key.Default))
+    }
+
+    # El estado real, si ya se ha leído el equipo: buscar "optimizado"
+    # saca lo que está aplicado.
+    if ($Setting.Status) {
+        $fields.Add((New-SearchField 'Status' (Get-StatusStyle $Setting.Status).Label -Translate))
+    }
+
+    $fields.ToArray() | Where-Object { $_ }
+}
+
+# Una entrada del índice, con su pajar ya en minúsculas.
+function New-SearchEntry {
+    param([string]$Kind, $Category, $Setting, $Fields)
+
+    $parts = New-Object System.Collections.Generic.List[string]
+    foreach ($field in @($Fields)) {
+        $parts.Add($field.Text)
+        if ($field.Also) { $parts.Add($field.Also) }
+    }
+
+    [PSCustomObject]@{
+        Kind     = $Kind
+        Category = $Category
+        Setting  = $Setting
+        Fields   = @($Fields)
+        Haystack = ($parts.ToArray() -join ' ').ToLowerInvariant()
+    }
+}
+
+<#
+    Arma el índice entero recorriendo las secciones visibles.
+
+    Se indexa la sección además de sus ajustes, para que buscar
+    "regedit" o "juegos" lleve a la sección aunque ningún ajuste
+    concreto se llame así.
+#>
+function New-SearchIndex {
+    $index = New-Object System.Collections.Generic.List[object]
+
+    foreach ($category in Get-OptimizationCategories) {
+        $catFields = @(
+            (New-SearchField 'Section'     $category.Name        -Translate)
+            (New-SearchField 'Description' $category.Description -Translate)
+        ) | Where-Object { $_ }
+
+        $index.Add((New-SearchEntry 'category' $category $null $catFields))
+
+        foreach ($setting in @($category.Items)) {
+            $index.Add((New-SearchEntry 'setting' $category $setting (Get-SettingSearchFields $category $setting)))
+        }
+    }
+
+    $index.ToArray()
+}
+
+# Los términos de una consulta: en minúsculas y separados por
+# espacios. Buscar "windows update" pide las dos palabras, no la
+# frase exacta, que es lo que uno espera al teclear.
+function Get-SearchTerms {
+    param([string]$Query)
+
+    if ([string]::IsNullOrWhiteSpace($Query)) { return @() }
+    @($Query.ToLowerInvariant() -split '\s+' | Where-Object { $_ })
+}
+
+<#
+    Busca. Devuelve las entradas que encajan, cada una con el campo
+    por el que ha encajado (Match), para poder enseñarlo.
+
+    Coincidencia PARCIAL y sin distinguir mayúsculas: se mira si el
+    término está DENTRO del texto, así que "throttl" encuentra
+    NetworkThrottlingIndex y media ruta del registro encuentra la
+    clave entera.
+#>
+function Get-SearchResults {
+    param([string]$Query)
+
+    $terms = Get-SearchTerms $Query
+    if ($terms.Count -eq 0) { return @() }
+
+    $found = New-Object System.Collections.Generic.List[object]
+
+    foreach ($entry in (Get-SearchIndex)) {
+        $ok = $true
+        foreach ($term in $terms) {
+            if ($entry.Haystack.IndexOf($term, [System.StringComparison]::Ordinal) -lt 0) { $ok = $false; break }
+        }
+        if (-not $ok) { continue }
+
+        $entry | Add-Member -NotePropertyName 'Match' -NotePropertyValue (Get-SearchMatchField $entry $terms) -Force
+        $found.Add($entry)
+    }
+
+    $found.ToArray()
+}
+
+# El campo que explica el resultado: el primero que contenga alguno
+# de los términos. Sirve para que el usuario vea que ha encajado por
+# la ruta del registro y no por el nombre.
+function Get-SearchMatchField {
+    param($Entry, [string[]]$Terms)
+
+    foreach ($field in @($Entry.Fields)) {
+        $texto = ($field.Text + ' ' + $field.Also).ToLowerInvariant()
+        foreach ($term in $Terms) {
+            if ($texto.IndexOf($term, [System.StringComparison]::Ordinal) -ge 0) { return $field }
+        }
+    }
+    $null
+}
+
+<#
+    Los resultados agrupados por sección, en el orden del índice de
+    categorías. Cada grupo trae la categoría y sus entradas.
+
+    Agrupar aquí y no en la vista deja la pantalla como debe ser: un
+    bucle sobre grupos y nada de lógica.
+#>
+function Group-SearchResults {
+    param($Results)
+
+    $groups = New-Object System.Collections.Generic.List[object]
+    $byId = @{}
+
+    foreach ($entry in @($Results)) {
+        $id = [string]$entry.Category.Id
+        if (-not $byId.ContainsKey($id)) {
+            $group = [PSCustomObject]@{
+                Category = $entry.Category
+                Entries  = New-Object System.Collections.Generic.List[object]
+            }
+            $byId[$id] = $group
+            $groups.Add($group)
+        }
+        $byId[$id].Entries.Add($entry)
+    }
+
+    $groups.ToArray()
+}
+
+# ---- fin incluido: ui/Engine/Search.ps1 ----
 # ---- inicio incluido: ui/Engine/Translation.ps1 ----
 # ============================================================
 # Translation.ps1
@@ -1360,12 +1645,17 @@ function Get-LanguageLabel {
 #   Icon       Nombre de glifo del catálogo de ui/Design/Theme.ps1.
 # ============================================================
 
-# Hoy solo hay pantalla para dos entradas -Optimize y Settings-. Las
-# otras cuatro siguen aquí a propósito: mantienen la estructura del
-# menú a la vista, y activarlas será rellenar su View.
+# Hoy hay pantalla para tres entradas -Search, Optimize y Settings-.
+# Las otras cuatro siguen aquí a propósito: mantienen la estructura
+# del menú a la vista, y activarlas será rellenar su View.
+#
+# 'search' va la primera porque no es una sección más: busca EN todas
+# las demás. Su vista es la misma a la que lleva la caja de la
+# cabecera, no una copia.
 $NavigationIndex = @(
 
     #  Id             Icono        Etiqueta       Grupo      Visible  Bloqueado   Vista
+    @{ Id = 'search';    Icon = 'Search';  Label = 'Search';    Group = 'Top';    Visible = $true; Locked = $false; View = 'Show-SearchResultsView' }
     @{ Id = 'software';  Icon = 'Apps';    Label = 'Software';  Group = 'Top';    Visible = $true; Locked = $false; View = $null }
     @{ Id = 'optimize';  Icon = 'Gauge';   Label = 'Optimize';  Group = 'Top';    Visible = $true; Locked = $false; View = 'Show-OptimizationsListView'; Default = $true }
     @{ Id = 'customize'; Icon = 'Palette'; Label = 'Customize'; Group = 'Top';    Visible = $true; Locked = $false; View = $null }
@@ -2715,6 +3005,35 @@ Register-Language 'es' @{
     'Startup Sound' = 'Sonido de inicio'
     'Play the Windows startup sound when signing in' = 'Reproducir el sonido de inicio de Windows al iniciar sesión'
 
+    # ---- Búsqueda ----
+    'Search' = 'Buscar'
+    'Everything in the app, by name, description or registry key' = 'Todo lo que hay en la aplicación: por nombre, descripción o clave del registro'
+    'See all {0} results'   = 'Ver los {0} resultados'
+    '{0} results for "{1}"' = '{0} resultados de «{1}»'
+    '1 result for "{0}"'    = '1 resultado de «{0}»'
+    'Nothing matches "{0}"' = 'Nada coincide con «{0}»'
+    'Try another word, or part of a registry path' = 'Prueba con otra palabra, o con un trozo de una ruta del registro'
+    'Type to search' = 'Escribe para buscar'
+    'Sections, settings, registry keys and their values' = 'Secciones, ajustes, claves del registro y sus valores'
+
+    # Por qué ha salido cada resultado. Son las etiquetas, no los
+    # datos: la ruta y el valor se enseñan tal cual, que para eso se
+    # copian y se pegan.
+    'Name'           = 'Nombre'
+    'Description'    = 'Descripción'
+    'Section'        = 'Sección'
+    'Tags'           = 'Etiquetas'
+    'Options'        = 'Opciones'
+    'Value'          = 'Valor'
+    'Registry path'  = 'Ruta del registro'
+    'Registry value' = 'Valor del registro'
+    'Type'           = 'Tipo'
+    'Current value'  = 'Valor actual'
+    'Factory'        = 'De fábrica'
+    'Status'         = 'Estado'
+    # 'Recommended' ya está más arriba, con las etiquetas de
+    # clasificación: es la misma palabra.
+
 }
 
 # ---- fin incluido: ui/Data/Lang/es.ps1 ----
@@ -3045,6 +3364,190 @@ function New-PreferenceControl {
 }
 
 # ---- fin incluido: ui/Components/Cards/PreferenceCard.ps1 ----
+# ---- inicio incluido: ui/Components/Cards/SearchResultCard.ps1 ----
+# ============================================================
+# Componente: resultado de búsqueda
+#
+# El mismo resultado se enseña de dos maneras:
+#
+#   New-SearchResultRow    fila estrecha, para el desplegable que
+#                          cuelga de la caja de búsqueda
+#   New-SearchResultCard   tarjeta completa, para la página de
+#                          resultados
+#
+# Las dos dicen lo mismo: dónde vive el resultado, cómo se llama y
+# POR QUÉ ha salido -"Ruta del registro: HKEY_LOCAL_MACHINE\..."-,
+# que es lo que evita el "¿y esto por qué me lo enseña?" cuando la
+# coincidencia está en un campo que no se ve.
+#
+# Pulsar lleva a la sección con el ajuste resaltado. El dato viaja
+# en el Tag: nada de closures (regla 4 de CLAUDE.md).
+# ============================================================
+
+# Lo que se guarda en el Tag de cualquier cosa pulsable de aquí.
+function New-SearchResultTag {
+    param($Entry, $Popup)
+    [PSCustomObject]@{ Category = $Entry.Category; Setting = $Entry.Setting; Popup = $Popup }
+}
+
+<#
+    Abre el resultado que lleva el emisor en el Tag.
+
+    Un resultado de sección lleva a la sección; uno de ajuste lleva a
+    la sección Y le dice cuál resaltar, que es lo que hace que al
+    buscar una clave del registro acabes mirándola directamente.
+#>
+function Open-SearchResult {
+    param($Element)
+
+    $info = $Element.Tag
+    if (-not $info) { return }
+
+    if ($info.Popup) { $info.Popup.IsOpen = $false }
+
+    $destino = @{ Category = $info.Category }
+    if ($info.Setting) { $destino['Highlight'] = $info.Setting }
+
+    Show-View -Name 'Show-CategoryDetailView' -Arguments $destino
+}
+
+# El título del resultado: el ajuste, o la sección si la coincidencia
+# es de la sección entera.
+function Get-SearchResultTitle {
+    param($Entry)
+    if ($Entry.Setting) { return (T $Entry.Setting.Name) }
+    T $Entry.Category.Name
+}
+
+# "Ruta del registro: HKEY_LOCAL_MACHINE\..." — el campo por el que
+# ha encajado, con su etiqueta traducida y el dato tal cual.
+function New-SearchMatchLine {
+    param($Window, $Entry, [double]$Size = 11)
+
+    $line = New-Object System.Windows.Controls.TextBlock
+    $line.FontFamily = $Window.FindResource('MonoFont')
+    $line.FontSize = $Size
+    $line.TextTrimming = 'CharacterEllipsis'
+    $line.Margin = New-Object System.Windows.Thickness 0, 4, 0, 0
+
+    if (-not $Entry.Match) {
+        $line.Visibility = 'Collapsed'
+        return $line
+    }
+
+    $etiqueta = New-Object System.Windows.Documents.Run ((T $Entry.Match.Label) + ': ')
+    Set-TextFg $etiqueta 'TextFaint'
+    $line.Inlines.Add($etiqueta)
+
+    $dato = New-Object System.Windows.Documents.Run $Entry.Match.Text
+    Set-TextFg $dato 'TextMuted'
+    $line.Inlines.Add($dato)
+
+    $line
+}
+
+# ---- Fila del desplegable -----------------------------------
+
+function New-SearchResultRow {
+    param($Window, $Entry, $Popup)
+
+    $row = New-Object System.Windows.Controls.Border
+    $row.CornerRadius = New-Object System.Windows.CornerRadius 9
+    $row.Padding = New-Object System.Windows.Thickness 10, 7, 10, 8
+    $row.Cursor = 'Hand'
+    $row.Background = [System.Windows.Media.Brushes]::Transparent
+
+    $texts = New-Object System.Windows.Controls.StackPanel
+
+    $title = New-Object System.Windows.Controls.TextBlock
+    $title.Text = Get-SearchResultTitle $Entry
+    $title.FontSize = 12
+    $title.FontWeight = 'SemiBold'
+    $title.TextTrimming = 'CharacterEllipsis'
+    Set-TextFg $title 'Text'
+    $texts.Children.Add($title) | Out-Null
+
+    $texts.Children.Add((New-SearchMatchLine $Window $Entry 10.5)) | Out-Null
+
+    $row.Child = $texts
+
+    $row.Tag = New-SearchResultTag $Entry $Popup
+    $row.Add_MouseEnter({ param($s, $e) Set-BoxBg $s 'SurfaceHover' })
+    $row.Add_MouseLeave({ param($s, $e) $s.Background = [System.Windows.Media.Brushes]::Transparent })
+    $row.Add_MouseLeftButtonUp({ param($s, $e) Open-SearchResult $s })
+
+    $row
+}
+
+# ---- Tarjeta de la página -----------------------------------
+
+function New-SearchResultCard {
+    param($Window, $Entry)
+
+    $card = New-Object System.Windows.Controls.Border
+    $card.Style = $Window.FindResource('CardStyle')
+    $card.Padding = New-Object System.Windows.Thickness 16, 13, 18, 14
+    $card.Cursor = 'Hand'
+
+    $grid = New-Object System.Windows.Controls.Grid
+    Add-GridColumns $grid 'Auto', '*', 'Auto'
+
+    # --- icono de la sección a la que pertenece ---
+    $tile = New-IconTile $Entry.Category.Icon $Entry.Category.Accent $Entry.Category.AccentSoft 34
+    $tile.Margin = New-Object System.Windows.Thickness 0, 0, 14, 0
+    Add-ToColumn $grid $tile 0
+
+    # --- nombre, descripción y el porqué ---
+    $texts = New-Object System.Windows.Controls.StackPanel
+    $texts.VerticalAlignment = 'Center'
+
+    $title = New-Object System.Windows.Controls.TextBlock
+    $title.Text = Get-SearchResultTitle $Entry
+    $title.FontFamily = $Window.FindResource('DisplayFont')
+    $title.FontSize = 13
+    $title.FontWeight = 'SemiBold'
+    Set-TextFg $title 'Text'
+    $texts.Children.Add($title) | Out-Null
+
+    $descripcion = $Entry.Category.Description
+    if ($Entry.Setting) { $descripcion = $Entry.Setting.Description }
+
+    $desc = New-Object System.Windows.Controls.TextBlock
+    $desc.Text = T $descripcion
+    $desc.FontSize = 11.5
+    $desc.TextTrimming = 'CharacterEllipsis'
+    $desc.Margin = New-Object System.Windows.Thickness 0, 3, 20, 0
+    Set-TextFg $desc 'TextMuted'
+    $texts.Children.Add($desc) | Out-Null
+
+    $texts.Children.Add((New-SearchMatchLine $Window $Entry)) | Out-Null
+
+    Add-ToColumn $grid $texts 1
+
+    # --- a la derecha, el estado si lo tiene, y el chevron ---
+    $right = New-Object System.Windows.Controls.StackPanel
+    $right.Orientation = 'Horizontal'
+    $right.VerticalAlignment = 'Center'
+
+    if ($Entry.Setting -and $Entry.Setting.Status) {
+        $right.Children.Add((New-StatusTag $Entry.Setting.Status)) | Out-Null
+    }
+
+    $chev = New-Icon 'ChevronRight' 12 'TextFaint'
+    $chev.Margin = New-Object System.Windows.Thickness 8, 0, 2, 0
+    $right.Children.Add($chev) | Out-Null
+
+    Add-ToColumn $grid $right 2
+
+    $card.Child = $grid
+
+    $card.Tag = New-SearchResultTag $Entry $null
+    $card.Add_MouseLeftButtonUp({ param($s, $e) Open-SearchResult $s })
+
+    $card
+}
+
+# ---- fin incluido: ui/Components/Cards/SearchResultCard.ps1 ----
 # ---- inicio incluido: ui/Components/Cards/SettingCard.ps1 ----
 # ============================================================
 # Componente: tarjeta de ajuste
@@ -3073,10 +3576,19 @@ function New-PreferenceControl {
 # ============================================================
 
 function New-SettingCard {
-    param($Window, $Setting, [switch]$Locked)
+    param($Window, $Setting, [switch]$Locked, [switch]$Highlight)
 
     $card = New-Object System.Windows.Controls.Border
     $card.Style = $Window.FindResource('StaticCardStyle')
+
+    # Se llega aquí desde un resultado de búsqueda: la sección puede
+    # tener veinte filas y hay que ver CUÁL es. El borde de acento se
+    # pone como valor local, que gana al disparador de IsMouseOver del
+    # estilo, así que la marca no se pierde al pasar el ratón.
+    if ($Highlight) {
+        $card.BorderThickness = New-Object System.Windows.Thickness 1.6
+        Set-BoxLine $card 'Accent'
+    }
 
     # El relleno va en la fila, no en la tarjeta: así la línea
     # separadora del pie llega de borde a borde.
@@ -4030,6 +4542,146 @@ function Add-PageActionLabel {
 }
 
 # ---- fin incluido: ui/Components/Layout/PageHeader.ps1 ----
+# ---- inicio incluido: ui/Components/Layout/SearchResults.ps1 ----
+# ============================================================
+# Componente: piezas de la búsqueda que no son el resultado
+#
+#   New-SearchGroupHeader   la cabecera de cada sección en la lista
+#                           de resultados: icono, nombre y cuántos
+#   New-SearchEmptyState    lo que sale cuando no hay coincidencias
+#   New-SearchCountLine     "12 resultados para «telemetría»"
+#
+# Agrupar por sección es lo que evita que una lista larga se lea
+# como un montón: primero se ve dónde está lo que buscas y luego
+# qué es. Los grupos los arma ui/Engine/Search.ps1; aquí solo se
+# dibujan.
+# ============================================================
+
+function New-SearchGroupHeader {
+    param($Window, $Category, [int]$Count)
+
+    $row = New-Object System.Windows.Controls.StackPanel
+    $row.Orientation = 'Horizontal'
+    $row.Margin = New-Object System.Windows.Thickness 2, 16, 0, 9
+
+    $tile = New-IconTile $Category.Icon $Category.Accent $Category.AccentSoft 24
+    $tile.Margin = New-Object System.Windows.Thickness 0, 0, 9, 0
+    $row.Children.Add($tile) | Out-Null
+
+    $name = New-Object System.Windows.Controls.TextBlock
+    $name.Text = T $Category.Name
+    $name.FontFamily = $Window.FindResource('DisplayFont')
+    $name.FontSize = 12.5
+    $name.FontWeight = 'SemiBold'
+    $name.VerticalAlignment = 'Center'
+    Set-TextFg $name 'Text'
+    $row.Children.Add($name) | Out-Null
+
+    $badge = New-Object System.Windows.Controls.TextBlock
+    $badge.Text = [string]$Count
+    $badge.FontSize = 11
+    $badge.VerticalAlignment = 'Center'
+    $badge.Margin = New-Object System.Windows.Thickness 8, 1, 0, 0
+    Set-TextFg $badge 'TextFaint'
+    $row.Children.Add($badge) | Out-Null
+
+    $row
+}
+
+# "12 resultados para «telemetría»". Va en el cuerpo y no en el
+# subtítulo de la cabecera a propósito: el número cambia con cada
+# tecla y la cabecera no se rehace en cada tecla.
+function New-SearchCountLine {
+    param($Window, [int]$Count, [string]$Query)
+
+    $texto = (T '{0} results for "{1}"') -f $Count, $Query
+    if ($Count -eq 1) { $texto = (T '1 result for "{0}"') -f $Query }
+
+    $line = New-Object System.Windows.Controls.TextBlock
+    $line.Text = $texto
+    $line.FontSize = 12
+    $line.Margin = New-Object System.Windows.Thickness 2, 0, 0, 2
+    Set-TextFg $line 'TextMuted'
+    $line
+}
+
+<#
+    Sin coincidencias. Ni error ni pantalla en blanco: se dice qué se
+    buscó y se sugiere qué probar, que en esta aplicación suele ser
+    un trozo de ruta del registro.
+#>
+function New-SearchEmptyState {
+    param($Window, [string]$Query, [switch]$Compact)
+
+    $box = New-Object System.Windows.Controls.StackPanel
+    $box.HorizontalAlignment = 'Center'
+    if ($Compact) { $box.Margin = New-Object System.Windows.Thickness 0, 14, 0, 16 }
+    else          { $box.Margin = New-Object System.Windows.Thickness 0, 60, 0, 0 }
+
+    $icon = New-Icon 'Search' 30 'TextFaint'
+    if ($Compact) { $icon.FontSize = 20 }
+    $icon.Margin = New-Object System.Windows.Thickness 0, 0, 0, 12
+    $box.Children.Add($icon) | Out-Null
+
+    $title = New-Object System.Windows.Controls.TextBlock
+    $title.Text = (T 'Nothing matches "{0}"') -f $Query
+    $title.FontFamily = $Window.FindResource('DisplayFont')
+    $title.FontSize = 14
+    $title.FontWeight = 'SemiBold'
+    $title.TextAlignment = 'Center'
+    $title.TextTrimming = 'CharacterEllipsis'
+    Set-TextFg $title 'Text'
+    $box.Children.Add($title) | Out-Null
+
+    $hint = New-Object System.Windows.Controls.TextBlock
+    $hint.Text = T 'Try another word, or part of a registry path'
+    $hint.FontSize = 11.5
+    $hint.TextAlignment = 'Center'
+    $hint.Margin = New-Object System.Windows.Thickness 0, 6, 0, 0
+    Set-TextFg $hint 'TextMuted'
+    $box.Children.Add($hint) | Out-Null
+
+    $box
+}
+
+<#
+    La página de resultados sin nada escrito -se llega borrando la
+    caja-. No es lo mismo que "no hay coincidencias": ahí no se ha
+    buscado nada todavía, así que decir «nada coincide con ""»
+    sería mentira.
+#>
+function New-SearchPromptState {
+    param($Window)
+
+    $box = New-Object System.Windows.Controls.StackPanel
+    $box.HorizontalAlignment = 'Center'
+    $box.Margin = New-Object System.Windows.Thickness 0, 60, 0, 0
+
+    $icon = New-Icon 'Search' 30 'TextFaint'
+    $icon.Margin = New-Object System.Windows.Thickness 0, 0, 0, 12
+    $box.Children.Add($icon) | Out-Null
+
+    $title = New-Object System.Windows.Controls.TextBlock
+    $title.Text = T 'Type to search'
+    $title.FontFamily = $Window.FindResource('DisplayFont')
+    $title.FontSize = 14
+    $title.FontWeight = 'SemiBold'
+    $title.TextAlignment = 'Center'
+    Set-TextFg $title 'Text'
+    $box.Children.Add($title) | Out-Null
+
+    $hint = New-Object System.Windows.Controls.TextBlock
+    $hint.Text = T 'Sections, settings, registry keys and their values'
+    $hint.FontSize = 11.5
+    $hint.TextAlignment = 'Center'
+    $hint.Margin = New-Object System.Windows.Thickness 0, 6, 0, 0
+    Set-TextFg $hint 'TextMuted'
+    $box.Children.Add($hint) | Out-Null
+
+    $box
+}
+
+# ---- fin incluido: ui/Components/Layout/SearchResults.ps1 ----
 # ---- inicio incluido: ui/Components/Layout/Toast.ps1 ----
 # ============================================================
 # Componente: aviso efímero
@@ -5104,6 +5756,279 @@ function Update-UiNow {
 }
 
 # ---- fin incluido: ui/Components/Shell/ProgressStrip.ps1 ----
+# ---- inicio incluido: ui/Components/Shell/SearchBar.ps1 ----
+# ============================================================
+# Componente: la caja de búsqueda con resultados en vivo
+#
+# La caja de la cabecera, más un desplegable que se abre debajo
+# según se escribe. Es el mismo patrón del menú "Vista": el Popup
+# TIENE que colgar del Grid que devuelve esta función, porque suelto
+# quedaría fuera del árbol lógico y los colores del tema no
+# resolverían.
+#
+# Por qué un desplegable y no navegar en cada tecla
+# -------------------------------------------------
+# La cabecera se rehace entera en cada pintada, así que navegar
+# mientras escribes destruiría la propia caja en la que estás
+# escribiendo: habría que recrearla, devolverle el texto, el foco y
+# el cursor... en cada pulsación. Con el desplegable no te mueves de
+# donde estás, Escape lo cierra y Enter te lleva a la página con
+# todos los resultados.
+#
+#   escribir  ->  desplegable (los primeros resultados, agrupados)
+#   Enter     ->  Show-SearchResultsView (todos, agrupados)
+#   Escape    ->  cerrar y seguir donde estabas
+#
+# Se espera un momento desde la última tecla antes de buscar
+# (antirrebote): escribir "telemetría" son diez pulsaciones y una
+# sola búsqueda, no diez.
+# ============================================================
+
+$SearchBarWidth = 300.0
+$SearchPopupWidth = 470.0
+$SearchPopupMax = 7          # filas antes de mandar a la página
+$SearchDebounceMs = 160
+
+$SearchDebounceTimer = $null
+$SearchPendingBox = $null
+$SearchFocusBox = $null
+
+function New-SearchBar {
+    param($Window, [string]$Text, [switch]$Focus)
+
+    $shell = New-Object System.Windows.Controls.Grid
+    $shell.VerticalAlignment = 'Center'
+
+    $search = New-SearchBox -Window $Window -Width $SearchBarWidth
+    $shell.Children.Add($search.Root) | Out-Null
+
+    $box = $search.Box
+
+    # El texto se pone ANTES de enganchar los manejadores: así volver
+    # a pintar la pantalla con una búsqueda en marcha no dispara otra
+    # búsqueda, ni abre el desplegable solo.
+    if ($Text) { $box.Text = $Text }
+
+    $popup = New-Object System.Windows.Controls.Primitives.Popup
+    $popup.PlacementTarget = $search.Root
+    $popup.Placement = 'Bottom'
+    $popup.VerticalOffset = 6
+    $popup.StaysOpen = $false
+    $popup.AllowsTransparency = $true
+    $popup.PopupAnimation = 'Fade'
+    $shell.Children.Add($popup) | Out-Null
+
+    # El desplegable viaja en el Tag de la caja (regla 4: sin
+    # closures). El marcador de "Search optimizations..." ya no lo
+    # usa, justamente para dejarlo libre aquí.
+    $box.Tag = $popup
+    $box.Add_TextChanged({ param($s, $e) Start-SearchDebounce $s })
+    $box.Add_PreviewKeyDown({ param($s, $e) Invoke-SearchKey $s $e })
+
+    if ($Focus) {
+        # El control todavía no está en el árbol: pedirle el foco
+        # ahora no haría nada.
+        $script:SearchFocusBox = $box
+        $Window.Dispatcher.BeginInvoke(
+            [System.Windows.Threading.DispatcherPriority]::Loaded,
+            [action]{ Set-SearchFocus }) | Out-Null
+    }
+
+    $shell
+}
+
+function Set-SearchFocus {
+    $box = $script:SearchFocusBox
+    $script:SearchFocusBox = $null
+    if (-not $box) { return }
+
+    $box.Focus() | Out-Null
+    $box.CaretIndex = $box.Text.Length
+}
+
+# ---- Teclado -------------------------------------------------
+
+function Invoke-SearchKey {
+    param($Box, $EventArgs)
+
+    switch ($EventArgs.Key) {
+        ([System.Windows.Input.Key]::Enter) {
+            $texto = [string]$Box.Text
+            if ([string]::IsNullOrWhiteSpace($texto)) { return }
+
+            Stop-SearchDebounce
+            if ($Box.Tag) { $Box.Tag.IsOpen = $false }
+            Set-SearchQuery $texto
+            Show-View -Name 'Show-SearchResultsView'
+            $EventArgs.Handled = $true
+        }
+        ([System.Windows.Input.Key]::Escape) {
+            # Handled solo si había algo que cerrar: si no, Escape
+            # tiene que seguir llegando al cajón del log.
+            if ($Box.Tag -and $Box.Tag.IsOpen) {
+                $Box.Tag.IsOpen = $false
+                $EventArgs.Handled = $true
+            }
+        }
+    }
+}
+
+# ---- Antirrebote ---------------------------------------------
+
+function Start-SearchDebounce {
+    param($Box)
+
+    $script:SearchPendingBox = $Box
+
+    if (-not $script:SearchDebounceTimer) {
+        $script:SearchDebounceTimer = New-Object System.Windows.Threading.DispatcherTimer
+        $script:SearchDebounceTimer.Interval = [TimeSpan]::FromMilliseconds($SearchDebounceMs)
+        # Un DispatcherTimer no tiene Tag donde dejar la caja, así que
+        # el manejador llama a la función y es ella la que mira el
+        # estado del módulo.
+        $script:SearchDebounceTimer.Add_Tick({ param($s, $e) Invoke-PendingSearch })
+    }
+
+    $script:SearchDebounceTimer.Stop()
+    $script:SearchDebounceTimer.Start()
+}
+
+function Stop-SearchDebounce {
+    if ($script:SearchDebounceTimer) { $script:SearchDebounceTimer.Stop() }
+}
+
+function Invoke-PendingSearch {
+    Stop-SearchDebounce
+
+    $box = $script:SearchPendingBox
+    if (-not $box) { return }
+
+    Update-SearchPopup $box
+}
+
+# ---- El desplegable ------------------------------------------
+
+<#
+    Rehace el contenido del desplegable con lo que haya escrito.
+
+    Sin texto se cierra: una lista de todo no ayuda a nadie. Y si la
+    pantalla actual ya es la de resultados, además se repinta, para
+    que la página y el desplegable no digan cosas distintas.
+#>
+function Update-SearchPopup {
+    param($Box)
+
+    $popup = $Box.Tag
+    if (-not $popup) { return }
+
+    $query = [string]$Box.Text
+    Set-SearchQuery $query
+
+    if ([string]::IsNullOrWhiteSpace($query)) {
+        $popup.IsOpen = $false
+        if ((Get-CurrentViewName) -eq 'Show-SearchResultsView') { Update-SearchResults (Get-AppWindow) }
+        return
+    }
+
+    $window = Get-AppWindow
+    $results = Get-SearchResults $query
+
+    $popup.Child = New-SearchPopupCard -Window $window -Popup $popup -Results $results -Query $query
+    $popup.HorizontalOffset = $popup.PlacementTarget.ActualWidth - $SearchPopupWidth
+    $popup.IsOpen = $true
+
+    if ((Get-CurrentViewName) -eq 'Show-SearchResultsView') { Update-SearchResults $window }
+}
+
+# La tarjeta flotante: los primeros resultados agrupados por sección
+# y, si hay más, una fila que lleva a la página completa.
+function New-SearchPopupCard {
+    param($Window, $Popup, $Results, [string]$Query)
+
+    # AllowsTransparency recorta lo que se salga del Popup, así que
+    # la sombra necesita este margen para caber.
+    $room = New-Object System.Windows.Controls.Grid
+    $room.Margin = New-Object System.Windows.Thickness 12, 0, 12, 16
+
+    $card = New-Object System.Windows.Controls.Border
+    $card.Width = $SearchPopupWidth
+    $card.CornerRadius = New-Object System.Windows.CornerRadius 12
+    $card.BorderThickness = New-Object System.Windows.Thickness 1
+    $card.Padding = New-Object System.Windows.Thickness 7, 8, 7, 8
+    Set-BoxBg   $card 'Surface'
+    Set-BoxLine $card 'Stroke'
+
+    $shadow = New-Object System.Windows.Media.Effects.DropShadowEffect
+    $shadow.Color = [System.Windows.Media.Colors]::Black
+    $shadow.Direction = 270; $shadow.ShadowDepth = 3
+    $shadow.BlurRadius = 16; $shadow.Opacity = 0.18
+    $card.Effect = $shadow
+
+    $rows = New-Object System.Windows.Controls.StackPanel
+
+    $todos = @($Results)
+    if ($todos.Count -eq 0) {
+        $rows.Children.Add((New-SearchEmptyState -Window $Window -Query $Query -Compact)) | Out-Null
+        $card.Child = $rows
+        $room.Children.Add($card) | Out-Null
+        return $room
+    }
+
+    $mostrados = 0
+    foreach ($group in (Group-SearchResults $todos)) {
+        if ($mostrados -ge $SearchPopupMax) { break }
+
+        $cabecera = New-SearchGroupHeader $Window $group.Category $group.Entries.Count
+        $cabecera.Margin = New-Object System.Windows.Thickness 8, 8, 0, 4
+        $rows.Children.Add($cabecera) | Out-Null
+
+        foreach ($entry in $group.Entries.ToArray()) {
+            if ($mostrados -ge $SearchPopupMax) { break }
+            $rows.Children.Add((New-SearchResultRow $Window $entry $Popup)) | Out-Null
+            $mostrados++
+        }
+    }
+
+    if ($todos.Count -gt $mostrados) {
+        $rows.Children.Add((New-SearchSeeAllRow $Window $Popup $todos.Count)) | Out-Null
+    }
+
+    $card.Child = $rows
+    $room.Children.Add($card) | Out-Null
+    $room
+}
+
+# "Ver los 12 resultados" — la fila del final, que lleva a la página.
+function New-SearchSeeAllRow {
+    param($Window, $Popup, [int]$Total)
+
+    $row = New-Object System.Windows.Controls.Border
+    $row.CornerRadius = New-Object System.Windows.CornerRadius 9
+    $row.Padding = New-Object System.Windows.Thickness 10, 8, 10, 9
+    $row.Margin = New-Object System.Windows.Thickness 0, 4, 0, 0
+    $row.Cursor = 'Hand'
+    $row.Background = [System.Windows.Media.Brushes]::Transparent
+
+    $text = New-Object System.Windows.Controls.TextBlock
+    $text.Text = (T 'See all {0} results') -f $Total
+    $text.FontSize = 11.5
+    $text.FontWeight = 'SemiBold'
+    Set-TextFg $text 'Accent'
+    $row.Child = $text
+
+    $row.Tag = $Popup
+    $row.Add_MouseEnter({ param($s, $e) Set-BoxBg $s 'SurfaceHover' })
+    $row.Add_MouseLeave({ param($s, $e) $s.Background = [System.Windows.Media.Brushes]::Transparent })
+    $row.Add_MouseLeftButtonUp({
+        param($s, $e)
+        $s.Tag.IsOpen = $false
+        Show-View -Name 'Show-SearchResultsView'
+    })
+
+    $row
+}
+
+# ---- fin incluido: ui/Components/Shell/SearchBar.ps1 ----
 # ---- inicio incluido: ui/Components/Shell/Sidebar.ps1 ----
 # ============================================================
 # Componente: barra de navegación lateral
@@ -5207,14 +6132,45 @@ function Set-NavSelection {
     $item = Get-NavigationItem $Button.Uid
     if (-not $item -or -not $item.View) { return }
 
-    $window = [System.Windows.Window]::GetWindow($Button)
-    foreach ($nav in Get-NavigationItems) {
-        $window.FindName((Get-NavElementName $nav.Id)).Tag = $null
-    }
-    $Button.Tag = 'sel'
-    Update-NavColors $window
-
+    # Marcar el botón NO se hace aquí: lo hace Sync-NavSelection al
+    # terminar de navegar. Así hay un solo sitio que decida qué está
+    # marcado, y da igual si se ha llegado pulsando o de otra forma.
     Show-View -Name $item.View
+}
+
+<#
+    Deja marcada la entrada del menú que enseña la pantalla actual.
+
+    Hace falta porque a una vista se puede llegar SIN pulsar su
+    botón: a la de búsqueda se entra también con Enter desde la caja
+    de la cabecera. Sin esto el menú marcaría "Optimizar" mientras la
+    pantalla enseña la búsqueda — exactamente lo que la regla 13 pide
+    evitar.
+
+    Si la pantalla actual no es la de ninguna entrada -el detalle de
+    una sección, por ejemplo- NO se toca nada: se sigue marcando
+    aquella desde la que se entró, que es lo que uno espera al bajar
+    un nivel.
+#>
+function Sync-NavSelection {
+    param($Window, [string]$ViewName)
+
+    if (-not $Window -or -not $ViewName) { return }
+
+    $item = @(Get-NavigationItems | Where-Object { $_.View -eq $ViewName })[0]
+    if (-not $item) { return }
+
+    $button = $Window.FindName((Get-NavElementName $item.Id))
+    # Sin menú construido no hay nada que marcar: pasa en las pruebas,
+    # que pintan vistas sobre una ventana pelada.
+    if (-not $button) { return }
+
+    foreach ($nav in Get-NavigationItems) {
+        $otro = $Window.FindName((Get-NavElementName $nav.Id))
+        if ($otro) { $otro.Tag = $null }
+    }
+    $button.Tag = 'sel'
+    Update-NavColors $Window
 }
 
 # El estilo del XAML pinta el fondo del botón seleccionado; el
@@ -5519,8 +6475,13 @@ function New-ViewMenuRow {
 # la lectura en el log, pero no sabe de relojes ni de cabeceras.
 $CategoryReadAt = @{}
 
+# La tarjeta que hay que traer a la vista al entrar desde un
+# resultado de búsqueda. Vive fuera de la función porque quien la
+# usa corre después, ya en el Dispatcher.
+$CategoryHighlightCard = $null
+
 function Show-CategoryDetailView {
-    param($Window, $Category)
+    param($Window, $Category, $Highlight)
 
     $locked = [bool]$Category.Locked
     $keys = Get-CategoryRegistryKeyCount $Category
@@ -5546,6 +6507,13 @@ function Show-CategoryDetailView {
                 Set-ProgressStrip (Get-AppWindow) $Done $Total
             } | Out-Null
             $script:CategoryReadAt[[string]$Category.Id] = Get-Date
+
+            # Acaban de aparecer Current y Status donde antes no había
+            # nada, y el buscador indexa los dos. El índice guardado se
+            # ha quedado viejo: se tira y se rehará al siguiente
+            # tecleo. Se avisa desde aquí y no desde core/, que no sabe
+            # -ni debe saber- que existe un buscador.
+            Reset-SearchIndex
         }
         finally {
             Hide-ProgressStrip $Window
@@ -5581,13 +6549,51 @@ function Show-CategoryDetailView {
 
     if ($locked) { $list.Children.Add((New-LockedBanner)) | Out-Null }
 
+    # $Highlight llega desde un resultado de búsqueda: es el ajuste
+    # que hay que enseñar. Se compara por nombre y no por referencia
+    # porque el ajuste puede venir del índice del buscador, que no
+    # tiene por qué ser el mismo objeto.
+    $buscado = ''
+    if ($Highlight) { $buscado = [string]$Highlight.Name }
+
+    $script:CategoryHighlightCard = $null
+
     foreach ($setting in $Category.Items) {
-        $list.Children.Add((New-SettingCard -Window $Window -Setting $setting -Locked:$locked)) | Out-Null
+        $marcar = ($buscado -ne '' -and [string]$setting.Name -eq $buscado)
+        $card = New-SettingCard -Window $Window -Setting $setting -Locked:$locked -Highlight:$marcar
+        if ($marcar) { $script:CategoryHighlightCard = $card }
+        $list.Children.Add($card) | Out-Null
     }
 
     # ---- 3. Pintar con transición de entrada ----
     $Window.FindName('MainContent').Content = $list
     Start-EnterTransition $list
+
+    Show-HighlightedSetting $Window
+}
+
+<#
+    Lleva a la vista el ajuste marcado, si lo hay.
+
+    Se aplaza por dos motivos, y hacen falta los dos:
+
+      - El contenido todavía no está medido; con alto 0 no hay
+        adónde desplazarse.
+      - Show-View manda el scroll arriba DESPUÉS de que esta vista
+        termine, así que hacerlo aquí mismo no serviría de nada.
+#>
+function Show-HighlightedSetting {
+    param($Window)
+
+    if (-not $script:CategoryHighlightCard) { return }
+
+    $Window.Dispatcher.BeginInvoke(
+        [System.Windows.Threading.DispatcherPriority]::Loaded,
+        [action]{
+            $card = $script:CategoryHighlightCard
+            $script:CategoryHighlightCard = $null
+            if ($card) { $card.BringIntoView() }
+        }) | Out-Null
 }
 
 <#
@@ -5671,8 +6677,9 @@ function Show-OptimizationsListView {
         -Title (T 'Optimizations') `
         -Subtitle (T 'Optimize your Windows system performance, privacy and power usage')
 
-    $search = New-SearchBox $Window
-    Add-PageAction $Window $search.Root
+    # La barra de búsqueda, no la caja pelada: trae el desplegable de
+    # resultados y el Enter que lleva a la página completa.
+    Add-PageAction $Window (New-SearchBar -Window $Window)
     Add-PageAction $Window (New-ChipButton $Window 'Quick Actions' 'Bolt' -Chevron)
     Add-PageAction $Window (New-ViewMenu $Window)
 
@@ -5688,6 +6695,108 @@ function Show-OptimizationsListView {
 }
 
 # ---- fin incluido: ui/Views/OptimizationsListView.ps1 ----
+# ---- inicio incluido: ui/Views/SearchResultsView.ps1 ----
+# ============================================================
+# Vista: resultados de la búsqueda
+#
+# Se llega desde la caja de la cabecera: Enter, o la fila "ver
+# todos" del desplegable. Enseña TODO lo que encaja, agrupado por
+# sección, mientras que el desplegable solo enseña las primeras
+# filas.
+#
+# La cabecera y el cuerpo se pintan por caminos distintos, y es lo
+# único que tiene de particular esta pantalla:
+#
+#   Show-SearchResultsView   entra: rehace cabecera Y cuerpo
+#   Update-SearchResults     escribes: rehace SOLO el cuerpo
+#
+# El motivo es el foco. Rehacer la cabecera destruye la caja de
+# texto en la que se está escribiendo, y con ella el cursor y el
+# foco; a cada tecla habría que volver a crearla, devolverle el
+# texto y colocar el cursor al final. Dejándola en pie no hay nada
+# que restaurar. Por eso el recuento -"12 resultados"- va en el
+# cuerpo y no en el subtítulo: el número cambia con cada tecla.
+#
+# Quien llama a Update-SearchResults es el antirrebote de
+# ui/Components/Shell/SearchBar.ps1, y solo cuando esta es la
+# pantalla actual: así la página y el desplegable nunca dicen
+# cosas distintas.
+# ============================================================
+
+function Show-SearchResultsView {
+    param($Window)
+
+    $query = Get-SearchQuery
+
+    # ---- 1. Cabecera ----
+    Clear-PageHeader $Window
+    Set-PageTitle -Window $Window `
+        -Title (T 'Search') `
+        -Subtitle (T 'Everything in the app, by name, description or registry key')
+
+    # -Focus para poder seguir escribiendo nada más llegar: se entra
+    # aquí desde el teclado, y sería raro tener que volver a pulsar
+    # en la caja para corregir una letra.
+    Add-PageAction $Window (New-SearchBar -Window $Window -Text $query -Focus)
+    Add-PageAction $Window (New-ViewMenu $Window)
+
+    # ---- 2. Cuerpo ----
+    $body = New-SearchResultsBody -Window $Window -Query $query
+    $Window.FindName('MainContent').Content = $body
+
+    # ---- 3. Pintar con transición de entrada ----
+    Start-EnterTransition $body
+}
+
+<#
+    Vuelve a pintar solo la lista, sin tocar la cabecera.
+
+    Sin transición de entrada a propósito: escribiendo, un
+    desvanecido por tecla parpadea.
+#>
+function Update-SearchResults {
+    param($Window)
+
+    if (-not $Window) { return }
+    $area = $Window.FindName('MainContent')
+    if (-not $area) { return }
+
+    $area.Content = New-SearchResultsBody -Window $Window -Query (Get-SearchQuery)
+}
+
+# El cuerpo: el recuento, y luego un grupo por sección con sus
+# tarjetas. Toda la lógica -buscar y agrupar- vive en
+# ui/Engine/Search.ps1; aquí solo se recorre lo que devuelve.
+function New-SearchResultsBody {
+    param($Window, [string]$Query)
+
+    $list = New-Object System.Windows.Controls.StackPanel
+
+    if ([string]::IsNullOrWhiteSpace($Query)) {
+        $list.Children.Add((New-SearchPromptState -Window $Window)) | Out-Null
+        return $list
+    }
+
+    $results = @(Get-SearchResults $Query)
+
+    if ($results.Count -eq 0) {
+        $list.Children.Add((New-SearchEmptyState -Window $Window -Query $Query)) | Out-Null
+        return $list
+    }
+
+    $list.Children.Add((New-SearchCountLine -Window $Window -Count $results.Count -Query $Query)) | Out-Null
+
+    foreach ($group in (Group-SearchResults $results)) {
+        $list.Children.Add((New-SearchGroupHeader $Window $group.Category $group.Entries.Count)) | Out-Null
+        foreach ($entry in $group.Entries.ToArray()) {
+            $list.Children.Add((New-SearchResultCard $Window $entry)) | Out-Null
+        }
+    }
+
+    $list
+}
+
+# ---- fin incluido: ui/Views/SearchResultsView.ps1 ----
 # ---- inicio incluido: ui/Views/SettingsView.ps1 ----
 # ============================================================
 # Vista: Settings

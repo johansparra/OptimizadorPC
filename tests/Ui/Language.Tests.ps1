@@ -85,6 +85,20 @@ Describe 'ui/Lang - no falta ninguna traducción' {
             Show-View -Name 'Show-CategoryDetailView' -Arguments @{ Category = $cat }
         }
 
+        # La búsqueda tiene tres caras y cada una con su texto: con
+        # resultados, sin ninguno y sin nada escrito. Ninguna sale
+        # sola al pintar, hay que pedir las tres.
+        Set-SearchQuery 'e'
+        Show-View -Name 'Show-SearchResultsView'
+        Set-SearchQuery 'zzqqxx-esto-no-existe'
+        Update-SearchResults $ventana
+        Set-SearchQuery ''
+        Update-SearchResults $ventana
+
+        # Y la fila del desplegable que lleva a la página completa,
+        # que solo aparece cuando no caben todos.
+        New-SearchSeeAllRow $ventana $null 12 | Out-Null
+
         # El aviso de refrescado no sale al pintar la pantalla:
         # solo aparece tras pulsar, así que hay que pedirlo aquí o
         # su texto no pasaría nunca por el diccionario.

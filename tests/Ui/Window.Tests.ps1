@@ -214,6 +214,47 @@ Describe 'ui/Components/Shell/Sidebar.ps1' {
         }
     }
 
+    It 'la entrada Buscar abre la pantalla de búsqueda que ya existía' {
+        # No una copia: la MISMA función de vista que usa la caja de
+        # la cabecera. Si algún día se duplicara, esto lo caza.
+        $ventana = New-AppWindow
+        Build-Sidebar -Window $ventana
+        Set-SearchQuery ''
+
+        Push-NavButton $ventana 'search'
+
+        Assert-Equal 'Show-SearchResultsView' (Get-CurrentViewName)
+        Assert-Equal 'sel' ([string]$ventana.FindName('NavSearch').Tag)
+        Assert-NotNull $ventana.FindName('MainContent').Content
+    }
+
+    It 'llegar a una pantalla sin pulsar su botón también lo marca' {
+        # A la búsqueda se entra con Enter desde la caja de la
+        # cabecera. Sin sincronizar, el menú marcaría una cosa y la
+        # pantalla enseñaría otra.
+        $ventana = New-AppWindow
+        Build-Sidebar -Window $ventana
+        Push-NavButton $ventana 'optimize'
+
+        Set-SearchQuery ''
+        Show-View -Name 'Show-SearchResultsView'
+
+        Assert-Equal 'sel' ([string]$ventana.FindName('NavSearch').Tag) 'el menú no ha seguido a la pantalla'
+        Assert-Null $ventana.FindName('NavOptimize').Tag 'han quedado dos entradas marcadas'
+    }
+
+    It 'bajar a una pantalla que no está en el menú no desmarca nada' {
+        # El detalle de una sección no tiene botón propio: se sigue
+        # marcando aquella desde la que se entró.
+        $ventana = New-AppWindow
+        Build-Sidebar -Window $ventana
+        Push-NavButton $ventana 'optimize'
+
+        Show-View -Name 'Show-CategoryDetailView' -Arguments @{ Category = (Get-CategoryById 'regedit') }
+
+        Assert-Equal 'sel' ([string]$ventana.FindName('NavOptimize').Tag) 'entrar en una sección ha desmarcado Optimizar'
+    }
+
     It 'reconstruirlo dos veces no lanza' {
         # Pasa de verdad al cambiar de idioma: Update-UiLanguage
         # vuelve a llamar a Build-Sidebar sobre la misma ventana.

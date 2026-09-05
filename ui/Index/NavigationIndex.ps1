@@ -38,12 +38,17 @@
 #   Icon       Nombre de glifo del catálogo de ui/Design/Theme.ps1.
 # ============================================================
 
-# Hoy solo hay pantalla para dos entradas -Optimize y Settings-. Las
-# otras cuatro siguen aquí a propósito: mantienen la estructura del
-# menú a la vista, y activarlas será rellenar su View.
+# Hoy hay pantalla para tres entradas -Search, Optimize y Settings-.
+# Las otras cuatro siguen aquí a propósito: mantienen la estructura
+# del menú a la vista, y activarlas será rellenar su View.
+#
+# 'search' va la primera porque no es una sección más: busca EN todas
+# las demás. Su vista es la misma a la que lleva la caja de la
+# cabecera, no una copia.
 $NavigationIndex = @(
 
     #  Id             Icono        Etiqueta       Grupo      Visible  Bloqueado   Vista
+    @{ Id = 'search';    Icon = 'Search';  Label = 'Search';    Group = 'Top';    Visible = $true; Locked = $false; View = 'Show-SearchResultsView' }
     @{ Id = 'software';  Icon = 'Apps';    Label = 'Software';  Group = 'Top';    Visible = $true; Locked = $false; View = $null }
     @{ Id = 'optimize';  Icon = 'Gauge';   Label = 'Optimize';  Group = 'Top';    Visible = $true; Locked = $false; View = 'Show-OptimizationsListView'; Default = $true }
     @{ Id = 'customize'; Icon = 'Palette'; Label = 'Customize'; Group = 'Top';    Visible = $true; Locked = $false; View = $null }
