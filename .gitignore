@@ -1,0 +1,41 @@
+# ============================================================
+# Qué NO entra en el repositorio.
+#
+# Regla de fondo: se versiona lo que se escribe a mano y el .exe
+# que se entrega. Todo lo que una herramienta pueda volver a
+# generar, no.
+# ============================================================
+
+# ---- Grafo de conocimiento (graphify) ----
+# 4,4 MB en muchos archivos pequeños, la caché incluida. Se rehace
+# entero con `/graphify .`, así que no hay nada que conservar aquí.
+graphify-out/
+
+# ---- Herramientas descargadas dentro del proyecto ----
+# snyk.exe son 181 MB. Un `git add .` sin esta línea lo deja en el
+# historial PARA SIEMPRE: quitarlo después exige reescribir la
+# historia. No es código del proyecto, es una herramienta suelta.
+snyk.exe
+
+# ---- Informes de análisis ----
+# Salida del analizador, se regenera al volver a pasarlo.
+PSScriptAnalyzer-results.csv
+
+# ---- Ruido de Windows y OneDrive ----
+Thumbs.db
+desktop.ini
+*.tmp
+
+# ============================================================
+# Dos cosas que a propósito NO están aquí:
+#
+#   OptimizadorPC.exe   SÍ se versiona. Es el entregable portable
+#                       y vive en la raíz queriendo. No lo añadas.
+#
+#   build/_combined.ps1 Es generado (lo reescribe cada build.ps1),
+#                       pero YA está versionado. Ponerlo aquí no
+#                       haría nada: .gitignore no afecta a lo que
+#                       git ya sigue. Sacarlo exigiría un
+#                       `git rm --cached`, y esa es una decisión
+#                       aparte.
+# ============================================================
