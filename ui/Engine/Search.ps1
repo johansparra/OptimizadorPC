@@ -244,6 +244,12 @@ function Group-SearchResults {
     $byId = @{}
 
     foreach ($entry in @($Results)) {
+        # Una entrada vacía NO forma grupo. Sin esto, un $null que se
+        # cuele -y se cuela: mira Update-SearchPopup- crea un grupo sin
+        # categoría, y la cabecera acaba pidiendo un icono con el
+        # nombre vacío y tumbando la ventana entera.
+        if (-not $entry -or -not $entry.Category) { continue }
+
         $id = [string]$entry.Category.Id
         if (-not $byId.ContainsKey($id)) {
             $group = [PSCustomObject]@{

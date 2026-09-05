@@ -511,4 +511,72 @@ Describe 'ui/Engine/Router.ps1' {
 
         Set-AppLanguage 'en'
     }
+
+    It 'no se navega mientras se está navegando' {
+        # Leer el registro cede el hilo (Update-UiNow) y en esa pausa
+        # WPF entrega los clics pendientes. Un clic en el desplegable
+        # del buscador -que es una ventana aparte y no se entera del
+        # blindaje de la vista- entraba aquí otra vez con la pantalla
+        # anterior a medio construir.
+        $ventana = New-AppWindow -Language 'en'
+        Show-View -Name 'Show-OptimizationsListView'
+
+        # Una vista de mentira que intenta navegar mientras la pintan.
+        function Show-ViewReentrante {
+            param($Window)
+            $script:ReentradaAceptada = $true
+            Show-View -Name 'Show-SettingsView'
+        }
+
+        $script:ReentradaAceptada = $false
+        Show-View -Name 'Show-ViewReentrante'
+
+        Assert-True $script:ReentradaAceptada 'la vista de prueba no llegó a ejecutarse'
+        Assert-Equal 'Show-ViewReentrante' (Get-CurrentViewName) 'la navegación reentrante debería descartarse'
+        Assert-False (Get-ViewBusy) 'la marca tiene que soltarse al terminar'
+
+        Show-View -Name 'Show-OptimizationsListView'
+    }
+
+    It 'la marca se suelta aunque la vista lance' {
+        # Sin el finally, un fallo dentro de una vista dejaría la
+        # navegación congelada para el resto de la sesión.
+        function Show-ViewQueLanza { param($Window) throw 'fallo de prueba' }
+
+        try { Show-View -Name 'Show-ViewQueLanza' } catch { }
+
+        Assert-False (Get-ViewBusy) 'la marca se quedó puesta'
+        Assert-NoThrow { Show-View -Name 'Show-OptimizationsListView' } 'ya no se puede navegar'
+    }
+}
+
+Describe 'ui/Engine/UiGuard.ps1 - la red de seguridad' {
+
+    It 'se engancha una sola vez por ventana' {
+        $ventana = New-AppWindow
+        Assert-True  (Register-UiErrorGuard -Window $ventana) 'la primera vez debería enganchar'
+        Assert-False (Register-UiErrorGuard -Window $ventana) 'la segunda no, o el fallo se apuntaría dos veces'
+    }
+
+    It 'sin ventana no lanza' {
+        Assert-False (Register-UiErrorGuard -Window $null)
+    }
+
+    It 'un fallo tragado queda apuntado en el registro de actividad' {
+        Clear-AppLog
+        Reset-UiGuardCount
+
+        Write-UiGuardLog (New-Object System.InvalidOperationException 'Glifo desconocido: ')
+
+        Assert-Equal 1 (Get-UiGuardCount)
+        $ultima = @(Get-AppLog)[-1]
+        Assert-Equal 'error' ([string]$ultima.Level)
+        Assert-Match 'Glifo desconocido' ([string]$ultima.Message)
+    }
+
+    It 'una excepción sin mensaje ni traza tampoco lo rompe' {
+        Clear-AppLog
+        Assert-NoThrow { Write-UiGuardLog $null }
+        Assert-Equal 1 (Get-AppLogCount) 'debería apuntar algo igualmente'
+    }
 }

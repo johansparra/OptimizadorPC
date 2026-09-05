@@ -172,10 +172,22 @@ function Update-SearchPopup {
     }
 
     $window = Get-AppWindow
-    $results = Get-SearchResults $query
+
+    # ENVUELTO EN @(), como en la página de resultados. Sin paréntesis
+    # PowerShell desenrolla el array vacío de "sin coincidencias" y lo
+    # que llega al desplegable es un $null suelto, no una lista de
+    # cero: la puerta de atrás no se abre, se agrupa una entrada
+    # fantasma y la cabecera pide un icono sin nombre. Escribir algo
+    # que no encaja tumbaba la ventana.
+    $results = @(Get-SearchResults $query)
 
     $popup.Child = New-SearchPopupCard -Window $window -Popup $popup -Results $results -Query $query
-    $popup.HorizontalOffset = $popup.PlacementTarget.ActualWidth - $SearchPopupWidth
+
+    # El sitio del desplegable depende de la caja, que puede no estar
+    # medida todavía (misma trampa que los indicadores, regla 25).
+    if ($popup.PlacementTarget) {
+        $popup.HorizontalOffset = $popup.PlacementTarget.ActualWidth - $SearchPopupWidth
+    }
     $popup.IsOpen = $true
 
     if ((Get-CurrentViewName) -eq 'Show-SearchResultsView') { Update-SearchResults $window }
@@ -207,7 +219,10 @@ function New-SearchPopupCard {
 
     $rows = New-Object System.Windows.Controls.StackPanel
 
-    $todos = @($Results)
+    # Se filtran los nulos ANTES de contar: `@($null)` es una lista de
+    # UNO, no de cero, así que sin esto "sin resultados" se confunde
+    # con "un resultado vacío" y se pinta una fila imposible.
+    $todos = @($Results | Where-Object { $null -ne $_ })
     if ($todos.Count -eq 0) {
         $rows.Children.Add((New-SearchEmptyState -Window $Window -Query $Query -Compact)) | Out-Null
         $card.Child = $rows

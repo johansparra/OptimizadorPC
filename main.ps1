@@ -88,6 +88,14 @@ $Window = [System.Windows.Markup.XamlReader]::Load($reader)
 
 Set-AppWindow $Window
 
+# ---- Red de seguridad ----
+# Antes que nada: un fallo dentro de un manejador sube al Dispatcher
+# y de ahí al ShowDialog() del final, y lo que se ve entonces no es
+# un error sino una ventana que ya no responde. Con esto queda
+# apuntado en el registro de actividad y el programa sigue en pie.
+# Ver ui/Engine/UiGuard.ps1.
+Register-UiErrorGuard -Window $Window | Out-Null
+
 # ---- Preferencias guardadas ----
 # Se leen de %APPDATA%\OptimizadorPC\settings.json y se aplican
 # antes de dibujar nada, para que la primera pintura ya salga con

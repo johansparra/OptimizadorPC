@@ -34,6 +34,10 @@ function Get-AppWindow { $script:AppWindow }
         Show-View 'Show-SettingsView'
         Show-View 'Show-CategoryDetailView' @{ Category = $cat }
 #>
+$ViewBusy = $false
+
+function Get-ViewBusy { $script:ViewBusy }
+
 function Show-View {
     param(
         [Parameter(Mandatory)][string]$Name,
@@ -44,11 +48,32 @@ function Show-View {
         throw "Router: la vista '$Name' no existe. Revisa el campo View de ui/Index/NavigationIndex.ps1."
     }
 
-    $script:CurrentView = @{ Name = $Name; Arguments = $Arguments }
+    # NO SE NAVEGA MIENTRAS SE ESTÁ NAVEGANDO. Pintar una sección
+    # lee el registro, y esa lectura cede el hilo para que la barra
+    # de progreso avance (Update-UiNow, un DoEvents): en esa pausa
+    # WPF entrega los clics que estuvieran esperando. La vista se
+    # blinda poniendo su contenido sordo al ratón, pero un Popup
+    # -el desplegable del buscador- es una VENTANA APARTE y ese
+    # blindaje no le llega: pulsando ahí se entraba aquí otra vez
+    # con la pantalla anterior a medio construir.
+    #
+    # El clic tardío se descarta, que es lo que esperaría cualquiera:
+    # pulsó cuando la aplicación ya iba a otro sitio.
+    if ($script:ViewBusy) { return }
+    $script:ViewBusy = $true
 
-    $all = @{ Window = $AppWindow }
-    foreach ($key in $Arguments.Keys) { $all[$key] = $Arguments[$key] }
-    & $Name @all
+    try {
+        $script:CurrentView = @{ Name = $Name; Arguments = $Arguments }
+
+        $all = @{ Window = $AppWindow }
+        foreach ($key in $Arguments.Keys) { $all[$key] = $Arguments[$key] }
+        & $Name @all
+    }
+    finally {
+        # En el finally y no al terminar: si la vista lanza, dejar la
+        # marca puesta congelaría la navegación para siempre.
+        $script:ViewBusy = $false
+    }
 
     # El menú tiene que marcar lo que se está enseñando, se haya
     # llegado pulsándolo o no: a la búsqueda se entra también con

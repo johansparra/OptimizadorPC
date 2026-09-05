@@ -158,9 +158,14 @@ function New-Pill {
     $sp = New-Object System.Windows.Controls.StackPanel
     $sp.Orientation = 'Horizontal'
 
-    $ic = New-Icon $Icon 10.5 $Fg
-    $ic.Margin = New-Object System.Windows.Thickness 0, 0, 5, 0
-    $sp.Children.Add($ic) | Out-Null
+    # Sin icono se pinta solo el texto, igual que New-ChipButton. Pedir
+    # un glifo con el nombre vacío lanza, y lanzar dentro de un
+    # manejador se lleva por delante la ventana entera.
+    if ($Icon) {
+        $ic = New-Icon $Icon 10.5 $Fg
+        $ic.Margin = New-Object System.Windows.Thickness 0, 0, 5, 0
+        $sp.Children.Add($ic) | Out-Null
+    }
 
     $t = New-Object System.Windows.Controls.TextBlock
     $t.Text = $Text; $t.FontSize = 11; $t.FontWeight = 'SemiBold'

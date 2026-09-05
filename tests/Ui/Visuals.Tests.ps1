@@ -305,6 +305,30 @@ Describe 'ui/Design/UiKit.ps1 - números que cuentan' {
     }
 }
 
+Describe 'ui/Design/UiKit.ps1 - iconos que pueden faltar' {
+
+    It 'una píldora sin icono se pinta con el texto solo' {
+        # New-ChipButton ya lo hacía; New-Pill era la única que pedía
+        # el glifo a pelo, y un nombre vacío lanza.
+        Assert-NoThrow { New-Pill '' 'Texto' 'Text' 'SurfaceSunken' } 'sin icono no puede lanzar'
+
+        $pill = New-Pill '' '7/9' 'Text' 'SurfaceSunken'
+        Assert-Match '7/9' (Get-VisualText $pill)
+    }
+
+    It 'con icono lo sigue pintando' {
+        $pill = New-Pill 'Star' '3/4' 'Text' 'SurfaceSunken'
+        $iconos = Find-Visuals $pill { param($el) $el -is [System.Windows.Controls.TextBlock] -and $el.Text -and [int][char]$el.Text[0] -gt 0xE000 }
+        Assert-True ($iconos.Count -ge 1) 'debería llevar su glifo'
+    }
+
+    It 'un glifo que no existe sigue avisando' {
+        # La red de seguridad NO es excusa para tragarse un nombre
+        # mal escrito: eso tiene que doler en desarrollo.
+        Assert-Throws { Glyph 'NoExisteEsteGlifo' }
+    }
+}
+
 Describe 'ui/Components/Shell/WindowMaterial.ps1' {
 
     It 'de fábrica la ventana es opaca' {

@@ -196,6 +196,18 @@ Describe 'ui/Engine/Search.ps1 - agrupar' {
         $primeroDelIndice = [string]$entradas[0].Category.Id
         Assert-Equal $primeroDelIndice ([string]$grupos[0].Category.Id)
     }
+
+    It 'una entrada vacía no forma grupo' {
+        # Un grupo sin categoría acaba pidiendo un icono sin nombre y
+        # tumbando la ventana: aquí es donde se corta.
+        Assert-Equal 0 (@(Group-SearchResults @($null)).Count) 'un $null no es un grupo'
+        Assert-Equal 0 (@(Group-SearchResults @([PSCustomObject]@{ Category = $null })).Count) 'sin categoría, tampoco'
+
+        # Y lo bueno sigue pasando aunque venga mezclado con basura.
+        $entradas = @(Get-SearchResults 'e')
+        $mezcla = @($null) + $entradas
+        Assert-Equal (@(Group-SearchResults $entradas).Count) (@(Group-SearchResults $mezcla).Count)
+    }
 }
 
 
@@ -465,5 +477,36 @@ Describe 'ui/Components/Shell/SearchBar.ps1 - el desplegable' {
     It 'sin coincidencias lo dice ahí mismo' {
         $tarjeta = New-SearchPopupCard -Window $SearchWindow -Popup $null -Results @() -Query 'zzqqxx'
         Assert-Match 'zzqqxx' (Get-VisualText $tarjeta)
+    }
+
+    It 'sin coincidencias y SIN envolver en @() tampoco lanza' {
+        # El fallo de verdad: la prueba de arriba pasa @() a mano, pero
+        # Update-SearchPopup pasaba lo que devuelve Get-SearchResults
+        # TAL CUAL. Sin coincidencias eso no es una lista de cero, es
+        # un $null suelto, y @($null) tiene UN elemento: se agrupaba
+        # una entrada fantasma, la cabecera pedía un icono con el
+        # nombre vacío y Glyph lanzaba "Glifo desconocido:" desde
+        # dentro del temporizador del antirrebote, que se llevaba la
+        # ventana por delante.
+        $sinEnvolver = Get-SearchResults 'zzqqxx'
+
+        Assert-NoThrow {
+            New-SearchPopupCard -Window $SearchWindow -Popup $null -Results $sinEnvolver -Query 'zzqqxx'
+        } 'escribir algo que no encaja no puede tumbar la ventana'
+
+        $tarjeta = New-SearchPopupCard -Window $SearchWindow -Popup $null -Results $sinEnvolver -Query 'zzqqxx'
+        Assert-Match 'zzqqxx' (Get-VisualText $tarjeta) 'debería salir el estado de "nada encontrado"'
+    }
+
+    It 'escribir en la caja algo que no encaja no lanza' {
+        # El camino entero, como al teclear: la caja, el antirrebote y
+        # el desplegable.
+        $barra = New-SearchBar -Window $SearchWindow
+        $caja = (Find-Visuals $barra { param($el) $el -is [System.Windows.Controls.TextBox] })[0]
+
+        foreach ($texto in @('zzqqxx', 'ñññ', '   ', '')) {
+            $caja.Text = $texto
+            Assert-NoThrow { Invoke-PendingSearch } "teclear '$texto' no puede lanzar"
+        }
     }
 }
