@@ -33,6 +33,24 @@ function Build-Sidebar {
     }
 
     Update-NavColors $Window
+
+    # El indicador no puede colocarse todavía: sin medidas no se
+    # sabe a qué altura está cada botón. Se coloca al primer
+    # SizeChanged del panel, que es cuando WPF le da tamaño.
+    #
+    # Se ata UNA sola vez, porque Build-Sidebar se repite al cambiar
+    # de idioma y cada pasada dejaría otro manejador enganchado. El
+    # Tag del Border lo marca: ahí no vive ningún otro dato.
+    $sidebar = $Window.FindName('Sidebar')
+    if ($sidebar -and $sidebar.Tag -ne 'wired') {
+        $sidebar.Tag = 'wired'
+        $sidebar.Add_SizeChanged({
+            param($s, $e)
+            Move-NavIndicator ([System.Windows.Window]::GetWindow($s))
+        })
+    }
+
+    Move-NavIndicator $Window
 }
 
 function New-NavButton {
@@ -139,6 +157,81 @@ function Sync-NavSelection {
     }
     $button.Tag = 'sel'
     Update-NavColors $Window
+    Move-NavIndicator -Window $Window -Animate
+}
+
+<#
+    Lleva la marca del menú a la entrada seleccionada.
+
+    Es UN solo indicador que se desliza, no uno por botón que se
+    enciende y se apaga: el recorrido es lo que dice de dónde
+    vienes, y sin él el ojo tiene que volver a buscar dónde está
+    la marca cada vez.
+
+    Vive en el Border NavIndicator del XAML y se mueve con un
+    TranslateTransform, no cambiando su Margin: mover el margen
+    obliga a WPF a medir el panel entero en cada fotograma.
+
+    SIN MEDIDAS NO SE COLOCA. Al arrancar, main.ps1 pinta la
+    primera pantalla antes de que la ventana exista de verdad, así
+    que aquí todo vale cero; el indicador se queda escondido y
+    vuelve por el SizeChanged que ata Build-Sidebar. El fondo del
+    botón marcado ya distingue la entrada mientras tanto, de modo
+    que ni un solo instante hay nada sin marcar.
+
+    -Animate solo al navegar. El SizeChanged llama sin él: durante
+    el plegado del menú se dispara decenas de veces y una animación
+    por cada una se pelearía consigo misma.
+#>
+function Move-NavIndicator {
+    param($Window, [switch]$Animate)
+
+    $indicator = $Window.FindName('NavIndicator')
+    $anchor    = $Window.FindName('NavHost')
+    if (-not $indicator -or -not $anchor) { return }
+
+    $selected = $null
+    foreach ($item in Get-NavigationItems) {
+        $button = $Window.FindName((Get-NavElementName $item.Id))
+        if ($button -and $button.Tag -eq 'sel') { $selected = $button; break }
+    }
+
+    if (-not $selected -or $selected.ActualHeight -le 0) {
+        $indicator.Opacity = 0
+        return
+    }
+
+    # TranslatePoint lanza si los dos controles no comparten árbol
+    # visual, y eso pasa mientras se está reconstruyendo el menú.
+    # Un indicador escondido es mejor que una ventana caída.
+    try {
+        $origin = $selected.TranslatePoint((New-Object System.Windows.Point 0, 0), $anchor)
+    }
+    catch {
+        $indicator.Opacity = 0
+        return
+    }
+
+    $y = $origin.Y + (($selected.ActualHeight - $indicator.Height) / 2)
+
+    if ($indicator.RenderTransform -isnot [System.Windows.Media.TranslateTransform]) {
+        $indicator.RenderTransform = New-Object System.Windows.Media.TranslateTransform
+    }
+
+    if ($Animate -and $indicator.Opacity -gt 0) {
+        $indicator.RenderTransform.BeginAnimation(
+            [System.Windows.Media.TranslateTransform]::YProperty,
+            (New-Anim $indicator.RenderTransform.Y $y 300 0 (New-Ease -Kind 'Quint')))
+    }
+    else {
+        # Pasar $null suelta la animación anterior: sin eso, un valor
+        # animado gana siempre al que se escribe a mano y el
+        # indicador se quedaría clavado donde lo dejó la última.
+        $indicator.RenderTransform.BeginAnimation([System.Windows.Media.TranslateTransform]::YProperty, $null)
+        $indicator.RenderTransform.Y = $y
+    }
+
+    $indicator.Opacity = 1
 }
 
 # El estilo del XAML pinta el fondo del botón seleccionado; el

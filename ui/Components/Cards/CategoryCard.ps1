@@ -14,13 +14,17 @@ function New-CategoryCard {
 
     $card = New-Object System.Windows.Controls.Border
     $card.Style = $Window.FindResource('CardStyle')
-    $card.Padding = New-Object System.Windows.Thickness 18, 15, 20, 15
+    $card.Padding = New-Object System.Windows.Thickness 20, 17, 22, 17
 
     # La tarjeta se eleva al pasar el ratón, y en WPF eso mueve también
     # su zona sensible. Por eso quien oye al ratón -y quien recibe el
     # clic- es el envoltorio quieto que la sostiene, no ella misma:
     # es lo que devuelve Add-HoverLift (ver ui/Design/Theme.ps1).
-    $slot = Add-HoverLift $card
+    #
+    # El halo se tiñe del acento de la sección: Energía se ilumina en
+    # verde y Gaming en ámbar, cada una con SU color, en vez de la
+    # misma sombra gris para todas.
+    $slot = Add-HoverLift $card -Glow $Category.Accent
     $slot.Cursor = 'Hand'
 
     $grid = New-Object System.Windows.Controls.Grid
@@ -42,7 +46,7 @@ function New-CategoryCard {
     $name.Text = T $Category.Name
     $name.FontFamily = $Window.FindResource('DisplayFont')
     $name.FontWeight = 'SemiBold'
-    $name.FontSize = 14.5
+    $name.FontSize = 15.5
     Set-TextFg $name 'Text'
     $nameRow.Children.Add($name) | Out-Null
 

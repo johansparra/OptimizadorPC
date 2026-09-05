@@ -164,6 +164,7 @@
             <Setter Property="Foreground" Value="{DynamicResource TextMuted}"/>
             <Setter Property="FontFamily" Value="{StaticResource IconFont}"/>
             <Setter Property="FontSize" Value="14"/>
+            <Setter Property="RenderTransformOrigin" Value="0.5,0.5"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
@@ -172,8 +173,15 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="bd" Property="Background" Value="{DynamicResource SurfaceSunken}"/>
+                                <Setter TargetName="bd" Property="Background" Value="{DynamicResource AccentSoftGradient}"/>
                                 <Setter Property="Foreground" Value="{DynamicResource Accent}"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter Property="RenderTransform">
+                                    <Setter.Value>
+                                        <ScaleTransform ScaleX="0.90" ScaleY="0.90"/>
+                                    </Setter.Value>
+                                </Setter>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -181,7 +189,11 @@
             </Setter>
         </Style>
 
-        <!-- ================= SELECTOR DE MODO ================= -->
+        <!-- ================= SELECTOR DE MODO =================
+             El boton marcado ya NO pinta su propio fondo: la pastilla
+             blanca es una sola (ModeIndicator) y se desliza de un modo
+             a otro, igual que el indicador del menu lateral. Aqui solo
+             queda el color del texto. -->
         <Style x:Key="ModeButtonStyle" TargetType="Button">
             <Setter Property="Padding" Value="14,5,14,6"/>
             <Setter Property="Cursor" Value="Hand"/>
@@ -200,14 +212,7 @@
                                 <Setter Property="Foreground" Value="{DynamicResource Text}"/>
                             </Trigger>
                             <DataTrigger Binding="{Binding RelativeSource={RelativeSource Self}, Path=Tag}" Value="sel">
-                                <Setter TargetName="bd" Property="Background" Value="{DynamicResource Surface}"/>
                                 <Setter Property="Foreground" Value="{DynamicResource Text}"/>
-                                <Setter TargetName="bd" Property="Effect">
-                                    <Setter.Value>
-                                        <DropShadowEffect Color="Black" Direction="270" ShadowDepth="1"
-                                                          BlurRadius="4" Opacity="0.14"/>
-                                    </Setter.Value>
-                                </Setter>
                             </DataTrigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -215,10 +220,14 @@
             </Setter>
         </Style>
 
-        <!-- ================= NAVEGACION LATERAL ================= -->
+        <!-- ================= NAVEGACION LATERAL =================
+             Aqui ya NO hay indicador de seleccion por boton: hay uno
+             solo, el Border NavIndicator de mas abajo, que se desliza
+             de una entrada a otra. -->
         <Style x:Key="NavButtonStyle" TargetType="Button">
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="RenderTransformOrigin" Value="0.5,0.5"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
@@ -226,20 +235,25 @@
                             <Border x:Name="bd" CornerRadius="12" Background="Transparent" Padding="0,11,0,10">
                                 <ContentPresenter/>
                             </Border>
-                            <!-- indicador de seleccion -->
-                            <Border x:Name="ind" Width="3" Height="20" CornerRadius="2"
-                                    HorizontalAlignment="Left" VerticalAlignment="Center"
-                                    Margin="-10,0,0,0" Background="{DynamicResource Accent}"
-                                    Opacity="0"/>
                         </Grid>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter TargetName="bd" Property="Background" Value="{DynamicResource SurfaceSunken}"/>
                             </Trigger>
                             <DataTrigger Binding="{Binding RelativeSource={RelativeSource Self}, Path=Tag}" Value="sel">
-                                <Setter TargetName="bd" Property="Background" Value="{DynamicResource AccentSoft}"/>
-                                <Setter TargetName="ind" Property="Opacity" Value="1"/>
+                                <Setter TargetName="bd" Property="Background" Value="{DynamicResource AccentSoftGradient}"/>
                             </DataTrigger>
+                            <!-- Hundirse al pulsar. La escala va en un Setter y
+                                 por tanto se comparte entre todos los botones del
+                                 estilo, pero eso solo prohibe ANIMARLA (regla 11):
+                                 aqui el disparador la pone y la quita, no la anima. -->
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter Property="RenderTransform">
+                                    <Setter.Value>
+                                        <ScaleTransform ScaleX="0.93" ScaleY="0.93"/>
+                                    </Setter.Value>
+                                </Setter>
+                            </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>
@@ -252,19 +266,27 @@
             <Setter Property="Margin" Value="8,0,0,0"/>
             <Setter Property="Height" Value="38"/>
             <Setter Property="Padding" Value="14,0,14,0"/>
+            <Setter Property="RenderTransformOrigin" Value="0.5,0.5"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
                         <Border x:Name="bd" CornerRadius="10"
-                                Background="{DynamicResource Surface}"
+                                Background="{DynamicResource CardGradient}"
                                 BorderBrush="{DynamicResource Stroke}" BorderThickness="1"
                                 Padding="{TemplateBinding Padding}">
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="bd" Property="Background" Value="{DynamicResource SurfaceHover}"/>
+                                <Setter TargetName="bd" Property="Background" Value="{DynamicResource CardHoverGradient}"/>
                                 <Setter TargetName="bd" Property="BorderBrush" Value="{DynamicResource StrokeHover}"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter Property="RenderTransform">
+                                    <Setter.Value>
+                                        <ScaleTransform ScaleX="0.96" ScaleY="0.96"/>
+                                    </Setter.Value>
+                                </Setter>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -396,27 +418,32 @@
             </Setter>
         </Style>
 
-        <!-- ================= TARJETAS ================= -->
+        <!-- ================= TARJETAS =================
+             El fondo NO es un color plano sino CardGradient: luz
+             arriba y sombra abajo, que es lo que le da a una
+             superficie aspecto de material en vez de recorte. En
+             el tema claro es casi imperceptible a proposito.
+             Se compone en ui/Design/Theme.ps1. -->
         <Style x:Key="CardStyle" TargetType="Border">
-            <Setter Property="Background" Value="{DynamicResource Surface}"/>
+            <Setter Property="Background" Value="{DynamicResource CardGradient}"/>
             <Setter Property="BorderBrush" Value="{DynamicResource Stroke}"/>
             <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="CornerRadius" Value="14"/>
-            <Setter Property="Margin" Value="0,0,0,10"/>
+            <Setter Property="CornerRadius" Value="16"/>
+            <Setter Property="Margin" Value="0,0,0,12"/>
             <Style.Triggers>
                 <Trigger Property="IsMouseOver" Value="True">
                     <Setter Property="BorderBrush" Value="{DynamicResource StrokeHover}"/>
-                    <Setter Property="Background" Value="{DynamicResource SurfaceHover}"/>
+                    <Setter Property="Background" Value="{DynamicResource CardHoverGradient}"/>
                 </Trigger>
             </Style.Triggers>
         </Style>
 
         <Style x:Key="StaticCardStyle" TargetType="Border">
-            <Setter Property="Background" Value="{DynamicResource Surface}"/>
+            <Setter Property="Background" Value="{DynamicResource CardGradient}"/>
             <Setter Property="BorderBrush" Value="{DynamicResource Stroke}"/>
             <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="CornerRadius" Value="14"/>
-            <Setter Property="Margin" Value="0,0,0,10"/>
+            <Setter Property="CornerRadius" Value="16"/>
+            <Setter Property="Margin" Value="0,0,0,12"/>
             <Style.Triggers>
                 <Trigger Property="IsMouseOver" Value="True">
                     <Setter Property="BorderBrush" Value="{DynamicResource StrokeHover}"/>
@@ -447,7 +474,11 @@
 
     </Window.Resources>
 
-    <Border BorderBrush="{DynamicResource Stroke}" BorderThickness="1" Background="{DynamicResource Bg0}">
+    <!-- El fondo de la ventana es un degradado, no un color plano:
+         BgGradient cae de Bg0 a BgTint y lo compone ui/Design/Theme.ps1.
+         Un fondo liso es lo que mas "plano" hace ver a una interfaz. -->
+    <Border x:Name="WindowRoot" BorderBrush="{DynamicResource Stroke}" BorderThickness="1"
+            Background="{DynamicResource BgGradient}">
         <Grid>
             <Grid.RowDefinitions>
                 <RowDefinition Height="46"/>
@@ -490,14 +521,29 @@
                     </Border>
                 </StackPanel>
 
-                <!-- selector de modo -->
+                <!-- selector de modo
+                     La pastilla del modo elegido es UNA SOLA y se desliza
+                     (Move-ModeIndicator, en ui/Components/Shell/TitleBar.ps1).
+                     Va declarada ANTES que los botones para quedar
+                     debajo: en un Grid manda el orden del documento. -->
                 <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
                     <Border Background="{DynamicResource SurfaceSunken}" CornerRadius="9" Padding="3">
-                        <StackPanel Orientation="Horizontal">
-                            <Button x:Name="BtnModeNormal"  Style="{StaticResource ModeButtonStyle}" Tag="sel" Content="Normal"/>
-                            <Button x:Name="BtnModeBuilder" Style="{StaticResource ModeButtonStyle}" Content="Builder"/>
-                            <Button x:Name="BtnModeConfig"  Style="{StaticResource ModeButtonStyle}" Content="Config Review"/>
-                        </StackPanel>
+                        <Grid x:Name="ModeTrack">
+                            <Border x:Name="ModeIndicator" Width="0" CornerRadius="7"
+                                    HorizontalAlignment="Left" VerticalAlignment="Stretch"
+                                    Background="{DynamicResource Surface}"
+                                    Opacity="0" IsHitTestVisible="False">
+                                <Border.Effect>
+                                    <DropShadowEffect Color="Black" Direction="270" ShadowDepth="1"
+                                                      BlurRadius="5" Opacity="0.14"/>
+                                </Border.Effect>
+                            </Border>
+                            <StackPanel x:Name="ModeButtons" Orientation="Horizontal">
+                                <Button x:Name="BtnModeNormal"  Style="{StaticResource ModeButtonStyle}" Tag="sel" Content="Normal"/>
+                                <Button x:Name="BtnModeBuilder" Style="{StaticResource ModeButtonStyle}" Content="Builder"/>
+                                <Button x:Name="BtnModeConfig"  Style="{StaticResource ModeButtonStyle}" Content="Config Review"/>
+                            </StackPanel>
+                        </Grid>
                     </Border>
                 </StackPanel>
 
@@ -516,8 +562,10 @@
                 </StackPanel>
             </Grid>
 
-            <!-- ===== CABECERA DE CONTENIDO ===== -->
-            <Border Grid.Row="1" Background="{DynamicResource Bg0}">
+            <!-- ===== CABECERA DE CONTENIDO =====
+                 Transparente y no Bg0: asi deja pasar el degradado
+                 del fondo, que si no se cortaria justo aqui. -->
+            <Border Grid.Row="1" Background="Transparent">
                 <Grid Margin="30,18,30,16">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
@@ -553,11 +601,23 @@
                         Background="{DynamicResource Bg1}"
                         BorderBrush="{DynamicResource Stroke}" BorderThickness="0,1,1,0"
                         CornerRadius="0,16,0,0">
-                    <Grid Width="88" HorizontalAlignment="Left">
+                    <Grid x:Name="NavHost" Width="88" HorizontalAlignment="Left">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="*"/>
                             <RowDefinition Height="Auto"/>
                         </Grid.RowDefinitions>
+
+                        <!-- Indicador de seleccion: UNO SOLO que se desliza
+                             de una entrada a otra, en vez de uno por boton
+                             que se enciende y se apaga. Lo coloca
+                             Move-NavIndicator (ui/Components/Shell/Sidebar.ps1);
+                             arranca invisible porque hasta que no hay
+                             medidas no se sabe adonde va. -->
+                        <Border x:Name="NavIndicator" Grid.Row="0" Grid.RowSpan="2"
+                                Width="3" Height="22" CornerRadius="0,2,2,0"
+                                HorizontalAlignment="Left" VerticalAlignment="Top"
+                                Background="{DynamicResource AccentGradient}"
+                                Opacity="0" IsHitTestVisible="False"/>
 
                         <StackPanel x:Name="NavTop" Grid.Row="0" Margin="0,14,0,0"/>
 
@@ -567,6 +627,18 @@
                         </StackPanel>
                     </Grid>
                 </Border>
+
+                <!-- FONDO VIVO
+                     Las manchas de color que se mueven despacio detras del
+                     contenido. Solo el lienzo: las elipses las crea
+                     ui/Components/Shell/Backdrop.ps1.
+
+                     Va en la columna del contenido y NO detras de toda la
+                     ventana porque el menu lateral y la barra de titulo son
+                     opacos: ahi no se veria nada. Sordo al raton, o se
+                     comeria los clics de las tarjetas. -->
+                <Canvas x:Name="Backdrop" Grid.Column="1" ClipToBounds="True"
+                        IsHitTestVisible="False"/>
 
                 <!-- CONTENIDO PRINCIPAL -->
                 <!-- Con nombre porque ui/Engine/Router.ps1 guarda y restaura su
@@ -581,7 +653,7 @@
                  Colapsada no ocupa alto, asi que la fila Auto desaparece y
                  el contenido no se mueve al aparecer y desaparecer. -->
             <Border x:Name="ProgressStrip" Grid.Row="3" Visibility="Collapsed"
-                    Background="{DynamicResource Bg1}"
+                    Background="{DynamicResource CardGradient}"
                     BorderBrush="{DynamicResource Stroke}" BorderThickness="0,1,0,0">
                 <StackPanel Margin="30,9,30,10">
                     <Grid>
@@ -604,7 +676,7 @@
                                 <ColumnDefinition x:Name="ProgressDone" Width="0*"/>
                                 <ColumnDefinition x:Name="ProgressLeft" Width="1*"/>
                             </Grid.ColumnDefinitions>
-                            <Border Grid.Column="0" CornerRadius="2" Background="{DynamicResource Accent}"/>
+                            <Border Grid.Column="0" CornerRadius="2" Background="{DynamicResource AccentGradient}"/>
                         </Grid>
                     </Border>
                 </StackPanel>

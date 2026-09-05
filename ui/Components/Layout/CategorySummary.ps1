@@ -51,7 +51,7 @@ function New-CategorySummary {
     # verdad y se cuentan por él. Si no, por las etiquetas declaradas,
     # que es todo lo que hay.
     $counts = Get-CategoryStatusCounts $Category
-    if ($counts) { Add-StatusPills $row $counts } else { Add-TagPills $row (Get-CategoryCounts $Category) }
+    if ($counts) { Add-StatusPills $Window $row $counts } else { Add-TagPills $Window $row (Get-CategoryCounts $Category) }
 
     $row
 }
@@ -59,7 +59,7 @@ function New-CategorySummary {
 # Una píldora por estado real. La de 'desconocido' solo sale si hay
 # alguno: en cuanto se lee todo bien, sobra de la fila.
 function Add-StatusPills {
-    param($Row, $Counts)
+    param($Window, $Row, $Counts)
 
     foreach ($status in Get-SettingStatusNames) {
         $n = [int]$Counts.$status
@@ -67,30 +67,39 @@ function Add-StatusPills {
 
         $style = Get-StatusStyle $status
         $tip = (T $style.Count) -f $n, $Counts.Total
-        $Row.Children.Add((New-SummaryPill $style (T $style.Label) $n $Counts.Total $tip)) | Out-Null
+        $Row.Children.Add((New-SummaryPill $Window $style (T $style.Label) $n $Counts.Total $tip)) | Out-Null
     }
 }
 
 # Una píldora por etiqueta declarada. Es lo de siempre, y lo que
 # siguen enseñando las secciones que aún no leen nada del equipo.
 function Add-TagPills {
-    param($Row, $Counts)
+    param($Window, $Row, $Counts)
 
     foreach ($style in $SummaryStyles) {
         $n = [int]$Counts.($style.Tag)
         $tip = (T $style.Tip) -f $n, $Counts.Total
-        $Row.Children.Add((New-SummaryPill $style (T $style.Tag) $n $Counts.Total $tip)) | Out-Null
+        $Row.Children.Add((New-SummaryPill $Window $style (T $style.Tag) $n $Counts.Total $tip)) | Out-Null
     }
 }
 
-# La píldora del resumen: icono, nombre y recuento, todo dentro de la
-# misma cápsula. New-Pill solo trae el icono y el texto, así que el
-# nombre se cuela entre los dos.
+<#
+    La píldora del resumen: icono, nombre y recuento, todo dentro de
+    la misma cápsula. New-Pill solo trae el icono y el texto, así que
+    el nombre se cuela entre los dos.
+
+    El recuento SUBE desde cero al aparecer (Start-CountUp). Es el
+    número que acaba de salir de leer el registro, y verlo contar
+    dice justamente eso. La referencia al texto se coge ANTES de
+    colar el nombre: después ya no está en la misma posición.
+#>
 function New-SummaryPill {
-    param($Style, [string]$Label, [int]$Count, [int]$Total, [string]$Tip)
+    param($Window, $Style, [string]$Label, [int]$Count, [int]$Total, [string]$Tip)
 
     $pill = New-Pill $Style.Icon "$Count/$Total" $Style.Fg $Style.Bg $Tip
     $pill.Margin = New-Object System.Windows.Thickness 4, 0, 4, 0
+
+    $counter = $pill.Child.Children[1]
 
     $text = New-Object System.Windows.Controls.TextBlock
     $text.Text = $Label + '  '
@@ -99,6 +108,8 @@ function New-SummaryPill {
     $text.VerticalAlignment = 'Center'
     Set-TextFg $text $Style.Fg
     $pill.Child.Children.Insert(1, $text)
+
+    Start-CountUp $Window $counter ('{0}/' + $Total) $Count
 
     $pill
 }

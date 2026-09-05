@@ -21,6 +21,8 @@ OptimizadorPC/
 │   ├── Registry/            Todo lo del registro de Windows
 │   │   ├── Reader.ps1           Lectura del registro (hoy, solo lectura)
 │   │   └── CategoryState.ps1    Vuelca en los ajustes lo que hay en el equipo
+│   ├── Interop/
+│   │   └── SystemBackdrop.ps1   Mica y Acrílico de Windows 11 (dwmapi)
 │   └── Diagnostics/
 │       └── Log.ps1              Registro de actividad: qué se leyó y cuándo
 │
@@ -53,20 +55,24 @@ OptimizadorPC/
 │   │   │   └── Update.ps1           Notifications.ps1  Sound.ps1
 │   │   ├── Preferences/         Un archivo por opción de Settings
 │   │   │   ├── 10-Language.ps1
-│   │   │   └── 20-Theme.ps1
+│   │   │   ├── 20-Theme.ps1
+│   │   │   └── 30-Material.ps1      opaco / Mica / Acrílico
 │   │   └── Lang/                Un archivo por idioma
 │   │       └── es.ps1               (el inglés es la fuente: no lleva archivo)
 │   │
 │   ├── Components/          6. LAS PIEZAS. Cómo se dibuja cada cosa.
 │   │   ├── Shell/               El marco de la ventana
-│   │   │   ├── TitleBar.ps1         textos e iconos de la barra de título
-│   │   │   ├── Sidebar.ps1          menú lateral: botones y plegado animado
+│   │   │   ├── TitleBar.ps1         textos, iconos y pastilla del selector de modo
+│   │   │   ├── Sidebar.ps1          menú lateral: botones, plegado e indicador
+│   │   │   ├── Backdrop.ps1         el fondo vivo: manchas de color que se mueven
+│   │   │   ├── WindowMaterial.ps1   pone (o quita) Mica / Acrílico en la ventana
 │   │   │   ├── ViewMenu.ps1         chip "Vista" y su desplegable
 │   │   │   ├── LogPanel.ps1         cajón del registro de actividad
 │   │   │   ├── LogWindow.ps1        el mismo registro, en ventana aparte
 │   │   │   └── ProgressStrip.ps1    barra de progreso del pie
 │   │   ├── Cards/               Las tarjetas
 │   │   │   ├── CategoryCard.ps1     fila de la pantalla principal
+│   │   │   ├── CategoryTile.ps1     la misma sección, en cuadrícula
 │   │   │   ├── SettingCard.ps1      fila de la pantalla de detalle
 │   │   │   ├── PreferenceCard.ps1   fila de la pantalla de Settings
 │   │   │   └── TechnicalDetails.ps1 pie plegable con las claves del registro
@@ -437,17 +443,26 @@ Toda la apariencia sale de un único sitio: los recursos de `MainWindow.xaml`.
 
 | Capa | Dónde | Qué aporta |
 | ---- | ----- | ---------- |
-| Paleta | `Theme.ps1` → `Get-Palette` | 26 claves de color, en versión clara y oscura |
-| Recursos | `MainWindow.xaml` → `Window.Resources` | Las mismas 26 claves como `SolidColorBrush` |
+| Paleta | `Theme.ps1` → `Get-Palette` | Los colores planos, en versión clara y oscura |
+| Degradados | `Theme.ps1` → `$GradientTokens` | Se **componen** a partir de dos claves de la paleta |
+| Recursos | `Window.Resources` | Las dos familias, como `SolidColorBrush` y `GradientBrush` |
 | Estilos | `MainWindow.xaml` | Plantillas de botón, combo, scrollbar, tooltip, tarjeta |
 | Componentes | `UiKit.ps1` | Iconos, píldoras, etiquetas, toggle animado, buscador |
 | Tipografía | Segoe UI Variable (Display / Text) | Fuente nativa de Windows 11 |
 | Iconos | Segoe Fluent Icons | Vectoriales, nativos, sin dependencias externas |
 
+**Los degradados no traen colores propios.** `AccentGradient` es `Accent` cayendo
+hacia `Accent2`, y las dos claves salen de la misma paleta: así no hay ni un color
+escrito dos veces, un degradado no puede desafinar con el color plano del que sale, y
+alternar claro/oscuro los repinta a los dos por el mismo camino. `Get-GradientKey`
+traduce una clave plana a la suya en degradado y devuelve la original si no la tiene,
+que es lo que permite a `New-IconTile` pintar el acento de cualquier sección sin saber
+qué secciones hay.
+
 **Cambio de tema en vivo:** el XAML consume los colores con `{DynamicResource}` y el
 código con `SetResourceReference`, así que `Set-AppTheme` solo tiene que reescribir
-el color de cada pincel y toda la interfaz —incluida la ya construida— se repinta
-sola, sin reconstruir ninguna vista.
+el color de cada pincel —o cada parada, si es un degradado— y toda la interfaz
+—incluida la ya construida— se repinta sola, sin reconstruir ninguna vista.
 
 ```mermaid
 flowchart LR
@@ -479,16 +494,47 @@ Las vistas no tocan esas zonas directamente: pasan por `ui/Components/Layout/Pag
 
 | Efecto | Dónde vive | Detalle |
 | ------ | ---------- | ------- |
+| Entrada en cascada | `Start-StaggeredEnter` | Cada tarjeta entra 45 ms después que la anterior, 300 ms cada una |
 | Entrada de vista | `Start-EnterTransition` | Desvanecido + deslizamiento de 14px, 260 ms, `CubicEase` |
-| Elevación de tarjeta | `Add-HoverLift` | Sube 2px y la sombra pasa de 8 a 20 de desenfoque, 160 ms |
-| Interruptor | `New-ToggleSwitch` | `ColorAnimation` de la pista + `DoubleAnimation` del pomo |
+| Elevación de tarjeta | `Add-HoverLift` | Sube 3px y suelta un halo **del color de la sección**, 170 ms |
+| Fondo vivo | `Backdrop.ps1` | Tres manchas radiales en vaivén, 27-41 s por ciclo, a 20 fps |
+| Indicador del menú | `Move-NavIndicator` | UNA barra que se desliza entre entradas, `QuinticEase` |
+| Pastilla de modo | `Move-ModeIndicator` | UNA pastilla que se desliza y cambia de ancho |
+| Interruptor | `New-ToggleSwitch` | `ColorAnimation` de la pista + pomo con rebote (`BackEase`) |
+| Números que cuentan | `Start-CountUp` | Las píldoras del resumen suben desde cero, 520 ms |
+| Hundirse al pulsar | Triggers del XAML | `ScaleTransform` de 0.90 a 0.96 según el botón |
 | Estados hover/foco | Triggers del XAML | Borde, fondo y color de texto por `ControlTemplate.Triggers` |
-| Selección lateral | `DataTrigger` sobre `Tag` | Píldora de acento + barra indicadora |
 | Scrollbar | Plantilla propia | 6px, se ensancha a 8px al pasar el ratón |
 
 Las animaciones que usan `RenderTransform` o `Effect` **crean la instancia en código**,
 no en un `Setter` del estilo: un `Freezable` declarado en un `Setter` se comparte entre
-todos los controles del estilo y WPF no deja animarlo.
+todos los controles del estilo y WPF no deja animarlo. La escala del "hundirse al
+pulsar" sí vive en un `Setter`, y puede: el disparador la pone y la quita, no la anima.
+
+**El fondo vivo va a 20 fotogramas por segundo a propósito.** El recorrido dura medio
+minuto, así que nadie distingue 20 de 60, y la diferencia es tener o no tener la
+máquina repintando la ventana entera sin parar. En un programa que se llama Optimizador
+PC eso no es un detalle. Tampoco lleva `BlurEffect`: la mancha se difumina sola porque
+su relleno es un degradado radial que acaba en transparente, y un desenfoque de 150px
+sobre media pantalla es de lo más caro que se le puede pedir a WPF.
+
+### Mica y Acrílico
+
+El material de Windows 11 es una preferencia (`Ajustes → Material de la ventana`) y
+viene **apagado**, porque no se suma al diseño: lo sustituye. El material del sistema
+solo se ve si nuestra ventana es translúcida, y una ventana translúcida ya no puede
+tener su propio degradado de fondo.
+
+| Elección | Fondo de la ventana | Detrás |
+| -------- | ------------------- | ------ |
+| Opaco (por defecto) | `BgGradient` | nada |
+| Mica | `BgGlassGradient` | material del sistema |
+| Acrílico | `BgGlassGradient` | material del sistema, más desenfocado |
+
+La llamada a `dwmapi` vive en `core/Interop/SystemBackdrop.ps1` y **nunca lanza**: si
+el equipo no llega a Windows 11 22H2 devuelve `$false` y la ventana se queda opaca, que
+es exactamente el aspecto de antes. Se aplica en `SourceInitialized`, porque hasta ese
+momento la ventana no tiene descriptor al que pedirle nada.
 
 ### Flujo de navegación
 

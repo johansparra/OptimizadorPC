@@ -37,6 +37,10 @@ $ViewOptionsIndex = @(
        Hint = "Show the red 'NEW' tags on sections and settings"
        Default = $true;  Visible = $true }
 
+    @{ Id = 'grid';      Icon = 'Grid'; Label = 'Grid view'
+       Hint = 'Show the sections as tiles instead of rows'
+       Default = $false; Visible = $true }
+
 )
 
 # Clave con la que se guarda cada opción en settings.json.

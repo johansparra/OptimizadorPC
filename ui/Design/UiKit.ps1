@@ -41,16 +41,107 @@ function New-Icon {
     $t
 }
 
-# Cuadro redondeado con el icono de la categoría.
+<#
+    Cuadro redondeado con el icono de la categoría.
+
+    Fondo e icono van en DEGRADADO, no en color plano: es el mismo
+    color de siempre cayendo hacia su segundo tono, y es lo que hace
+    que un icono parezca una pieza y no un recorte. Se pide con
+    Get-GradientKey, que devuelve la clave plana tal cual si ese
+    color no tiene degradado declarado -- así esto sigue funcionando
+    con cualquier acento nuevo sin tocar nada aquí.
+
+    El redondeo es proporcional al tamaño: un cuadro de 24 con las
+    esquinas de uno de 44 se ve como una pastilla.
+#>
 function New-IconTile {
     param([string]$Name, [string]$Fg = 'Accent', [string]$Bg = 'AccentSoft', [double]$Size = 42)
     $b = New-Object System.Windows.Controls.Border
     $b.Width = $Size; $b.Height = $Size
-    $b.CornerRadius = New-Object System.Windows.CornerRadius 12
+    $b.CornerRadius = New-Object System.Windows.CornerRadius ($Size * 0.29)
     $b.VerticalAlignment = 'Center'
-    Set-BoxBg $b $Bg
-    $b.Child = (New-Icon $Name ($Size * 0.44) $Fg)
+    Set-BoxBg $b (Get-GradientKey $Bg)
+    $b.Child = (New-Icon $Name ($Size * 0.44) (Get-GradientKey $Fg))
     $b
+}
+
+<#
+    Cuenta un número desde cero hasta su valor.
+
+        Start-CountUp $Window $texto '{0}/112' 65
+
+    Un número que sube dice "esto se acaba de calcular"; el mismo
+    número puesto de golpe no dice nada. Dura medio segundo y se
+    frena al final, que es cuando el ojo lee la cifra.
+
+    SIN VENTANA VIVA NO SE ANIMA: se escribe el valor final y se
+    sale. Sin bucle de mensajes el temporizador no llega a latir
+    nunca, y el número se quedaría clavado en cero -- que es
+    exactamente lo que verían las pruebas.
+
+    Todos los números en marcha comparten UN temporizador. Uno por
+    píldora serían veinte relojes latiendo a la vez para escribir
+    veinte cifras.
+#>
+$CountUpQueue   = New-Object System.Collections.Generic.List[object]
+$CountUpTimer   = $null
+$CountUpTotalMs = 520.0
+$CountUpTickMs  = 30
+
+function Start-CountUp {
+    param($Window, $TextBlock, [string]$Format, [int]$Target)
+
+    if (-not $TextBlock) { return }
+
+    if (-not $Window -or -not $Window.IsLoaded -or $Target -le 0) {
+        $TextBlock.Text = $Format -f $Target
+        return
+    }
+
+    $TextBlock.Text = $Format -f 0
+    $CountUpQueue.Add([PSCustomObject]@{
+        Text    = $TextBlock
+        Format  = $Format
+        Target  = $Target
+        Started = [datetime]::UtcNow
+    })
+
+    if (-not $script:CountUpTimer) {
+        $script:CountUpTimer = New-Object System.Windows.Threading.DispatcherTimer
+        $script:CountUpTimer.Interval = [TimeSpan]::FromMilliseconds($CountUpTickMs)
+        # El manejador llama a una función del script en vez de
+        # llevar el trabajo dentro: un scriptblock de temporizador
+        # tampoco puede capturar nada (regla 4).
+        $script:CountUpTimer.Add_Tick({ Update-CountUp })
+    }
+    if (-not $script:CountUpTimer.IsEnabled) { $script:CountUpTimer.Start() }
+}
+
+# Un latido: adelanta todos los números y retira los que ya han
+# llegado. Sin nadie contando, el reloj se para solo.
+function Update-CountUp {
+    $now = [datetime]::UtcNow
+    $done = New-Object System.Collections.Generic.List[object]
+
+    foreach ($item in $CountUpQueue) {
+        $progress = ($now - $item.Started).TotalMilliseconds / $CountUpTotalMs
+        if ($progress -ge 1) { $progress = 1 }
+
+        # Frenada cúbica: rápido al principio, se posa al final.
+        $eased = 1 - [Math]::Pow(1 - $progress, 3)
+        $value = [int][Math]::Round($item.Target * $eased)
+
+        # La coma dentro de los paréntesis de un método separa
+        # ARGUMENTOS, así que el -f va aparte (regla 20).
+        $texto = $item.Format -f $value
+        $item.Text.Text = $texto
+
+        if ($progress -ge 1) { $done.Add($item) }
+    }
+
+    foreach ($item in $done) { $CountUpQueue.Remove($item) | Out-Null }
+
+    if ($CountUpQueue.Count -eq 0 -and $script:CountUpTimer) { $script:CountUpTimer.Stop() }
 }
 
 # Píldora de estadística: icono + texto sobre fondo suave.
@@ -258,10 +349,17 @@ function New-ToggleSwitch {
         $ca.EasingFunction = New-Ease
         $s.Background.BeginAnimation([System.Windows.Media.SolidColorBrush]::ColorProperty, $ca)
 
+        # El knob se pasa un pelo de su sitio y se asienta: es lo que
+        # le da sensación de peso, y es la diferencia entre un
+        # interruptor que se mueve y uno que se acciona.
         if ($new) { $to = $info.Travel } else { $to = 0.0 }
         $s.Child.RenderTransform.BeginAnimation(
             [System.Windows.Media.TranslateTransform]::XProperty,
-            (New-Anim $s.Child.RenderTransform.X $to 190))
+            #
+            # La amplitud es baja a propósito: el rebote de un
+            # BackEase se sale del recorrido, y el knob solo tiene 3px
+            # de aire a cada lado antes de asomar por fuera del carril.
+            (New-Anim $s.Child.RenderTransform.X $to 260 0 (New-Ease -Kind 'Back' -Amount 0.35)))
 
         if ($info.Label) {
             if ($new) { $info.Label.Text = T 'On' } else { $info.Label.Text = T 'Off' }

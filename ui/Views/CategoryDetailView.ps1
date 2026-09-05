@@ -107,9 +107,9 @@ function Show-CategoryDetailView {
         $list.Children.Add($card) | Out-Null
     }
 
-    # ---- 3. Pintar con transición de entrada ----
+    # ---- 3. Pintar con entrada en cascada ----
     $Window.FindName('MainContent').Content = $list
-    Start-EnterTransition $list
+    Start-StaggeredEnter $list
 
     Show-HighlightedSetting $Window
 }

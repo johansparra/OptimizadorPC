@@ -147,11 +147,17 @@ vez**, no en fila. **Esa decisión la toma Claude solo**, sin preguntar. Ver
 7. **Sin ventana de consola en el `.exe`**: `Write-Host` no se ve. Para depurar, ejecuta `main.ps1` directamente.
 8. **Prueba siempre en ambos hosts.** El `.exe` (ámbito global, 5.1) y `main.ps1` (ámbito de script, tu pwsh 7) se comportan distinto: hay bugs que solo se ven en uno de los dos.
 9. **Colores: siempre por recurso de tema, nunca literales.** En XAML `{DynamicResource Accent}`, en código `Set-TextFg` / `Set-BoxBg` / `Set-BoxLine` (envuelven `SetResourceReference`). Un `#RRGGBB` a pelo no cambia al alternar claro/oscuro.
+
+    **Hay TRES propiedades de fondo distintas y no son intercambiables**: la de un
+    `Border` (`Set-BoxBg`), la de un `Panel` —`Grid`, `StackPanel`— (`Set-PanelBg`), la
+    de un `Control` o una ventana (`Set-WinBg`), y el relleno de una figura
+    (`Set-ShapeFill`). Poner la de `Border` a un `Grid` no da error: no pasa nada, que
+    es peor.
 10. **Pinceles congelados.** WPF congela al cargar el XAML los `SolidColorBrush` que considera compartibles, y un `Freezable` congelado no se puede mutar. Por eso `Set-AppTheme` intenta primero `$brush.Color = ...` y solo si está congelado lo sustituye. Al sustituir usa `Resources.Add()`, **no** el indexador `Resources[$k] = ...`: el indexador guarda el `PSObject` que envuelve al pincel y WPF lo rechaza al resolver el `DynamicResource` con *"'#FF59616F' no es un valor válido para la propiedad 'Foreground'"* (el mensaje engaña: el `ToString()` de un `SolidColorBrush` es su color).
 11. **Nunca declares un `Freezable` dentro de un `Setter` de estilo si vas a animarlo.** `RenderTransform` y `Effect` puestos en un `Setter` se comparten entre todos los controles del estilo y WPF no permite animar una instancia compartida. Créalos por control en código (ver `Add-HoverLift`).
 12. **Iconos: `Glyph 'Nombre'` del catálogo de `Theme.ps1`** (fuente *Segoe Fluent Icons*, nativa de Windows 11), nunca emoji. Antes de usar un codepoint nuevo, comprueba que existe con `GlyphTypeface.CharacterToGlyphMap` y míralo renderizado: varios glifos parecidos tienen significados distintos (p. ej. `E7ED` es una campana **tachada**, la campana normal es `EA8F`).
 
-13. **El menú lateral se construye por código, no en el XAML.** `MainWindow.xaml` solo aporta el `Border` llamado `Sidebar` con dos `StackPanel` vacíos (`NavTop` y `NavBottom`); los botones los crea `Build-Sidebar` a partir de `ui/Index/NavigationIndex.ps1`. Cada botón se registra con `$Window.RegisterName('Nav<Id>', ...)`, así que `FindName('NavSettings')` sigue funcionando — si añades uno nuevo, respeta ese nombrado.
+13. **El menú lateral se construye por código, no en el XAML.** `MainWindow.xaml` solo aporta el `Border` llamado `Sidebar` con dos `StackPanel` vacíos (`NavTop` y `NavBottom`) y la marca de selección (`NavIndicator`, ver la regla 25); los botones los crea `Build-Sidebar` a partir de `ui/Index/NavigationIndex.ps1`. Cada botón se registra con `$Window.RegisterName('Nav<Id>', ...)`, así que `FindName('NavSettings')` sigue funcionando — si añades uno nuevo, respeta ese nombrado.
 
     **Una entrada sin `View` no navega, y es a propósito.** Hoy tienen pantalla Search, Optimize y Settings; las otras cuatro siguen en el menú para conservar la estructura, se ven igual que las demás (ni en gris ni con candado) y `Set-NavSelection` sale antes de tocar nada: ni cambia de vista, ni repinta, ni mueve la marca del menú. **No las mandes a una vista de relleno** — el menú marcaría una cosa y la pantalla enseñaría otra. Activar una es escribir el nombre de su función de vista en `View`.
 
@@ -183,12 +189,96 @@ vez**, no en fila. **Esa decisión la toma Claude solo**, sin preguntar. Ver
 
 22. **Un `TextBlock` no se puede seleccionar ni copiar.** WPF no trae selección en `TextBlock`: para que el usuario pueda seleccionar con el ratón y copiar con Ctrl+C hace falta un `TextBox` con `IsReadOnly = $true`, `IsReadOnlyCaretVisible = $false`, `BorderThickness = 0`, `Background = Transparent` y `Padding = 0` — así se ve igual que el texto de al lado, pero se selecciona, trae su menú contextual y responde a Ctrl+C y Ctrl+A. De solo lectura **no** es lo mismo que editable. Su color se pone con `Set-TextFg` como en cualquier otro sitio: `TextBlock.ForegroundProperty` y `Control.ForegroundProperty` son la **misma** `DependencyProperty` (a diferencia de `Background`, que sí son dos distintas — por eso existe `Set-WinBg`). Lo hace `New-MonoField` en `ui/Components/Cards/TechnicalDetails.ps1` con la ruta y el valor del registro. Al copiar, el aviso lo enseña **un solo botón a la vez**: un `DispatcherTimer` no tiene `Tag` donde dejar a quién apagar, así que el manejador llama a una función y es ella la que mira el estado del módulo.
 
+23. **El tema tiene DOS familias de color y se declaran por separado.** `Get-Palette`
+    lleva los colores planos; `$GradientTokens` lleva los degradados, y **cada uno se
+    compone a partir de dos claves de la paleta**, nunca de colores propios. Así no hay
+    ni un color escrito dos veces y `Set-AppTheme` los repinta a los dos por el mismo
+    camino. Un degradado se muta **parada a parada** (`GradientStops[i].Color`), con la
+    misma trampa del pincel congelado que los planos (regla 10). Las dos son claves
+    válidas para `Set-BoxBg` y compañía: la lista completa es `Get-ThemeKeys`, y es
+    contra ella —no contra la paleta— contra la que comprueba la prueba de la regla 9.
+
+    Para pedir "la versión en degradado de esta clave" está `Get-GradientKey`, que
+    devuelve la plana tal cual si no tiene: por eso `New-IconTile` pinta el acento de
+    cualquier sección sin saber qué secciones hay.
+
+24. **La entrada en cascada NO mueve el envoltorio de la tarjeta.** `Start-StaggeredEnter`
+    anima cada hijo con un retardo creciente, pero quien se desplaza lo decide
+    `Get-EnterTarget`: si el hijo es el envoltorio quieto de `Add-HoverLift` —marcado con
+    `Uid = 'lift'`— se mueve la tarjeta de dentro. Mover el envoltorio movería su zona
+    sensible al ratón y la elevación entraría en el bucle de la regla 21. Hay una prueba
+    que lo vigila.
+
+25. **Los indicadores que se deslizan no se colocan si no hay medidas.** El del menú
+    lateral (`Move-NavIndicator`) y la pastilla del selector de modo
+    (`Move-ModeIndicator`) calculan su sitio con `TranslatePoint`, que necesita que WPF
+    ya haya medido: al arrancar, `main.ps1` pinta la primera pantalla antes de que la
+    ventana exista de verdad y ahí todo vale cero. En ese caso **se esconden** y vuelven
+    por el `SizeChanged`, que se engancha **una sola vez** (marcado en el `Tag` del
+    `Border` o en el `Uid` del `Grid`, porque esas funciones se repiten al cambiar de
+    idioma). Que nunca haya nada sin marcar es cosa del fondo del botón, no del
+    indicador. Y se anima solo al navegar: durante el plegado del menú el `SizeChanged`
+    se dispara decenas de veces y una animación por cada una se pelearía consigo misma.
+
+26. **El fondo vivo va a 20 fps y sin `BlurEffect`.** Las manchas de
+    `ui/Components/Shell/Backdrop.ps1` se difuminan porque su relleno es un degradado
+    **radial** que acaba en transparente; un desenfoque grande sobre media pantalla es lo
+    caro de verdad. Y se limitan con `Timeline::SetDesiredFrameRate`: el recorrido dura
+    medio minuto, nadie distingue 20 de 60, y la alternativa es tener la máquina
+    repintando la ventana entera sin parar. En un programa que se llama Optimizador PC
+    eso no es un detalle.
+
+27. **Mica y el degradado propio son EXCLUYENTES.** El material del sistema solo se ve si
+    la ventana es translúcida, y una ventana translúcida ya no puede tener fondo propio:
+    `ui/Components/Shell/WindowMaterial.ps1` cambia una cosa por la otra, no las suma.
+    Por eso es una preferencia y viene apagada. La llamada a `dwmapi` vive en
+    `core/Interop/` y **nunca lanza**: si Windows no lo admite devuelve `$false` y las
+    superficies se quedan opacas — jamás se deja una ventana translúcida sin material
+    detrás. Se aplica en `SourceInitialized`, que es cuando hay descriptor.
+
+28. **Las pruebas NO escriben en tus ajustes.** `tests/Harness/AppHost.ps1` redirige
+    `$AppSettingsPath` a un temporal con el PID en el nombre. Sin eso, cualquier prueba
+    que toque una preferencia reescribiría `%APPDATA%\OptimizadorPC\settings.json`
+    entero, porque el arnés no llama a `Import-AppSettings` y la tabla arranca vacía:
+    guardar dejaría solo la clave que acaba de tocar la prueba.
+
+    **La sonda de `Ui/Wiring.Tests.ps1` va aparte**, porque no pasa por el arnés: es una
+    copia de `main.ps1` en otro proceso, y ahí la redirección se le cuela justo antes de
+    su `Import-AppSettings`. Sin eso, pulsar el botón de tema en la sonda le cambiaba el
+    tema al usuario en cada pasada de las pruebas.
+
+## La capa visual (fondo, degradados y movimiento)
+
+Dónde vive cada cosa del aspecto, para no buscarla:
+
+| Qué se ve | Dónde se toca |
+| --------- | ------------- |
+| Colores planos | `Get-Palette` en `ui/Design/Theme.ps1` |
+| Degradados | `$GradientTokens`, en el mismo archivo. **Se componen de dos claves de la paleta** |
+| Las manchas del fondo | `ui/Components/Shell/Backdrop.ps1` (posición, tamaño y vaivén) |
+| Entrada en cascada | `Start-StaggeredEnter`, y quién se mueve lo dice `Get-EnterTarget` |
+| Halo de la tarjeta | `Add-HoverLift -Glow <clave>`; el color se resuelve al pasar el ratón |
+| Marca del menú y pastilla de modo | `Move-NavIndicator` / `Move-ModeIndicator` |
+| Lista o cuadrícula | opción `grid` de `ui/Index/ViewOptionsIndex.ps1`; el panel lo elige `New-CategoryPanel` |
+| Mica / Acrílico | `ui/Components/Shell/WindowMaterial.ps1` + `core/Interop/SystemBackdrop.ps1` |
+
+**La cuadrícula no es una vista aparte.** `ui/Views/OptimizationsListView.ps1` pregunta
+por la opción y elige panel (`StackPanel` o `WrapPanel`) y pieza (`New-CategoryCard` o
+`New-CategoryTile`). Las dos piezas comparten las píldoras (`New-CategoryStats`), así
+que no pueden acabar contando cosas distintas según cómo se mire la pantalla. En
+cuadrícula la descripción lleva **alto fijo**: con alto máximo, la baldosa de
+descripción corta sube y deja la fila dentada.
+
+**Un número que sube pasa por `Start-CountUp`**, y sin ventana viva escribe el valor
+final y se acaba. Sin bucle de mensajes el temporizador no late nunca y la cifra se
+quedaría clavada en cero — que es lo que verían las pruebas.
+
 ## Al implementar tweaks reales
 
 Ya hay lógica real: `core/` **lee** el registro. Escribir sigue sin hacerse.
 
 - La lógica de sistema vive en `core/`, nunca dentro de las vistas ni de los componentes.
-- **`core/` está dividido por lo que toca de Windows**, no por tamaño: `core/Registry/` (leer y, algún día, escribir el registro) y `core/Diagnostics/` (el registro de actividad). Un mecanismo nuevo — red, servicios, energía — es una subcarpeta nueva ahí dentro, y entra al `.exe` sola.
+- **`core/` está dividido por lo que toca de Windows**, no por tamaño: `core/Registry/` (leer y, algún día, escribir el registro), `core/Interop/` (llamadas a la API de Windows: hoy solo Mica y Acrílico) y `core/Diagnostics/` (el registro de actividad). Un mecanismo nuevo — red, servicios, energía — es una subcarpeta nueva ahí dentro, y entra al `.exe` sola.
 - **Nada de `core/` lanza hacia arriba.** Una clave inexistente o sin permisos es una respuesta, no un error: se devuelve un estado (`read` / `missing` / `denied` / `badpath`) y la interfaz lo pinta. Una excepción escapando de aquí tumbaría la ventana.
 - **Un DWord llega como `Int32` con signo.** `0xFFFFFFFF` se lee como `-1`. Hay que reinterpretarlo sin signo (`Format-RegistryValue`) o los valores altos salen negativos y no cuadran con lo declarado.
 - **Se abre siempre `RegistryView::Registry64`.** Si el `.exe` se compilara a 32 bits, `HKLM\SOFTWARE` se redirigiría a `Wow6432Node` en silencio.

@@ -41,12 +41,24 @@ Add-Type -AssemblyName System.Xaml
 # ---- inicio incluido: ui/Design/Theme.ps1 ----
 # ============================================================
 # Theme.ps1
-# Sistema de diseño: paletas claro/oscuro, iconos Fluent,
-# tipografía y helpers de animación.
+# Sistema de diseño: paletas claro/oscuro, degradados, iconos
+# Fluent, tipografía y helpers de animación.
 # Solo apariencia, ninguna lógica de negocio.
 #
 # Los glifos se referencian por codepoint (no como carácter
 # literal) para que el archivo no dependa de la codificación.
+#
+# HAY DOS FAMILIAS DE COLOR y se declaran por separado:
+#
+#   Get-Palette      colores planos -> un SolidColorBrush por clave.
+#   $GradientTokens  degradados     -> se COMPONEN a partir de dos
+#                    claves de la paleta, así que no hay ni un color
+#                    escrito dos veces y el degradado cambia solo al
+#                    alternar claro/oscuro.
+#
+# Las dos se publican en Window.Resources, así que el XAML las
+# consume con {DynamicResource <clave>} y el código con
+# SetResourceReference sin distinguir cuál es cuál.
 # ============================================================
 
 # ---- Catálogo de iconos: Segoe Fluent Icons (nativa de Windows 11) ----
@@ -79,41 +91,124 @@ function Glyph {
 }
 
 # ---- Paletas ------------------------------------------------
-# Cada clave se publica como SolidColorBrush en Window.Resources,
-# asi que el XAML la consume con {DynamicResource <clave>} y el
-# codigo con SetResourceReference: cambiar de tema repinta todo
-# en vivo, sin reconstruir las vistas.
+# Cada clave se publica como SolidColorBrush en Window.Resources.
+#
+# Las claves terminadas en 2 son el SEGUNDO tono de cada color: casi
+# nunca se usan sueltas, están para que $GradientTokens pueda
+# componer el degradado. Glow1..3 llevan el alfa incluido
+# (#AARRGGBB) porque son las manchas del fondo, que son
+# translúcidas por definición.
 function Get-Palette {
     param([string]$Name)
 
     if ($Name -eq 'Dark') {
         @{
-            Bg0 = '#12141A'; Bg1 = '#181B22'; Bg2 = '#1E222A'
+            Bg0 = '#12141A'; Bg1 = '#181B22'; Bg2 = '#1E222A'; BgTint = '#0D1016'
             Surface = '#1E222A'; SurfaceHover = '#252A34'; SurfaceSunken = '#15181E'
+            CardTop = '#272C36'; CardBottom = '#1C2028'
+            CardHoverTop = '#2F3540'; CardHoverBottom = '#22272F'
             Stroke = '#2C323D'; StrokeHover = '#3D4552'; StrokeFocus = '#4D8DFF'
             Text = '#EDEFF3'; TextMuted = '#A3ABB9'; TextFaint = '#6E7787'
             Accent = '#4D8DFF'; AccentHover = '#6EA4FF'; AccentSoft = '#1B2C4A'; AccentText = '#FFFFFF'
+            Accent2 = '#A78BFA'; Accent2Soft = '#2A2350'
             Success = '#3DD68C'; SuccessSoft = '#122A20'
+            Success2 = '#2DD4BF'; Success2Soft = '#0F2A2A'
             Warn = '#F0B429'; WarnSoft = '#2E2412'
+            Warn2 = '#FB923C'; Warn2Soft = '#2E1F12'
             Danger = '#FF6B81'; DangerSoft = '#331821'
+            Danger2 = '#F472B6'; Danger2Soft = '#2E1826'
+            Glow1 = '#4D4D8DFF'; Glow2 = '#42A78BFA'; Glow3 = '#332DD4BF'
+            BgGlass = '#B316191F'; BgGlassTint = '#B30D1016'; SurfaceGlass = '#C2181B22'
             TrackOff = '#3D4552'; Knob = '#FFFFFF'
             ScrollThumb = '#3D4552'; Overlay = '#000000'
         }
     }
     else {
         @{
-            Bg0 = '#F2F4F7'; Bg1 = '#FFFFFF'; Bg2 = '#F7F9FC'
+            Bg0 = '#F2F4F7'; Bg1 = '#FFFFFF'; Bg2 = '#F7F9FC'; BgTint = '#E8EDF6'
             Surface = '#FFFFFF'; SurfaceHover = '#FAFBFD'; SurfaceSunken = '#F0F2F6'
+            CardTop = '#FFFFFF'; CardBottom = '#F6F9FD'
+            CardHoverTop = '#FFFFFF'; CardHoverBottom = '#EDF3FC'
             Stroke = '#E6E9EF'; StrokeHover = '#CFD6E2'; StrokeFocus = '#2563EB'
             Text = '#15181E'; TextMuted = '#59616F'; TextFaint = '#8B93A2'
             Accent = '#2563EB'; AccentHover = '#1D4FD8'; AccentSoft = '#E9F0FE'; AccentText = '#FFFFFF'
+            Accent2 = '#7C3AED'; Accent2Soft = '#F0E9FE'
             Success = '#0E9F6E'; SuccessSoft = '#E6F7F0'
+            Success2 = '#0891B2'; Success2Soft = '#E3F4F9'
             Warn = '#C2680A'; WarnSoft = '#FDF3E5'
+            Warn2 = '#DFA008'; Warn2Soft = '#FBF7DF'
             Danger = '#E11D48'; DangerSoft = '#FDEAEF'
+            Danger2 = '#BE185D'; Danger2Soft = '#FCE7F0'
+            Glow1 = '#2E2563EB'; Glow2 = '#287C3AED'; Glow3 = '#1F0E9F6E'
+            BgGlass = '#BFF6F8FC'; BgGlassTint = '#BFE8EDF6'; SurfaceGlass = '#CCFFFFFF'
             TrackOff = '#CBD2DE'; Knob = '#FFFFFF'
             ScrollThumb = '#C6CDDA'; Overlay = '#0B1220'
         }
     }
+}
+
+<#
+    Los degradados del tema.
+
+    Cada uno se COMPONE a partir de dos claves de la paleta, nunca
+    de colores propios: así el degradado no puede desafinar con el
+    color plano del que sale, y alternar claro/oscuro lo repinta sin
+    que haya que declarar nada dos veces.
+
+        Kind   'Linear' -> de un punto a otro, en coordenadas 0..1
+                           del propio elemento.
+               'Radial' -> del centro hacia fuera, del color a ese
+                           mismo color transparente. Son las manchas
+                           del fondo.
+
+    El nombre es la clave con la que se pide: {DynamicResource
+    AccentGradient}. La convención '<Color>Gradient' la aprovecha
+    Get-GradientKey para sacar el degradado de una categoría a
+    partir de su clave de acento, sin saber qué categorías hay.
+#>
+$GradientTokens = [ordered]@{
+
+    # Fondo de la ventana: el plano de siempre, con una caída fría.
+    'BgGradient'          = @{ Kind = 'Linear'; From = 'Bg0';   To = 'BgTint'; Start = '0,0'; End = '0.35,1' }
+
+    # El mismo fondo, translúcido. Solo se usa con Mica o Acrílico
+    # puestos: si la ventana fuera opaca no se vería el material del
+    # sistema (ver ui/Components/Shell/WindowMaterial.ps1).
+    'BgGlassGradient'     = @{ Kind = 'Linear'; From = 'BgGlass'; To = 'BgGlassTint'; Start = '0,0'; End = '0.35,1' }
+
+    # Tarjetas: luz arriba, sombra abajo. Es el "vidrio" de las
+    # interfaces modernas, y en claro es casi imperceptible a
+    # propósito: un degradado que se nota es un degradado que cansa.
+    'CardGradient'        = @{ Kind = 'Linear'; From = 'CardTop';      To = 'CardBottom';      Start = '0,0'; End = '0,1' }
+    'CardHoverGradient'   = @{ Kind = 'Linear'; From = 'CardHoverTop'; To = 'CardHoverBottom'; Start = '0,0'; End = '0,1' }
+
+    # Acentos: el color de siempre y su segundo tono, en diagonal.
+    'AccentGradient'      = @{ Kind = 'Linear'; From = 'Accent';      To = 'Accent2';      Start = '0,0'; End = '1,1' }
+    'AccentSoftGradient'  = @{ Kind = 'Linear'; From = 'AccentSoft';  To = 'Accent2Soft';  Start = '0,0'; End = '1,1' }
+    'SuccessGradient'     = @{ Kind = 'Linear'; From = 'Success';     To = 'Success2';     Start = '0,0'; End = '1,1' }
+    'SuccessSoftGradient' = @{ Kind = 'Linear'; From = 'SuccessSoft'; To = 'Success2Soft'; Start = '0,0'; End = '1,1' }
+    'WarnGradient'        = @{ Kind = 'Linear'; From = 'Warn';        To = 'Warn2';        Start = '0,0'; End = '1,1' }
+    'WarnSoftGradient'    = @{ Kind = 'Linear'; From = 'WarnSoft';    To = 'Warn2Soft';    Start = '0,0'; End = '1,1' }
+    'DangerGradient'      = @{ Kind = 'Linear'; From = 'Danger';      To = 'Danger2';      Start = '0,0'; End = '1,1' }
+    'DangerSoftGradient'  = @{ Kind = 'Linear'; From = 'DangerSoft';  To = 'Danger2Soft';  Start = '0,0'; End = '1,1' }
+
+    # Manchas del fondo (ui/Components/Shell/Backdrop.ps1). Radiales
+    # para que se desvanezcan solas: así no hace falta un
+    # BlurEffect, que sobre superficies grandes es lo caro de verdad.
+    'Glow1Brush'          = @{ Kind = 'Radial'; From = 'Glow1' }
+    'Glow2Brush'          = @{ Kind = 'Radial'; From = 'Glow2' }
+    'Glow3Brush'          = @{ Kind = 'Radial'; From = 'Glow3' }
+}
+
+<#
+    Todas las claves de color del tema: las planas y los degradados.
+
+    Existe para que tests/Source/Rules.Tests.ps1 pueda comprobar que
+    un Set-TextFg / Set-BoxBg pide algo que de verdad está
+    publicado, sin tener que saber de qué familia es.
+#>
+function Get-ThemeKeys {
+    @((Get-Palette 'Light').Keys) + @($GradientTokens.Keys)
 }
 
 $CurrentTheme = 'Light'
@@ -124,33 +219,117 @@ function Set-AppTheme {
     $palette = Get-Palette $Name
     foreach ($key in $palette.Keys) {
         $color = [System.Windows.Media.ColorConverter]::ConvertFromString($palette[$key])
-        $existing = $Window.Resources[$key]
-
-        # Se muta el color del pincel que ya existe en lugar de sustituirlo:
-        # reemplazar un recurso referenciado por DynamicResource dispara una
-        # reevaluación que WPF rechaza, y además así todos los consumidores
-        # (XAML y código) se repintan solos al compartir la misma instancia.
-        if ($existing -is [System.Windows.Media.SolidColorBrush] -and -not $existing.IsFrozen) {
-            $existing.Color = $color
-        }
-        else {
-            # WPF congela al cargar el XAML los pinceles que considera
-            # compartibles, y un Freezable congelado no se puede mutar: hay
-            # que sustituirlo por uno nuevo (que ya nace descongelado, así
-            # que los cambios de tema siguientes sí lo mutan).
-            # Se usa Add() y no el indexador porque el indexador guarda el
-            # PSObject que envuelve al pincel, y WPF lo rechaza al resolver
-            # el DynamicResource con "no es un valor válido para Foreground".
-            $fresh = New-Object System.Windows.Media.SolidColorBrush
-            $fresh.Color = $color
-            $Window.Resources.Remove($key)
-            $Window.Resources.Add($key, $fresh)
-        }
+        Set-ThemeBrush $Window $key (New-SolidBrush $color)
     }
+
+    # Los degradados van después: se componen a partir de los
+    # colores planos, así que necesitan la paleta ya resuelta.
+    foreach ($key in $GradientTokens.Keys) {
+        Set-ThemeBrush $Window $key (New-GradientBrush $palette $GradientTokens[$key])
+    }
+
     $script:CurrentTheme = $Name
 }
 
 function Get-AppTheme { $script:CurrentTheme }
+
+<#
+    Publica un pincel en el tema, mutando el que ya hubiera.
+
+    Se muta en lugar de sustituir porque todos los consumidores
+    -XAML y código- comparten la misma instancia: mutar los repinta
+    a todos sin reevaluar ningún DynamicResource.
+
+    Solo cuando el pincel está CONGELADO hay que sustituirlo. WPF
+    congela al cargar el XAML los que considera compartibles, y un
+    Freezable congelado no admite cambios; el de repuesto nace
+    descongelado, así que a partir del segundo cambio de tema ya se
+    muta como los demás.
+
+    Al sustituir se usa Add() y NO el indexador: el indexador guarda
+    el PSObject que envuelve al pincel, y WPF lo rechaza al resolver
+    el DynamicResource con "no es un valor válido para Foreground".
+#>
+function Set-ThemeBrush {
+    param($Window, [string]$Key, $Brush)
+
+    $existing = $Window.Resources[$Key]
+
+    if ($existing -is [System.Windows.Media.SolidColorBrush] -and
+        $Brush -is [System.Windows.Media.SolidColorBrush] -and
+        -not $existing.IsFrozen) {
+        $existing.Color = $Brush.Color
+        return
+    }
+
+    # Un degradado se muta parada a parada. Si el número de paradas
+    # no coincide es que ha cambiado la definición del token: se
+    # sustituye entero, que es lo único correcto.
+    if ($existing -is [System.Windows.Media.GradientBrush] -and
+        $Brush -is [System.Windows.Media.GradientBrush] -and
+        -not $existing.IsFrozen -and
+        $existing.GradientStops.Count -eq $Brush.GradientStops.Count) {
+        for ($i = 0; $i -lt $Brush.GradientStops.Count; $i++) {
+            $existing.GradientStops[$i].Color = $Brush.GradientStops[$i].Color
+        }
+        return
+    }
+
+    $Window.Resources.Remove($Key)
+    $Window.Resources.Add($Key, $Brush)
+}
+
+function New-SolidBrush {
+    param($Color)
+    $brush = New-Object System.Windows.Media.SolidColorBrush
+    $brush.Color = $Color
+    $brush
+}
+
+# Construye el pincel de un token a partir de la paleta ya resuelta.
+function New-GradientBrush {
+    param($Palette, $Token)
+
+    $from = [System.Windows.Media.ColorConverter]::ConvertFromString($Palette[$Token.From])
+
+    if ($Token.Kind -eq 'Radial') {
+        # Se desvanece hacia ESE MISMO color con alfa 0: hacia
+        # transparente-negro dejaría un halo sucio en el tema claro.
+        $edge = [System.Windows.Media.Color]::FromArgb(0, $from.R, $from.G, $from.B)
+        $radial = New-Object System.Windows.Media.RadialGradientBrush
+        $radial.GradientStops.Add((New-Object System.Windows.Media.GradientStop $from, 0.0))
+        $radial.GradientStops.Add((New-Object System.Windows.Media.GradientStop $edge, 1.0))
+        return $radial
+    }
+
+    $to = [System.Windows.Media.ColorConverter]::ConvertFromString($Palette[$Token.To])
+    $linear = New-Object System.Windows.Media.LinearGradientBrush
+    $linear.StartPoint = [System.Windows.Point]::Parse($Token.Start)
+    $linear.EndPoint   = [System.Windows.Point]::Parse($Token.End)
+    $linear.GradientStops.Add((New-Object System.Windows.Media.GradientStop $from, 0.0))
+    $linear.GradientStops.Add((New-Object System.Windows.Media.GradientStop $to,   1.0))
+    $linear
+}
+
+<#
+    El degradado que le toca a una clave de color plana.
+
+        Get-GradientKey 'Warn'      -> 'WarnGradient'
+        Get-GradientKey 'WarnSoft'  -> 'WarnSoftGradient'
+        Get-GradientKey 'TextMuted' -> 'TextMuted'   (no tiene: se
+                                                      devuelve tal cual)
+
+    Sirve para que una pieza pueda pedir "la versión en degradado de
+    lo que me han pasado" sin saber qué categorías existen ni qué
+    colores tienen. Lo usa New-IconTile.
+#>
+function Get-GradientKey {
+    param([string]$Key)
+
+    $candidate = $Key + 'Gradient'
+    if ($GradientTokens.Contains($candidate)) { return $candidate }
+    $Key
+}
 
 # ---- Helpers de recursos dinámicos --------------------------
 # Enlazan una propiedad al recurso del tema, de modo que los
@@ -158,6 +337,15 @@ function Get-AppTheme { $script:CurrentTheme }
 function Set-TextFg  { param($El, [string]$Key) $El.SetResourceReference([System.Windows.Controls.TextBlock]::ForegroundProperty, $Key) }
 function Set-BoxBg   { param($El, [string]$Key) $El.SetResourceReference([System.Windows.Controls.Border]::BackgroundProperty, $Key) }
 function Set-BoxLine { param($El, [string]$Key) $El.SetResourceReference([System.Windows.Controls.Border]::BorderBrushProperty, $Key) }
+
+# El relleno de una figura (Ellipse, Rectangle) tampoco es la
+# Background de un Border: son propiedades distintas. Lo usan las
+# manchas del fondo.
+function Set-ShapeFill { param($El, [string]$Key) $El.SetResourceReference([System.Windows.Shapes.Shape]::FillProperty, $Key) }
+
+# Y la de un panel (Grid, StackPanel) es una TERCERA. La barra de
+# título es un Grid, así que con la de Border no le pasaría nada.
+function Set-PanelBg { param($El, [string]$Key) $El.SetResourceReference([System.Windows.Controls.Panel]::BackgroundProperty, $Key) }
 
 # La Background de una ventana o de un control con plantilla NO es
 # la del Border: son propiedades distintas y con la de Border no
@@ -167,19 +355,50 @@ function Set-WinBg { param($El, [string]$Key) $El.SetResourceReference([System.W
 function Get-Brush { param($Window, [string]$Key) $Window.FindResource($Key) }
 
 # ---- Animación ----------------------------------------------
+<#
+    Curva de aceleración.
+
+        New-Ease                  suave y de toda la vida
+        New-Ease -Kind 'Back'     se pasa de largo y vuelve
+        New-Ease -Kind 'Quint'    arranque y frenada más marcados
+
+    'Back' es lo que le da al interruptor sensación de peso: el knob
+    rebasa un pelo su sitio y se asienta.
+#>
 function New-Ease {
-    param([string]$Mode = 'EaseOut', [double]$Amount = 3)
-    $e = New-Object System.Windows.Media.Animation.CubicEase
-    $e.EasingMode = $Mode
-    $e
+    param([string]$Mode = 'EaseOut', [string]$Kind = 'Cubic', [double]$Amount = 0.5)
+
+    if ($Kind -eq 'Back') {
+        $ease = New-Object System.Windows.Media.Animation.BackEase
+        $ease.Amplitude = $Amount
+    }
+    elseif ($Kind -eq 'Quint') {
+        $ease = New-Object System.Windows.Media.Animation.QuinticEase
+    }
+    else {
+        $ease = New-Object System.Windows.Media.Animation.CubicEase
+    }
+
+    $ease.EasingMode = $Mode
+    $ease
 }
 
+<#
+    Animación de un número (opacidad, ancho, desplazamiento...).
+
+    -Delay retrasa el arranque SIN tocar el valor de partida:
+    durante la espera la propiedad se queda en $From. Es lo que
+    permite la entrada en cascada, porque cada tarjeta espera su
+    turno invisible en vez de aparecer y luego moverse.
+#>
 function New-Anim {
-    param([double]$From, [double]$To, [int]$Ms = 180)
+    param([double]$From, [double]$To, [int]$Ms = 180, [int]$Delay = 0, $Ease)
+
     $a = New-Object System.Windows.Media.Animation.DoubleAnimation
     $a.From = $From; $a.To = $To
     $a.Duration = New-Object System.Windows.Duration ([TimeSpan]::FromMilliseconds($Ms))
-    $a.EasingFunction = New-Ease
+    if ($Delay -gt 0) { $a.BeginTime = [TimeSpan]::FromMilliseconds($Delay) }
+    if ($Ease) { $a.EasingFunction = $Ease } else { $a.EasingFunction = New-Ease }
     $a
 }
 
@@ -194,28 +413,97 @@ function Start-EnterTransition {
     $Element.BeginAnimation([System.Windows.UIElement]::OpacityProperty, (New-Anim 0 1 $Ms))
 }
 
-# Elevación al pasar el ratón: sombra más marcada + 2px arriba.
-#
-# Quien escucha al ratón NO es la tarjeta, sino un envoltorio
-# transparente que ocupa su hueco y no se mueve nunca. En WPF el
-# RenderTransform arrastra consigo la zona sensible al ratón: si
-# escuchara la propia tarjeta, con el cursor parado sobre sus últimos
-# píxeles subirla lo dejaría fuera (MouseLeave), bajarla lo volvería a
-# meter dentro (MouseEnter) y el efecto no pararía jamás.
-#
-# Devuelve el envoltorio: es lo que hay que colgar del panel, y es
-# también donde van el cursor y el clic, para que respondan en todo el
-# rectángulo de la tarjeta -incluida la franja que deja libre al subir-.
+<#
+    Entrada EN CASCADA: cada hijo del panel entra un poco después
+    que el anterior.
+
+    Es la diferencia entre "ha aparecido una lista" y "la lista se
+    está montando": el ojo sigue el recorrido y la pantalla parece
+    responder, aunque tarde exactamente lo mismo.
+
+    El retardo se corta en -MaxSteps para que una sección de treinta
+    ajustes no tarde tres segundos en terminar de aparecer; a partir
+    de ahí todos entran a la vez.
+#>
+function Start-StaggeredEnter {
+    param($Panel, [int]$Ms = 300, [double]$Slide = 14, [int]$StepMs = 45, [int]$MaxSteps = 9)
+
+    $Panel.Opacity = 1
+    $index = 0
+
+    foreach ($child in $Panel.Children) {
+        $steps = $index
+        if ($steps -gt $MaxSteps) { $steps = $MaxSteps }
+        $delay = $steps * $StepMs
+
+        $child.Opacity = 0
+        $child.BeginAnimation([System.Windows.UIElement]::OpacityProperty, (New-Anim 0 1 $Ms $delay))
+
+        $target = Get-EnterTarget $child
+        if ($target.RenderTransform -isnot [System.Windows.Media.TranslateTransform]) {
+            $target.RenderTransform = New-Object System.Windows.Media.TranslateTransform
+        }
+        $target.RenderTransform.BeginAnimation(
+            [System.Windows.Media.TranslateTransform]::YProperty,
+            (New-Anim $Slide 0 $Ms $delay))
+
+        $index++
+    }
+}
+
+<#
+    Quién se mueve en la entrada en cascada.
+
+    Si el hijo es el envoltorio quieto de Add-HoverLift, el que se
+    desplaza es la tarjeta de DENTRO: el envoltorio no se mueve
+    jamás, porque en WPF mover algo mueve también su zona sensible
+    al ratón y ahí empieza el bucle de la regla 21. Por eso el
+    envoltorio se marca con su Uid al crearlo, en vez de adivinarlo
+    mirando la forma del árbol.
+#>
+function Get-EnterTarget {
+    param($Element)
+
+    if ($Element.Uid -eq 'lift' -and $Element.Children.Count -gt 0) {
+        return $Element.Children[0]
+    }
+    $Element
+}
+
+<#
+    Elevación al pasar el ratón: la tarjeta sube 3px y suelta un
+    halo de SU color.
+
+    -Glow es la clave de tema del halo ('Accent', 'Warn'...). El
+    color se resuelve al pasar el ratón y no al crear la tarjeta,
+    para que alternar claro/oscuro no deje el halo del tema
+    anterior; la clave viaja en el Tag de la tarjeta, nada de
+    closures (regla 4). Sin -Glow la sombra es la neutra de siempre.
+
+    Quien escucha al ratón NO es la tarjeta, sino un envoltorio
+    transparente que ocupa su hueco y no se mueve nunca. En WPF el
+    RenderTransform arrastra consigo la zona sensible al ratón: si
+    escuchara la propia tarjeta, con el cursor parado sobre sus
+    últimos píxeles subirla lo dejaría fuera (MouseLeave), bajarla
+    lo volvería a meter dentro (MouseEnter) y el efecto no pararía
+    jamás.
+
+    Devuelve el envoltorio: es lo que hay que colgar del panel, y es
+    también donde van el cursor y el clic, para que respondan en
+    todo el rectángulo de la tarjeta -incluida la franja que deja
+    libre al subir-.
+#>
 function Add-HoverLift {
-    param($Border)
+    param($Border, [string]$Glow)
 
     $shadow = New-Object System.Windows.Media.Effects.DropShadowEffect
     $shadow.Color = [System.Windows.Media.Colors]::Black
-    $shadow.Direction = 270; $shadow.ShadowDepth = 1
-    $shadow.BlurRadius = 8;  $shadow.Opacity = 0.05
+    $shadow.Direction = 270; $shadow.ShadowDepth = 2
+    $shadow.BlurRadius = 10; $shadow.Opacity = 0.05
     $Border.Effect = $shadow
 
     $Border.RenderTransform = New-Object System.Windows.Media.TranslateTransform
+    if ($Glow) { $Border.Tag = $Glow }
 
     # El margen se muda al envoltorio: así su área transparente es
     # exactamente la de la tarjeta y el hueco entre tarjetas sigue
@@ -226,24 +514,52 @@ function Add-HoverLift {
     $Border.Margin = New-Object System.Windows.Thickness 0
     $slot.Children.Add($Border) | Out-Null
 
+    # La marca que reconoce Get-EnterTarget: este envoltorio no se
+    # mueve, se mueve su hijo.
+    $slot.Uid = 'lift'
+
     # Nada de closures (regla 4): la tarjeta es el único hijo del
     # envoltorio, así que el manejador la saca del emisor.
     $slot.Add_MouseEnter({
         param($s, $e)
         $card = $s.Children[0]
-        $card.RenderTransform.BeginAnimation([System.Windows.Media.TranslateTransform]::YProperty, (New-Anim 0 (-2) 160))
-        $card.Effect.BeginAnimation([System.Windows.Media.Effects.DropShadowEffect]::OpacityProperty, (New-Anim 0.05 0.16 160))
-        $card.Effect.BeginAnimation([System.Windows.Media.Effects.DropShadowEffect]::BlurRadiusProperty, (New-Anim 8 20 160))
+        Set-GlowColor $card
+        $card.RenderTransform.BeginAnimation([System.Windows.Media.TranslateTransform]::YProperty, (New-Anim 0 (-3) 170))
+        $card.Effect.BeginAnimation([System.Windows.Media.Effects.DropShadowEffect]::OpacityProperty, (New-Anim 0.05 0.30 170))
+        $card.Effect.BeginAnimation([System.Windows.Media.Effects.DropShadowEffect]::BlurRadiusProperty, (New-Anim 10 26 170))
     })
     $slot.Add_MouseLeave({
         param($s, $e)
         $card = $s.Children[0]
-        $card.RenderTransform.BeginAnimation([System.Windows.Media.TranslateTransform]::YProperty, (New-Anim (-2) 0 160))
-        $card.Effect.BeginAnimation([System.Windows.Media.Effects.DropShadowEffect]::OpacityProperty, (New-Anim 0.16 0.05 160))
-        $card.Effect.BeginAnimation([System.Windows.Media.Effects.DropShadowEffect]::BlurRadiusProperty, (New-Anim 20 8 160))
+        $card.RenderTransform.BeginAnimation([System.Windows.Media.TranslateTransform]::YProperty, (New-Anim (-3) 0 170))
+        $card.Effect.BeginAnimation([System.Windows.Media.Effects.DropShadowEffect]::OpacityProperty, (New-Anim 0.30 0.05 170))
+        $card.Effect.BeginAnimation([System.Windows.Media.Effects.DropShadowEffect]::BlurRadiusProperty, (New-Anim 26 10 170))
     })
 
     $slot
+}
+
+<#
+    Tiñe la sombra de una tarjeta con el color que lleva anotado en
+    su Tag.
+
+    Sin Tag, sin ventana o con una clave que no sea un color plano
+    se queda la sombra negra de siempre: un halo es un adorno y no
+    puede tumbar nada.
+#>
+function Set-GlowColor {
+    param($Card)
+
+    $key = [string]$Card.Tag
+    if (-not $key -or -not $Card.Effect) { return }
+
+    $window = [System.Windows.Window]::GetWindow($Card)
+    if (-not $window) { return }
+
+    $brush = $window.TryFindResource($key)
+    if ($brush -is [System.Windows.Media.SolidColorBrush]) {
+        $Card.Effect.Color = $brush.Color
+    }
 }
 
 # ---- fin incluido: ui/Design/Theme.ps1 ----
@@ -291,16 +607,107 @@ function New-Icon {
     $t
 }
 
-# Cuadro redondeado con el icono de la categoría.
+<#
+    Cuadro redondeado con el icono de la categoría.
+
+    Fondo e icono van en DEGRADADO, no en color plano: es el mismo
+    color de siempre cayendo hacia su segundo tono, y es lo que hace
+    que un icono parezca una pieza y no un recorte. Se pide con
+    Get-GradientKey, que devuelve la clave plana tal cual si ese
+    color no tiene degradado declarado -- así esto sigue funcionando
+    con cualquier acento nuevo sin tocar nada aquí.
+
+    El redondeo es proporcional al tamaño: un cuadro de 24 con las
+    esquinas de uno de 44 se ve como una pastilla.
+#>
 function New-IconTile {
     param([string]$Name, [string]$Fg = 'Accent', [string]$Bg = 'AccentSoft', [double]$Size = 42)
     $b = New-Object System.Windows.Controls.Border
     $b.Width = $Size; $b.Height = $Size
-    $b.CornerRadius = New-Object System.Windows.CornerRadius 12
+    $b.CornerRadius = New-Object System.Windows.CornerRadius ($Size * 0.29)
     $b.VerticalAlignment = 'Center'
-    Set-BoxBg $b $Bg
-    $b.Child = (New-Icon $Name ($Size * 0.44) $Fg)
+    Set-BoxBg $b (Get-GradientKey $Bg)
+    $b.Child = (New-Icon $Name ($Size * 0.44) (Get-GradientKey $Fg))
     $b
+}
+
+<#
+    Cuenta un número desde cero hasta su valor.
+
+        Start-CountUp $Window $texto '{0}/112' 65
+
+    Un número que sube dice "esto se acaba de calcular"; el mismo
+    número puesto de golpe no dice nada. Dura medio segundo y se
+    frena al final, que es cuando el ojo lee la cifra.
+
+    SIN VENTANA VIVA NO SE ANIMA: se escribe el valor final y se
+    sale. Sin bucle de mensajes el temporizador no llega a latir
+    nunca, y el número se quedaría clavado en cero -- que es
+    exactamente lo que verían las pruebas.
+
+    Todos los números en marcha comparten UN temporizador. Uno por
+    píldora serían veinte relojes latiendo a la vez para escribir
+    veinte cifras.
+#>
+$CountUpQueue   = New-Object System.Collections.Generic.List[object]
+$CountUpTimer   = $null
+$CountUpTotalMs = 520.0
+$CountUpTickMs  = 30
+
+function Start-CountUp {
+    param($Window, $TextBlock, [string]$Format, [int]$Target)
+
+    if (-not $TextBlock) { return }
+
+    if (-not $Window -or -not $Window.IsLoaded -or $Target -le 0) {
+        $TextBlock.Text = $Format -f $Target
+        return
+    }
+
+    $TextBlock.Text = $Format -f 0
+    $CountUpQueue.Add([PSCustomObject]@{
+        Text    = $TextBlock
+        Format  = $Format
+        Target  = $Target
+        Started = [datetime]::UtcNow
+    })
+
+    if (-not $script:CountUpTimer) {
+        $script:CountUpTimer = New-Object System.Windows.Threading.DispatcherTimer
+        $script:CountUpTimer.Interval = [TimeSpan]::FromMilliseconds($CountUpTickMs)
+        # El manejador llama a una función del script en vez de
+        # llevar el trabajo dentro: un scriptblock de temporizador
+        # tampoco puede capturar nada (regla 4).
+        $script:CountUpTimer.Add_Tick({ Update-CountUp })
+    }
+    if (-not $script:CountUpTimer.IsEnabled) { $script:CountUpTimer.Start() }
+}
+
+# Un latido: adelanta todos los números y retira los que ya han
+# llegado. Sin nadie contando, el reloj se para solo.
+function Update-CountUp {
+    $now = [datetime]::UtcNow
+    $done = New-Object System.Collections.Generic.List[object]
+
+    foreach ($item in $CountUpQueue) {
+        $progress = ($now - $item.Started).TotalMilliseconds / $CountUpTotalMs
+        if ($progress -ge 1) { $progress = 1 }
+
+        # Frenada cúbica: rápido al principio, se posa al final.
+        $eased = 1 - [Math]::Pow(1 - $progress, 3)
+        $value = [int][Math]::Round($item.Target * $eased)
+
+        # La coma dentro de los paréntesis de un método separa
+        # ARGUMENTOS, así que el -f va aparte (regla 20).
+        $texto = $item.Format -f $value
+        $item.Text.Text = $texto
+
+        if ($progress -ge 1) { $done.Add($item) }
+    }
+
+    foreach ($item in $done) { $CountUpQueue.Remove($item) | Out-Null }
+
+    if ($CountUpQueue.Count -eq 0 -and $script:CountUpTimer) { $script:CountUpTimer.Stop() }
 }
 
 # Píldora de estadística: icono + texto sobre fondo suave.
@@ -508,10 +915,17 @@ function New-ToggleSwitch {
         $ca.EasingFunction = New-Ease
         $s.Background.BeginAnimation([System.Windows.Media.SolidColorBrush]::ColorProperty, $ca)
 
+        # El knob se pasa un pelo de su sitio y se asienta: es lo que
+        # le da sensación de peso, y es la diferencia entre un
+        # interruptor que se mueve y uno que se acciona.
         if ($new) { $to = $info.Travel } else { $to = 0.0 }
         $s.Child.RenderTransform.BeginAnimation(
             [System.Windows.Media.TranslateTransform]::XProperty,
-            (New-Anim $s.Child.RenderTransform.X $to 190))
+            #
+            # La amplitud es baja a propósito: el rebote de un
+            # BackEase se sale del recorrido, y el knob solo tiene 3px
+            # de aire a cada lado antes de asomar por fuera del carril.
+            (New-Anim $s.Child.RenderTransform.X $to 260 0 (New-Ease -Kind 'Back' -Amount 0.35)))
 
         if ($info.Label) {
             if ($new) { $info.Label.Text = T 'On' } else { $info.Label.Text = T 'Off' }
@@ -1730,6 +2144,10 @@ $ViewOptionsIndex = @(
        Hint = "Show the red 'NEW' tags on sections and settings"
        Default = $true;  Visible = $true }
 
+    @{ Id = 'grid';      Icon = 'Grid'; Label = 'Grid view'
+       Hint = 'Show the sections as tiles instead of rows'
+       Default = $false; Visible = $true }
+
 )
 
 # Clave con la que se guarda cada opción en settings.json.
@@ -1979,6 +2397,150 @@ function Export-AppLog {
 }
 
 # ---- fin incluido: core/Diagnostics/Log.ps1 ----
+# ---- inicio incluido: core/Interop/SystemBackdrop.ps1 ----
+# ============================================================
+# core/Interop/SystemBackdrop.ps1
+# El material de fondo de Windows 11: Mica y Acrílico.
+#
+# Es lo unico de todo el proyecto que llama a la API de Windows,
+# y por eso vive en core/: aqui no se sabe que existe una ventana
+# de WPF. Se recibe un descriptor (IntPtr) y se devuelve si el
+# sistema ha aceptado el cambio. Nada mas.
+#
+# COMO NO EXPLOTAR
+#
+#   Nada de aqui lanza. El material es un adorno: si el equipo es
+#   viejo, si falta dwmapi o si la llamada falla, se devuelve
+#   $false y la aplicacion se queda con su fondo propio. Una
+#   excepcion escapando de core/ tumbaria la ventana entera.
+#
+#   El tipo de interoperabilidad se compila UNA vez. Add-Type
+#   lanza si el tipo ya existe, asi que primero se pregunta.
+#
+#   Hace falta Windows 11 22H2 (compilacion 22621) o superior:
+#   DWMWA_SYSTEMBACKDROP_TYPE no existe antes y la llamada
+#   devuelve error. Se comprueba antes de intentarlo.
+#
+# Todos los textos de este archivo estan en ingles o son
+# comentarios: core/ no traduce (ver la regla 15).
+# ============================================================
+
+# DWMWINDOWATTRIBUTE. Los numeros son los de la cabecera dwmapi.h.
+$DwmSystemBackdropType = 38
+$DwmImmersiveDarkMode  = 20
+
+# DWM_SYSTEMBACKDROP_TYPE. 'None' no es "sin material" sino "el
+# que decida el sistema"; para quitarlo se usa Auto/None = 1.
+$SystemBackdropKinds = @{
+    'None'    = 1
+    'Mica'    = 2
+    'Acrylic' = 3
+    'Tabbed'  = 4
+}
+
+# Compilacion minima: Windows 11 22H2.
+$SystemBackdropMinBuild = 22621
+
+function Test-SystemBackdropSupport {
+    [Environment]::OSVersion.Version.Build -ge $SystemBackdropMinBuild
+}
+
+function Get-SystemBackdropKinds {
+    $SystemBackdropKinds.Keys
+}
+
+<#
+    Compila el puente a dwmapi.dll, una sola vez.
+
+    Devuelve $true si el tipo esta disponible. Add-Type compila de
+    verdad la primera vez -unas decimas- y por eso no se hace al
+    cargar el programa sino cuando alguien pide material: quien no
+    lo use no lo paga.
+#>
+function Initialize-SystemBackdrop {
+    if ('OptimizadorPC.Dwm' -as [type]) { return $true }
+
+    $source = @'
+using System;
+using System.Runtime.InteropServices;
+
+namespace OptimizadorPC {
+    public static class Dwm {
+        [DllImport("dwmapi.dll", PreserveSig = true)]
+        public static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int value, int size);
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct Margins {
+            public int Left;
+            public int Right;
+            public int Top;
+            public int Bottom;
+        }
+
+        [DllImport("dwmapi.dll", PreserveSig = true)]
+        public static extern int DwmExtendFrameIntoClientArea(IntPtr hwnd, ref Margins margins);
+    }
+}
+'@
+
+    try {
+        Add-Type -TypeDefinition $source -ErrorAction Stop
+        return $true
+    }
+    catch {
+        return $false
+    }
+}
+
+<#
+    Pone (o quita) el material de fondo de una ventana.
+
+        Set-WindowBackdrop -Handle $hwnd -Kind 'Mica' -Dark $true
+
+    Devuelve $true solo si Windows lo ha aceptado. Cualquier otra
+    cosa -equipo antiguo, descriptor invalido, dwmapi que se queja-
+    es $false, y quien llama se queda con su fondo de siempre.
+
+    -Dark le dice a DWM que el contenido es oscuro, para que el
+    material y el borde de la ventana se tinten a juego. Sin eso,
+    en tema oscuro el marco sigue saliendo claro.
+#>
+function Set-WindowBackdrop {
+    param(
+        [Parameter(Mandatory)][IntPtr]$Handle,
+        [string]$Kind = 'None',
+        [bool]$Dark = $false
+    )
+
+    if ($Handle -eq [IntPtr]::Zero) { return $false }
+    if (-not $SystemBackdropKinds.ContainsKey($Kind)) { return $false }
+    if (-not (Test-SystemBackdropSupport)) { return $false }
+    if (-not (Initialize-SystemBackdrop)) { return $false }
+
+    try {
+        # El material solo se ve donde el marco esta extendido sobre
+        # el area de cliente. -1 en los cuatro lados = toda la
+        # ventana, que es lo que quiere una ventana sin cromo.
+        $margins = New-Object OptimizadorPC.Dwm+Margins
+        $margins.Left = -1; $margins.Right = -1; $margins.Top = -1; $margins.Bottom = -1
+        [OptimizadorPC.Dwm]::DwmExtendFrameIntoClientArea($Handle, [ref]$margins) | Out-Null
+
+        $mode = 0
+        if ($Dark) { $mode = 1 }
+        [OptimizadorPC.Dwm]::DwmSetWindowAttribute($Handle, $DwmImmersiveDarkMode, [ref]$mode, 4) | Out-Null
+
+        $value = $SystemBackdropKinds[$Kind]
+        $result = [OptimizadorPC.Dwm]::DwmSetWindowAttribute($Handle, $DwmSystemBackdropType, [ref]$value, 4)
+
+        # S_OK = 0. Cualquier otro HRESULT es un no.
+        return ($result -eq 0)
+    }
+    catch {
+        return $false
+    }
+}
+
+# ---- fin incluido: core/Interop/SystemBackdrop.ps1 ----
 # ---- inicio incluido: core/Registry/CategoryState.ps1 ----
 # ============================================================
 # core/Registry/CategoryState.ps1
@@ -2823,6 +3385,8 @@ Register-Language 'es' @{
     'Show the registry keys each setting touches' = 'Enseñar las claves del registro que toca cada ajuste'
     'New badges'        = 'Insignias de nuevo'
     "Show the red 'NEW' tags on sections and settings" = "Enseñar las etiquetas rojas de 'nuevo' en secciones y ajustes"
+    'Grid view'         = 'Cuadrícula'
+    'Show the sections as tiles instead of rows' = 'Enseñar las secciones como baldosas en vez de filas'
 
     # ---- Insignias ----
     'NEW' = 'NUEVO'
@@ -2901,6 +3465,11 @@ Register-Language 'es' @{
     'Light or dark colour scheme' = 'Combinación de colores clara u oscura'
     'Light'      = 'Claro'
     'Dark'       = 'Oscuro'
+    'Window material' = 'Material de la ventana'
+    'Let the Windows 11 background show through the app. Needs Windows 11 22H2 or newer' = 'Dejar que se vea el fondo de Windows 11 a través del programa. Requiere Windows 11 22H2 o superior'
+    'Solid'      = 'Opaco'
+    'Mica'       = 'Mica'
+    'Acrylic'    = 'Acrílico'
 
     # ============================================================
     # CONTENIDO: nombres y descripciones de las secciones
@@ -3105,10 +3674,57 @@ Register-Preference @{
         Set-AppTheme -Window (Get-AppWindow) -Name $Value
         Set-AppSetting 'Theme' $Value
         Sync-ThemeButton
+
+        # Con Mica o Acrílico puestos, el material y el borde de la
+        # ventana los tiñe DWM y hay que volver a decirle si el
+        # contenido es claro u oscuro. Sin material no hace nada.
+        Sync-WindowMaterial -Window (Get-AppWindow)
     }
 }
 
 # ---- fin incluido: ui/Data/Preferences/20-Theme.ps1 ----
+# ---- inicio incluido: ui/Data/Preferences/30-Material.ps1 ----
+# ------------------------------------------------------------
+# Opción: material de la ventana
+#
+# Mica y Acrílico son el fondo translúcido de Windows 11: la
+# ventana deja ver el escritorio, borroso y teñido. Lo pone
+# ui/Components/Shell/WindowMaterial.ps1, que explica por qué
+# viene apagado y por qué es EXCLUYENTE con el degradado propio.
+#
+# La lista de opciones es dinámica: en un Windows que no lo
+# admita solo aparece "Solid", en vez de ofrecer algo que no va a
+# hacer nada.
+# ------------------------------------------------------------
+
+Register-Preference @{
+    Order       = 30
+    Id          = 'material'
+    Group       = 'Appearance'
+    Label       = 'Window material'
+    Description = 'Let the Windows 11 background show through the app. Needs Windows 11 22H2 or newer'
+    Type        = 'Choice'
+
+    Options = {
+        $list = @(
+            @{ Value = 'None'; Label = 'Solid' }
+        )
+        if (Test-SystemBackdropSupport) {
+            $list += @{ Value = 'Mica';    Label = 'Mica' }
+            $list += @{ Value = 'Acrylic'; Label = 'Acrylic' }
+        }
+        $list
+    }
+
+    Get = { Get-WindowMaterial }
+
+    Set = {
+        param($Value)
+        Set-WindowMaterialChoice $Value
+    }
+}
+
+# ---- fin incluido: ui/Data/Preferences/30-Material.ps1 ----
 
 # ---- 6. Piezas: los controles concretos ----
 # ---- inicio incluido: ui/Components/Cards/CategoryCard.ps1 ----
@@ -3128,13 +3744,17 @@ function New-CategoryCard {
 
     $card = New-Object System.Windows.Controls.Border
     $card.Style = $Window.FindResource('CardStyle')
-    $card.Padding = New-Object System.Windows.Thickness 18, 15, 20, 15
+    $card.Padding = New-Object System.Windows.Thickness 20, 17, 22, 17
 
     # La tarjeta se eleva al pasar el ratón, y en WPF eso mueve también
     # su zona sensible. Por eso quien oye al ratón -y quien recibe el
     # clic- es el envoltorio quieto que la sostiene, no ella misma:
     # es lo que devuelve Add-HoverLift (ver ui/Design/Theme.ps1).
-    $slot = Add-HoverLift $card
+    #
+    # El halo se tiñe del acento de la sección: Energía se ilumina en
+    # verde y Gaming en ámbar, cada una con SU color, en vez de la
+    # misma sombra gris para todas.
+    $slot = Add-HoverLift $card -Glow $Category.Accent
     $slot.Cursor = 'Hand'
 
     $grid = New-Object System.Windows.Controls.Grid
@@ -3156,7 +3776,7 @@ function New-CategoryCard {
     $name.Text = T $Category.Name
     $name.FontFamily = $Window.FindResource('DisplayFont')
     $name.FontWeight = 'SemiBold'
-    $name.FontSize = 14.5
+    $name.FontSize = 15.5
     Set-TextFg $name 'Text'
     $nameRow.Children.Add($name) | Out-Null
 
@@ -3240,6 +3860,124 @@ function New-CategoryStats {
 }
 
 # ---- fin incluido: ui/Components/Cards/CategoryCard.ps1 ----
+# ---- inicio incluido: ui/Components/Cards/CategoryTile.ps1 ----
+# ============================================================
+# Componente: baldosa de categoría (vista de cuadrícula)
+#
+# La MISMA sección que dibuja CategoryCard, pero en vertical para
+# que quepan varias por fila:
+#
+#     [icono grande]
+#     Nombre  (NEW)
+#     Descripción en dos líneas...
+#     (píldoras)
+#
+# Se enseña cuando está marcada la opción "Grid view" del botón
+# "Vista"; sin marcar sigue saliendo la lista de siempre. Lo
+# decide ui/Views/OptimizationsListView.ps1, no esta pieza.
+#
+# Todo lo demás -el halo del color de la sección, el envoltorio
+# quieto que oye al ratón, la categoría viajando en el Tag- es
+# igual que en la tarjeta de lista y por los mismos motivos; ahí
+# están explicados.
+#
+# Las píldoras las arma New-CategoryStats, que vive en
+# CategoryCard.ps1: son el mismo dato y no pueden acabar contando
+# cosas distintas según cómo se mire la pantalla.
+# ============================================================
+
+# Ancho de cada baldosa. El WrapPanel decide cuántas caben por
+# fila a partir de esto y del ancho de la ventana.
+$CategoryTileWidth = 268.0
+
+function New-CategoryTile {
+    param($Window, $Category)
+
+    $card = New-Object System.Windows.Controls.Border
+    $card.Style = $Window.FindResource('CardStyle')
+    $card.Padding = New-Object System.Windows.Thickness 18, 18, 18, 16
+    $card.Width = $CategoryTileWidth
+
+    # En cuadrícula el hueco va también a la derecha, no solo abajo:
+    # el margen se lo queda el envoltorio (ver Add-HoverLift).
+    $card.Margin = New-Object System.Windows.Thickness 0, 0, 14, 14
+
+    $slot = Add-HoverLift $card -Glow $Category.Accent
+    $slot.Cursor = 'Hand'
+
+    $stack = New-Object System.Windows.Controls.StackPanel
+
+    # --- icono grande ---
+    $tile = New-IconTile $Category.Icon $Category.Accent $Category.AccentSoft 52
+    $tile.HorizontalAlignment = 'Left'
+    $tile.Margin = New-Object System.Windows.Thickness 0, 0, 0, 14
+    $stack.Children.Add($tile) | Out-Null
+
+    # --- nombre, insignia y candado ---
+    # En un Grid y no en un StackPanel: el nombre se lleva la columna
+    # estrella, así que se recorta con puntos suspensivos en vez de
+    # empujar la insignia fuera de la baldosa. En una fila horizontal
+    # no hay ancho que respetar y TextTrimming no llega a actuar.
+    $nameRow = New-Object System.Windows.Controls.Grid
+    Add-GridColumns $nameRow '*', 'Auto', 'Auto'
+
+    $name = New-Object System.Windows.Controls.TextBlock
+    $name.Text = T $Category.Name
+    $name.FontFamily = $Window.FindResource('DisplayFont')
+    $name.FontWeight = 'SemiBold'
+    $name.FontSize = 15.5
+    $name.VerticalAlignment = 'Center'
+    $name.TextTrimming = 'CharacterEllipsis'
+    Set-TextFg $name 'Text'
+    Add-ToColumn $nameRow $name 0
+
+    if ($Category.Badge -and (Get-ViewOption 'badges')) {
+        Add-ToColumn $nameRow (New-Badge $Category.Badge) 1
+    }
+
+    if ($Category.Locked) {
+        $lock = New-Icon 'Lock' 12 'TextFaint'
+        $lock.Margin = New-Object System.Windows.Thickness 9, 1, 0, 0
+        $lock.ToolTip = T 'Locked section: you can look, not change'
+        Add-ToColumn $nameRow $lock 2
+    }
+
+    $stack.Children.Add($nameRow) | Out-Null
+
+    # --- descripción, dos líneas ---
+    # Alto FIJO, no máximo: en una cuadrícula las baldosas de una
+    # misma fila tienen que acabar a la misma altura, y con un alto
+    # máximo la de descripción corta sube y deja la fila dentada.
+    $desc = New-Object System.Windows.Controls.TextBlock
+    $desc.Text = T $Category.Description
+    $desc.FontSize = 11.5
+    $desc.TextWrapping = 'Wrap'
+    $desc.TextTrimming = 'CharacterEllipsis'
+    $desc.Height = 33
+    $desc.Margin = New-Object System.Windows.Thickness 0, 6, 0, 14
+    Set-TextFg $desc 'TextMuted'
+    $stack.Children.Add($desc) | Out-Null
+
+    # --- píldoras ---
+    # Nacen alineadas a la derecha para la vista de lista; aquí van
+    # a la izquierda, bajo el texto, y el primer margen sobra.
+    $stats = New-CategoryStats $Category
+    $stats.HorizontalAlignment = 'Left'
+    $stats.Margin = New-Object System.Windows.Thickness -6, 0, 0, 0
+    $stack.Children.Add($stats) | Out-Null
+
+    $card.Child = $stack
+
+    $slot.Tag = $Category
+    $slot.Add_MouseLeftButtonUp({
+        param($s, $e)
+        Show-View -Name 'Show-CategoryDetailView' -Arguments @{ Category = $s.Tag }
+    })
+
+    $slot
+}
+
+# ---- fin incluido: ui/Components/Cards/CategoryTile.ps1 ----
 # ---- inicio incluido: ui/Components/Cards/PreferenceCard.ps1 ----
 # ============================================================
 # Componente: tarjeta de preferencia
@@ -4293,7 +5031,7 @@ function New-CategorySummary {
     # verdad y se cuentan por él. Si no, por las etiquetas declaradas,
     # que es todo lo que hay.
     $counts = Get-CategoryStatusCounts $Category
-    if ($counts) { Add-StatusPills $row $counts } else { Add-TagPills $row (Get-CategoryCounts $Category) }
+    if ($counts) { Add-StatusPills $Window $row $counts } else { Add-TagPills $Window $row (Get-CategoryCounts $Category) }
 
     $row
 }
@@ -4301,7 +5039,7 @@ function New-CategorySummary {
 # Una píldora por estado real. La de 'desconocido' solo sale si hay
 # alguno: en cuanto se lee todo bien, sobra de la fila.
 function Add-StatusPills {
-    param($Row, $Counts)
+    param($Window, $Row, $Counts)
 
     foreach ($status in Get-SettingStatusNames) {
         $n = [int]$Counts.$status
@@ -4309,30 +5047,39 @@ function Add-StatusPills {
 
         $style = Get-StatusStyle $status
         $tip = (T $style.Count) -f $n, $Counts.Total
-        $Row.Children.Add((New-SummaryPill $style (T $style.Label) $n $Counts.Total $tip)) | Out-Null
+        $Row.Children.Add((New-SummaryPill $Window $style (T $style.Label) $n $Counts.Total $tip)) | Out-Null
     }
 }
 
 # Una píldora por etiqueta declarada. Es lo de siempre, y lo que
 # siguen enseñando las secciones que aún no leen nada del equipo.
 function Add-TagPills {
-    param($Row, $Counts)
+    param($Window, $Row, $Counts)
 
     foreach ($style in $SummaryStyles) {
         $n = [int]$Counts.($style.Tag)
         $tip = (T $style.Tip) -f $n, $Counts.Total
-        $Row.Children.Add((New-SummaryPill $style (T $style.Tag) $n $Counts.Total $tip)) | Out-Null
+        $Row.Children.Add((New-SummaryPill $Window $style (T $style.Tag) $n $Counts.Total $tip)) | Out-Null
     }
 }
 
-# La píldora del resumen: icono, nombre y recuento, todo dentro de la
-# misma cápsula. New-Pill solo trae el icono y el texto, así que el
-# nombre se cuela entre los dos.
+<#
+    La píldora del resumen: icono, nombre y recuento, todo dentro de
+    la misma cápsula. New-Pill solo trae el icono y el texto, así que
+    el nombre se cuela entre los dos.
+
+    El recuento SUBE desde cero al aparecer (Start-CountUp). Es el
+    número que acaba de salir de leer el registro, y verlo contar
+    dice justamente eso. La referencia al texto se coge ANTES de
+    colar el nombre: después ya no está en la misma posición.
+#>
 function New-SummaryPill {
-    param($Style, [string]$Label, [int]$Count, [int]$Total, [string]$Tip)
+    param($Window, $Style, [string]$Label, [int]$Count, [int]$Total, [string]$Tip)
 
     $pill = New-Pill $Style.Icon "$Count/$Total" $Style.Fg $Style.Bg $Tip
     $pill.Margin = New-Object System.Windows.Thickness 4, 0, 4, 0
+
+    $counter = $pill.Child.Children[1]
 
     $text = New-Object System.Windows.Controls.TextBlock
     $text.Text = $Label + '  '
@@ -4341,6 +5088,8 @@ function New-SummaryPill {
     $text.VerticalAlignment = 'Center'
     Set-TextFg $text $Style.Fg
     $pill.Child.Children.Insert(1, $text)
+
+    Start-CountUp $Window $counter ('{0}/' + $Total) $Count
 
     $pill
 }
@@ -4754,6 +5503,145 @@ function Show-PageToast {
 }
 
 # ---- fin incluido: ui/Components/Layout/Toast.ps1 ----
+# ---- inicio incluido: ui/Components/Shell/Backdrop.ps1 ----
+# ============================================================
+# Componente: fondo vivo
+#
+# Las manchas de color que se mueven muy despacio detrás del
+# contenido. Es lo que separa una interfaz "plana" de una que
+# parece tener profundidad, y no cuesta ni un control más: son
+# tres elipses en el Canvas llamado Backdrop de MainWindow.xaml.
+#
+# TRES DECISIONES QUE CONVIENE NO DESHACER
+#
+#   Sin BlurEffect. La mancha se difumina sola porque su relleno
+#   es un degradado RADIAL que acaba en transparente (Glow1Brush
+#   y compañía, en ui/Design/Theme.ps1). Un desenfoque de 150px
+#   sobre media pantalla es de lo más caro que se le puede pedir
+#   a WPF; un degradado es gratis.
+#
+#   A 20 fotogramas por segundo, no a 60. El recorrido dura medio
+#   minuto: a esa velocidad nadie distingue 20 de 60, y la
+#   diferencia es tener o no tener la máquina repintando la
+#   ventana entera sin parar. En un programa que se llama
+#   Optimizador PC eso no es un detalle.
+#
+#   El lienzo es sordo al ratón (IsHitTestVisible="False" en el
+#   XAML). Si no, se comería los clics de las tarjetas.
+#
+# Las posiciones van en tanto por uno del lienzo, así que se
+# recolocan solas al maximizar la ventana; el vaivén, en cambio,
+# va en píxeles y no depende del tamaño.
+# ============================================================
+
+# Cada mancha: su pincel del tema, su tamaño, dónde vive (0..1 del
+# lienzo) y cuánto se mueve. Las duraciones son números primos
+# entre sí a ojo para que no vuelvan a coincidir nunca y el
+# movimiento no se note repetido.
+$BackdropBlobs = @(
+    @{ Fill = 'Glow1Brush'; Size = 760; X = 0.74; Y = 0.02; DriftX =  70; DriftY =  55; Ms = 27000 }
+    @{ Fill = 'Glow2Brush'; Size = 640; X = 0.06; Y = 0.62; DriftX =  60; DriftY = -75; Ms = 34000 }
+    @{ Fill = 'Glow3Brush'; Size = 520; X = 0.46; Y = 0.95; DriftX = -80; DriftY =  50; Ms = 41000 }
+)
+
+$BackdropFrameRate = 20
+
+function Build-Backdrop {
+    param($Window)
+
+    $canvas = $Window.FindName('Backdrop')
+    if (-not $canvas) { return }
+
+    $canvas.Children.Clear()
+
+    foreach ($blob in $BackdropBlobs) {
+        $ellipse = New-Object System.Windows.Shapes.Ellipse
+        $ellipse.Width  = $blob.Size
+        $ellipse.Height = $blob.Size
+        $ellipse.IsHitTestVisible = $false
+
+        # El relleno de una figura NO es la Background de un Border:
+        # son propiedades distintas, de ahí Set-ShapeFill.
+        Set-ShapeFill $ellipse $blob.Fill
+
+        $drift = New-Object System.Windows.Media.TranslateTransform
+        $ellipse.RenderTransform = $drift
+
+        # La receta viaja en el Tag: la posición depende del tamaño
+        # del lienzo, que todavía no se conoce (nada de closures,
+        # regla 4).
+        $ellipse.Tag = $blob
+        $canvas.Children.Add($ellipse) | Out-Null
+
+        Start-BlobDrift $drift $blob
+    }
+
+    Set-BackdropLayout $canvas
+
+    # El lienzo no tiene tamaño hasta que WPF lo mide, y cambia al
+    # maximizar. Se ata UNA vez: Build-Backdrop puede volver a
+    # llamarse y un segundo manejador dejaría el trabajo hecho dos
+    # veces por cada píxel de ancho.
+    if ($canvas.Uid -ne 'wired') {
+        $canvas.Uid = 'wired'
+        $canvas.Add_SizeChanged({ param($s, $e) Set-BackdropLayout $s })
+    }
+}
+
+# Coloca cada mancha en su sitio a partir del tamaño real del
+# lienzo. Sin medidas todavía no hay nada que colocar: se sale y ya
+# volverá el SizeChanged.
+function Set-BackdropLayout {
+    param($Canvas)
+
+    $width  = $Canvas.ActualWidth
+    $height = $Canvas.ActualHeight
+    if ($width -le 0 -or $height -le 0) { return }
+
+    foreach ($ellipse in $Canvas.Children) {
+        $blob = $ellipse.Tag
+        if (-not $blob) { continue }
+
+        # Restar medio diámetro deja el CENTRO de la mancha en la
+        # coordenada declarada, que es como se piensa en ellas.
+        [System.Windows.Controls.Canvas]::SetLeft($ellipse, ($width  * $blob.X) - ($blob.Size / 2))
+        [System.Windows.Controls.Canvas]::SetTop( $ellipse, ($height * $blob.Y) - ($blob.Size / 2))
+    }
+}
+
+# El vaivén. X e Y tienen duraciones distintas a propósito: con la
+# misma el recorrido sería una diagonal de ida y vuelta, y con
+# duraciones dispares es una curva que tarda muchísimo en repetirse.
+function Start-BlobDrift {
+    param($Transform, $Blob)
+
+    $Transform.BeginAnimation(
+        [System.Windows.Media.TranslateTransform]::XProperty,
+        (New-BlobAnim (-$Blob.DriftX) $Blob.DriftX $Blob.Ms))
+
+    $Transform.BeginAnimation(
+        [System.Windows.Media.TranslateTransform]::YProperty,
+        (New-BlobAnim (-$Blob.DriftY) $Blob.DriftY ([int]($Blob.Ms * 1.37))))
+}
+
+function New-BlobAnim {
+    param([double]$From, [double]$To, [int]$Ms)
+
+    $anim = New-Object System.Windows.Media.Animation.DoubleAnimation
+    $anim.From = $From
+    $anim.To   = $To
+    $anim.Duration = New-Object System.Windows.Duration ([TimeSpan]::FromMilliseconds($Ms))
+    $anim.AutoReverse = $true
+    $anim.RepeatBehavior = [System.Windows.Media.Animation.RepeatBehavior]::Forever
+    $anim.EasingFunction = New-Ease -Mode 'EaseInOut'
+
+    # Ver la cabecera: 20 fps en vez de 60.
+    [System.Windows.Media.Animation.Timeline]::SetDesiredFrameRate($anim, $BackdropFrameRate)
+
+    $anim
+}
+
+# ---- fin incluido: ui/Components/Shell/Backdrop.ps1 ----
 # ---- inicio incluido: ui/Components/Shell/LogPanel.ps1 ----
 # ============================================================
 # Componente: registro de actividad (el botón "log")
@@ -6065,6 +6953,24 @@ function Build-Sidebar {
     }
 
     Update-NavColors $Window
+
+    # El indicador no puede colocarse todavía: sin medidas no se
+    # sabe a qué altura está cada botón. Se coloca al primer
+    # SizeChanged del panel, que es cuando WPF le da tamaño.
+    #
+    # Se ata UNA sola vez, porque Build-Sidebar se repite al cambiar
+    # de idioma y cada pasada dejaría otro manejador enganchado. El
+    # Tag del Border lo marca: ahí no vive ningún otro dato.
+    $sidebar = $Window.FindName('Sidebar')
+    if ($sidebar -and $sidebar.Tag -ne 'wired') {
+        $sidebar.Tag = 'wired'
+        $sidebar.Add_SizeChanged({
+            param($s, $e)
+            Move-NavIndicator ([System.Windows.Window]::GetWindow($s))
+        })
+    }
+
+    Move-NavIndicator $Window
 }
 
 function New-NavButton {
@@ -6171,6 +7077,81 @@ function Sync-NavSelection {
     }
     $button.Tag = 'sel'
     Update-NavColors $Window
+    Move-NavIndicator -Window $Window -Animate
+}
+
+<#
+    Lleva la marca del menú a la entrada seleccionada.
+
+    Es UN solo indicador que se desliza, no uno por botón que se
+    enciende y se apaga: el recorrido es lo que dice de dónde
+    vienes, y sin él el ojo tiene que volver a buscar dónde está
+    la marca cada vez.
+
+    Vive en el Border NavIndicator del XAML y se mueve con un
+    TranslateTransform, no cambiando su Margin: mover el margen
+    obliga a WPF a medir el panel entero en cada fotograma.
+
+    SIN MEDIDAS NO SE COLOCA. Al arrancar, main.ps1 pinta la
+    primera pantalla antes de que la ventana exista de verdad, así
+    que aquí todo vale cero; el indicador se queda escondido y
+    vuelve por el SizeChanged que ata Build-Sidebar. El fondo del
+    botón marcado ya distingue la entrada mientras tanto, de modo
+    que ni un solo instante hay nada sin marcar.
+
+    -Animate solo al navegar. El SizeChanged llama sin él: durante
+    el plegado del menú se dispara decenas de veces y una animación
+    por cada una se pelearía consigo misma.
+#>
+function Move-NavIndicator {
+    param($Window, [switch]$Animate)
+
+    $indicator = $Window.FindName('NavIndicator')
+    $anchor    = $Window.FindName('NavHost')
+    if (-not $indicator -or -not $anchor) { return }
+
+    $selected = $null
+    foreach ($item in Get-NavigationItems) {
+        $button = $Window.FindName((Get-NavElementName $item.Id))
+        if ($button -and $button.Tag -eq 'sel') { $selected = $button; break }
+    }
+
+    if (-not $selected -or $selected.ActualHeight -le 0) {
+        $indicator.Opacity = 0
+        return
+    }
+
+    # TranslatePoint lanza si los dos controles no comparten árbol
+    # visual, y eso pasa mientras se está reconstruyendo el menú.
+    # Un indicador escondido es mejor que una ventana caída.
+    try {
+        $origin = $selected.TranslatePoint((New-Object System.Windows.Point 0, 0), $anchor)
+    }
+    catch {
+        $indicator.Opacity = 0
+        return
+    }
+
+    $y = $origin.Y + (($selected.ActualHeight - $indicator.Height) / 2)
+
+    if ($indicator.RenderTransform -isnot [System.Windows.Media.TranslateTransform]) {
+        $indicator.RenderTransform = New-Object System.Windows.Media.TranslateTransform
+    }
+
+    if ($Animate -and $indicator.Opacity -gt 0) {
+        $indicator.RenderTransform.BeginAnimation(
+            [System.Windows.Media.TranslateTransform]::YProperty,
+            (New-Anim $indicator.RenderTransform.Y $y 300 0 (New-Ease -Kind 'Quint')))
+    }
+    else {
+        # Pasar $null suelta la animación anterior: sin eso, un valor
+        # animado gana siempre al que se escribe a mano y el
+        # indicador se quedaría clavado donde lo dejó la última.
+        $indicator.RenderTransform.BeginAnimation([System.Windows.Media.TranslateTransform]::YProperty, $null)
+        $indicator.RenderTransform.Y = $y
+    }
+
+    $indicator.Opacity = 1
 }
 
 # El estilo del XAML pinta el fondo del botón seleccionado; el
@@ -6259,6 +7240,80 @@ function Update-TitleBarTexts {
 
     $menu = $Window.FindName('BtnMenu')
     if (Get-SidebarExpanded) { $menu.ToolTip = T 'Hide the menu' } else { $menu.ToolTip = T 'Show the menu' }
+
+    # Los textos que acaban de cambiar son los de los botones de
+    # modo: en español ocupan otra cosa, así que la pastilla se
+    # queda del ancho del idioma anterior si no se recoloca.
+    Move-ModeIndicator $Window
+}
+
+<#
+    La pastilla del selector de modo (Normal / Builder / Config).
+
+    Misma idea que Move-NavIndicator: UNA pastilla que se desliza
+    en vez de tres fondos que se encienden y se apagan. Aquí se
+    anima además el ANCHO, porque los tres botones miden distinto y
+    una pastilla de ancho fijo dejaría el texto asomando.
+
+    Como allí: sin medidas no se coloca -y el botón marcado se
+    distingue igual por el color del texto-, se anima solo si ya
+    estaba visible, y el manejador de tamaño se ata una sola vez.
+#>
+function Move-ModeIndicator {
+    param($Window, [switch]$Animate)
+
+    $indicator = $Window.FindName('ModeIndicator')
+    $track     = $Window.FindName('ModeTrack')
+    $buttons   = $Window.FindName('ModeButtons')
+    if (-not $indicator -or -not $track -or -not $buttons) { return }
+
+    if ($track.Uid -ne 'wired') {
+        $track.Uid = 'wired'
+        $track.Add_SizeChanged({
+            param($s, $e)
+            Move-ModeIndicator ([System.Windows.Window]::GetWindow($s))
+        })
+    }
+
+    $selected = $null
+    foreach ($button in $buttons.Children) {
+        if ($button.Tag -eq 'sel') { $selected = $button; break }
+    }
+
+    if (-not $selected -or $selected.ActualWidth -le 0) {
+        $indicator.Opacity = 0
+        return
+    }
+
+    try {
+        $origin = $selected.TranslatePoint((New-Object System.Windows.Point 0, 0), $track)
+    }
+    catch {
+        $indicator.Opacity = 0
+        return
+    }
+
+    if ($indicator.RenderTransform -isnot [System.Windows.Media.TranslateTransform]) {
+        $indicator.RenderTransform = New-Object System.Windows.Media.TranslateTransform
+    }
+
+    if ($Animate -and $indicator.Opacity -gt 0) {
+        $ease = New-Ease -Kind 'Quint'
+        $indicator.RenderTransform.BeginAnimation(
+            [System.Windows.Media.TranslateTransform]::XProperty,
+            (New-Anim $indicator.RenderTransform.X $origin.X 280 0 $ease))
+        $indicator.BeginAnimation(
+            [System.Windows.FrameworkElement]::WidthProperty,
+            (New-Anim $indicator.ActualWidth $selected.ActualWidth 280 0 $ease))
+    }
+    else {
+        $indicator.RenderTransform.BeginAnimation([System.Windows.Media.TranslateTransform]::XProperty, $null)
+        $indicator.BeginAnimation([System.Windows.FrameworkElement]::WidthProperty, $null)
+        $indicator.RenderTransform.X = $origin.X
+        $indicator.Width = $selected.ActualWidth
+    }
+
+    $indicator.Opacity = 1
 }
 
 # El glifo del botón de tema refleja a qué tema se cambiaría:
@@ -6453,6 +7508,123 @@ function New-ViewMenuRow {
 }
 
 # ---- fin incluido: ui/Components/Shell/ViewMenu.ps1 ----
+# ---- inicio incluido: ui/Components/Shell/WindowMaterial.ps1 ----
+# ============================================================
+# Componente: material de la ventana (Mica / Acrílico)
+#
+# El fondo translúcido de verdad de Windows 11: en vez de pintar
+# nosotros el fondo, se lo pedimos al sistema y la ventana deja
+# ver -borroso y teñido- el escritorio que tiene detrás.
+#
+# La llamada a Windows la hace core/Interop/SystemBackdrop.ps1;
+# aquí solo está lo que sabe de la ventana.
+#
+# POR QUÉ VIENE APAGADO DE FÁBRICA
+#
+# Mica y el degradado propio son EXCLUYENTES: el material del
+# sistema solo se ve si nuestra ventana es translúcida, y una
+# ventana translúcida ya no puede tener su propio fondo. Así que
+# esto no "añade" nada, cambia una cosa por otra:
+#
+#     Solid    -> BgGradient  (el degradado de la casa, opaco)
+#     Mica     -> BgGlassGradient sobre el material del sistema
+#     Acrylic  -> lo mismo, con el desenfoque más marcado
+#
+# Y solo funciona en Windows 11 22H2 o superior. Por eso es una
+# preferencia (ui/Data/Preferences/30-Material.ps1) y no una
+# decisión tomada por el programa: en un equipo antiguo o con un
+# escritorio muy cargado, el fondo propio se ve mejor.
+#
+# NO SE APLICA HASTA SourceInitialized. Antes de eso la ventana no
+# tiene descriptor, y sin descriptor no hay a qué ponerle nada;
+# main.ps1 lo engancha ahí.
+# ============================================================
+
+$WindowMaterials = @('None', 'Mica', 'Acrylic')
+
+# Qué superficies se vuelven de cristal al encender el material.
+# Con el fondo translúcido, una barra de título opaca cortaría el
+# efecto por la mitad.
+function Get-WindowMaterial {
+    $value = [string](Get-AppSetting 'Material' -Default 'None')
+    if ($WindowMaterials -notcontains $value) { return 'None' }
+    $value
+}
+
+# Guarda la elección y la aplica. Es lo que llama la opción de
+# Settings; el arranque pasa por Sync-WindowMaterial directamente.
+function Set-WindowMaterialChoice {
+    param([string]$Value)
+
+    if ($WindowMaterials -notcontains $Value) { $Value = 'None' }
+    Set-AppSetting 'Material' $Value
+    Sync-WindowMaterial -Window (Get-AppWindow)
+}
+
+<#
+    Pone la ventana como diga la preferencia.
+
+    Si Windows no acepta el material -equipo antiguo, o la llamada
+    falla- se cae de pie: las superficies se quedan opacas, que es
+    exactamente el aspecto de antes. Nunca se deja una ventana
+    translúcida sin material detrás, que es como se ve mal de
+    verdad.
+#>
+function Sync-WindowMaterial {
+    param($Window)
+
+    if (-not $Window) { return }
+
+    $wanted = Get-WindowMaterial
+    $applied = 'None'
+
+    if ($wanted -ne 'None') {
+        $handle = (New-Object System.Windows.Interop.WindowInteropHelper $Window).Handle
+
+        if ($handle -ne [IntPtr]::Zero) {
+            $dark = ((Get-AppTheme) -eq 'Dark')
+
+            if (Set-WindowBackdrop -Handle $handle -Kind $wanted -Dark $dark) {
+                # WPF pinta un fondo opaco por debajo de todo aunque
+                # los controles sean transparentes. Hay que decirle al
+                # destino de composición que no lo haga, o el material
+                # quedaría tapado por un negro perfecto.
+                $source = [System.Windows.Interop.HwndSource]::FromHwnd($handle)
+                if ($source -and $source.CompositionTarget) {
+                    $source.CompositionTarget.BackgroundColor = [System.Windows.Media.Colors]::Transparent
+                }
+                $applied = $wanted
+            }
+        }
+    }
+
+    Set-MaterialSurfaces -Window $Window -Applied $applied
+}
+
+# Las tres superficies grandes de la ventana, opacas o de cristal.
+# Cada una tiene su propia DependencyProperty de fondo: el raíz es
+# un Border, la barra de título un Grid y el menú lateral otro
+# Border. No son la misma propiedad (ver Set-PanelBg).
+function Set-MaterialSurfaces {
+    param($Window, [string]$Applied)
+
+    $root    = $Window.FindName('WindowRoot')
+    $title   = $Window.FindName('TitleBar')
+    $sidebar = $Window.FindName('Sidebar')
+
+    if ($Applied -eq 'None') {
+        if ($root)    { Set-BoxBg   $root    'BgGradient' }
+        if ($title)   { Set-PanelBg $title   'Bg1' }
+        if ($sidebar) { Set-BoxBg   $sidebar 'Bg1' }
+        return
+    }
+
+    if ($root)    { Set-BoxBg   $root    'BgGlassGradient' }
+    if ($title)   { Set-PanelBg $title   'SurfaceGlass' }
+    if ($sidebar) { Set-BoxBg   $sidebar 'SurfaceGlass' }
+}
+
+# ---- fin incluido: ui/Components/Shell/WindowMaterial.ps1 ----
 
 # ---- 7. Pantallas: ensamblan las piezas ----
 # ---- inicio incluido: ui/Views/CategoryDetailView.ps1 ----
@@ -6565,9 +7737,9 @@ function Show-CategoryDetailView {
         $list.Children.Add($card) | Out-Null
     }
 
-    # ---- 3. Pintar con transición de entrada ----
+    # ---- 3. Pintar con entrada en cascada ----
     $Window.FindName('MainContent').Content = $list
-    Start-EnterTransition $list
+    Start-StaggeredEnter $list
 
     Show-HighlightedSetting $Window
 }
@@ -6684,14 +7856,48 @@ function Show-OptimizationsListView {
     Add-PageAction $Window (New-ViewMenu $Window)
 
     # ---- 2. Cuerpo: una tarjeta por categoría ----
-    $list = New-Object System.Windows.Controls.StackPanel
+    # Dos formas de enseñar lo mismo, y la elige el usuario desde el
+    # botón "Vista": filas anchas (lo de siempre) o baldosas en
+    # cuadrícula. Las categorías salen del registro en los dos casos.
+    $list = New-CategoryPanel
     foreach ($category in Get-OptimizationCategories) {
-        $list.Children.Add((New-CategoryCard -Window $Window -Category $category)) | Out-Null
+        $list.Children.Add((New-CategoryItem -Window $Window -Category $category)) | Out-Null
     }
 
-    # ---- 3. Pintar con transición de entrada ----
+    # ---- 3. Pintar con entrada en cascada ----
+    # Una tras otra, no todas de golpe: el ojo sigue el recorrido y
+    # la pantalla parece montarse en vez de aparecer.
     $Window.FindName('MainContent').Content = $list
-    Start-EnterTransition $list
+    Start-StaggeredEnter $list
+}
+
+<#
+    El panel donde van las secciones.
+
+    En cuadrícula es un WrapPanel: pone tantas baldosas por fila
+    como quepan y salta sola al estrechar la ventana, sin que haya
+    que decidir columnas en ninguna parte. En lista, el StackPanel
+    de siempre.
+#>
+function New-CategoryPanel {
+    if (Get-ViewOption 'grid') {
+        $panel = New-Object System.Windows.Controls.WrapPanel
+        $panel.Orientation = 'Horizontal'
+        return $panel
+    }
+    New-Object System.Windows.Controls.StackPanel
+}
+
+# La pieza que le toca al panel elegido. Las dos saben pintarse
+# solas a partir de la categoría; esta vista no las conoce por
+# dentro.
+function New-CategoryItem {
+    param($Window, $Category)
+
+    if (Get-ViewOption 'grid') {
+        return New-CategoryTile -Window $Window -Category $Category
+    }
+    New-CategoryCard -Window $Window -Category $Category
 }
 
 # ---- fin incluido: ui/Views/OptimizationsListView.ps1 ----
@@ -6830,9 +8036,9 @@ function Show-SettingsView {
         }
     }
 
-    # ---- 3. Pintar con transición de entrada ----
+    # ---- 3. Pintar con entrada en cascada ----
     $Window.FindName('MainContent').Content = $list
-    Start-EnterTransition $list
+    Start-StaggeredEnter $list
 }
 
 # ---- fin incluido: ui/Views/SettingsView.ps1 ----
@@ -7004,6 +8210,7 @@ $xamlString = @'
             <Setter Property="Foreground" Value="{DynamicResource TextMuted}"/>
             <Setter Property="FontFamily" Value="{StaticResource IconFont}"/>
             <Setter Property="FontSize" Value="14"/>
+            <Setter Property="RenderTransformOrigin" Value="0.5,0.5"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
@@ -7012,8 +8219,15 @@ $xamlString = @'
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="bd" Property="Background" Value="{DynamicResource SurfaceSunken}"/>
+                                <Setter TargetName="bd" Property="Background" Value="{DynamicResource AccentSoftGradient}"/>
                                 <Setter Property="Foreground" Value="{DynamicResource Accent}"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter Property="RenderTransform">
+                                    <Setter.Value>
+                                        <ScaleTransform ScaleX="0.90" ScaleY="0.90"/>
+                                    </Setter.Value>
+                                </Setter>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -7021,7 +8235,11 @@ $xamlString = @'
             </Setter>
         </Style>
 
-        <!-- ================= SELECTOR DE MODO ================= -->
+        <!-- ================= SELECTOR DE MODO =================
+             El boton marcado ya NO pinta su propio fondo: la pastilla
+             blanca es una sola (ModeIndicator) y se desliza de un modo
+             a otro, igual que el indicador del menu lateral. Aqui solo
+             queda el color del texto. -->
         <Style x:Key="ModeButtonStyle" TargetType="Button">
             <Setter Property="Padding" Value="14,5,14,6"/>
             <Setter Property="Cursor" Value="Hand"/>
@@ -7040,14 +8258,7 @@ $xamlString = @'
                                 <Setter Property="Foreground" Value="{DynamicResource Text}"/>
                             </Trigger>
                             <DataTrigger Binding="{Binding RelativeSource={RelativeSource Self}, Path=Tag}" Value="sel">
-                                <Setter TargetName="bd" Property="Background" Value="{DynamicResource Surface}"/>
                                 <Setter Property="Foreground" Value="{DynamicResource Text}"/>
-                                <Setter TargetName="bd" Property="Effect">
-                                    <Setter.Value>
-                                        <DropShadowEffect Color="Black" Direction="270" ShadowDepth="1"
-                                                          BlurRadius="4" Opacity="0.14"/>
-                                    </Setter.Value>
-                                </Setter>
                             </DataTrigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -7055,10 +8266,14 @@ $xamlString = @'
             </Setter>
         </Style>
 
-        <!-- ================= NAVEGACION LATERAL ================= -->
+        <!-- ================= NAVEGACION LATERAL =================
+             Aqui ya NO hay indicador de seleccion por boton: hay uno
+             solo, el Border NavIndicator de mas abajo, que se desliza
+             de una entrada a otra. -->
         <Style x:Key="NavButtonStyle" TargetType="Button">
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="RenderTransformOrigin" Value="0.5,0.5"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
@@ -7066,20 +8281,25 @@ $xamlString = @'
                             <Border x:Name="bd" CornerRadius="12" Background="Transparent" Padding="0,11,0,10">
                                 <ContentPresenter/>
                             </Border>
-                            <!-- indicador de seleccion -->
-                            <Border x:Name="ind" Width="3" Height="20" CornerRadius="2"
-                                    HorizontalAlignment="Left" VerticalAlignment="Center"
-                                    Margin="-10,0,0,0" Background="{DynamicResource Accent}"
-                                    Opacity="0"/>
                         </Grid>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter TargetName="bd" Property="Background" Value="{DynamicResource SurfaceSunken}"/>
                             </Trigger>
                             <DataTrigger Binding="{Binding RelativeSource={RelativeSource Self}, Path=Tag}" Value="sel">
-                                <Setter TargetName="bd" Property="Background" Value="{DynamicResource AccentSoft}"/>
-                                <Setter TargetName="ind" Property="Opacity" Value="1"/>
+                                <Setter TargetName="bd" Property="Background" Value="{DynamicResource AccentSoftGradient}"/>
                             </DataTrigger>
+                            <!-- Hundirse al pulsar. La escala va en un Setter y
+                                 por tanto se comparte entre todos los botones del
+                                 estilo, pero eso solo prohibe ANIMARLA (regla 11):
+                                 aqui el disparador la pone y la quita, no la anima. -->
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter Property="RenderTransform">
+                                    <Setter.Value>
+                                        <ScaleTransform ScaleX="0.93" ScaleY="0.93"/>
+                                    </Setter.Value>
+                                </Setter>
+                            </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>
@@ -7092,19 +8312,27 @@ $xamlString = @'
             <Setter Property="Margin" Value="8,0,0,0"/>
             <Setter Property="Height" Value="38"/>
             <Setter Property="Padding" Value="14,0,14,0"/>
+            <Setter Property="RenderTransformOrigin" Value="0.5,0.5"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
                         <Border x:Name="bd" CornerRadius="10"
-                                Background="{DynamicResource Surface}"
+                                Background="{DynamicResource CardGradient}"
                                 BorderBrush="{DynamicResource Stroke}" BorderThickness="1"
                                 Padding="{TemplateBinding Padding}">
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="bd" Property="Background" Value="{DynamicResource SurfaceHover}"/>
+                                <Setter TargetName="bd" Property="Background" Value="{DynamicResource CardHoverGradient}"/>
                                 <Setter TargetName="bd" Property="BorderBrush" Value="{DynamicResource StrokeHover}"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter Property="RenderTransform">
+                                    <Setter.Value>
+                                        <ScaleTransform ScaleX="0.96" ScaleY="0.96"/>
+                                    </Setter.Value>
+                                </Setter>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -7236,27 +8464,32 @@ $xamlString = @'
             </Setter>
         </Style>
 
-        <!-- ================= TARJETAS ================= -->
+        <!-- ================= TARJETAS =================
+             El fondo NO es un color plano sino CardGradient: luz
+             arriba y sombra abajo, que es lo que le da a una
+             superficie aspecto de material en vez de recorte. En
+             el tema claro es casi imperceptible a proposito.
+             Se compone en ui/Design/Theme.ps1. -->
         <Style x:Key="CardStyle" TargetType="Border">
-            <Setter Property="Background" Value="{DynamicResource Surface}"/>
+            <Setter Property="Background" Value="{DynamicResource CardGradient}"/>
             <Setter Property="BorderBrush" Value="{DynamicResource Stroke}"/>
             <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="CornerRadius" Value="14"/>
-            <Setter Property="Margin" Value="0,0,0,10"/>
+            <Setter Property="CornerRadius" Value="16"/>
+            <Setter Property="Margin" Value="0,0,0,12"/>
             <Style.Triggers>
                 <Trigger Property="IsMouseOver" Value="True">
                     <Setter Property="BorderBrush" Value="{DynamicResource StrokeHover}"/>
-                    <Setter Property="Background" Value="{DynamicResource SurfaceHover}"/>
+                    <Setter Property="Background" Value="{DynamicResource CardHoverGradient}"/>
                 </Trigger>
             </Style.Triggers>
         </Style>
 
         <Style x:Key="StaticCardStyle" TargetType="Border">
-            <Setter Property="Background" Value="{DynamicResource Surface}"/>
+            <Setter Property="Background" Value="{DynamicResource CardGradient}"/>
             <Setter Property="BorderBrush" Value="{DynamicResource Stroke}"/>
             <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="CornerRadius" Value="14"/>
-            <Setter Property="Margin" Value="0,0,0,10"/>
+            <Setter Property="CornerRadius" Value="16"/>
+            <Setter Property="Margin" Value="0,0,0,12"/>
             <Style.Triggers>
                 <Trigger Property="IsMouseOver" Value="True">
                     <Setter Property="BorderBrush" Value="{DynamicResource StrokeHover}"/>
@@ -7287,7 +8520,11 @@ $xamlString = @'
 
     </Window.Resources>
 
-    <Border BorderBrush="{DynamicResource Stroke}" BorderThickness="1" Background="{DynamicResource Bg0}">
+    <!-- El fondo de la ventana es un degradado, no un color plano:
+         BgGradient cae de Bg0 a BgTint y lo compone ui/Design/Theme.ps1.
+         Un fondo liso es lo que mas "plano" hace ver a una interfaz. -->
+    <Border x:Name="WindowRoot" BorderBrush="{DynamicResource Stroke}" BorderThickness="1"
+            Background="{DynamicResource BgGradient}">
         <Grid>
             <Grid.RowDefinitions>
                 <RowDefinition Height="46"/>
@@ -7330,14 +8567,29 @@ $xamlString = @'
                     </Border>
                 </StackPanel>
 
-                <!-- selector de modo -->
+                <!-- selector de modo
+                     La pastilla del modo elegido es UNA SOLA y se desliza
+                     (Move-ModeIndicator, en ui/Components/Shell/TitleBar.ps1).
+                     Va declarada ANTES que los botones para quedar
+                     debajo: en un Grid manda el orden del documento. -->
                 <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
                     <Border Background="{DynamicResource SurfaceSunken}" CornerRadius="9" Padding="3">
-                        <StackPanel Orientation="Horizontal">
-                            <Button x:Name="BtnModeNormal"  Style="{StaticResource ModeButtonStyle}" Tag="sel" Content="Normal"/>
-                            <Button x:Name="BtnModeBuilder" Style="{StaticResource ModeButtonStyle}" Content="Builder"/>
-                            <Button x:Name="BtnModeConfig"  Style="{StaticResource ModeButtonStyle}" Content="Config Review"/>
-                        </StackPanel>
+                        <Grid x:Name="ModeTrack">
+                            <Border x:Name="ModeIndicator" Width="0" CornerRadius="7"
+                                    HorizontalAlignment="Left" VerticalAlignment="Stretch"
+                                    Background="{DynamicResource Surface}"
+                                    Opacity="0" IsHitTestVisible="False">
+                                <Border.Effect>
+                                    <DropShadowEffect Color="Black" Direction="270" ShadowDepth="1"
+                                                      BlurRadius="5" Opacity="0.14"/>
+                                </Border.Effect>
+                            </Border>
+                            <StackPanel x:Name="ModeButtons" Orientation="Horizontal">
+                                <Button x:Name="BtnModeNormal"  Style="{StaticResource ModeButtonStyle}" Tag="sel" Content="Normal"/>
+                                <Button x:Name="BtnModeBuilder" Style="{StaticResource ModeButtonStyle}" Content="Builder"/>
+                                <Button x:Name="BtnModeConfig"  Style="{StaticResource ModeButtonStyle}" Content="Config Review"/>
+                            </StackPanel>
+                        </Grid>
                     </Border>
                 </StackPanel>
 
@@ -7356,8 +8608,10 @@ $xamlString = @'
                 </StackPanel>
             </Grid>
 
-            <!-- ===== CABECERA DE CONTENIDO ===== -->
-            <Border Grid.Row="1" Background="{DynamicResource Bg0}">
+            <!-- ===== CABECERA DE CONTENIDO =====
+                 Transparente y no Bg0: asi deja pasar el degradado
+                 del fondo, que si no se cortaria justo aqui. -->
+            <Border Grid.Row="1" Background="Transparent">
                 <Grid Margin="30,18,30,16">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
@@ -7393,11 +8647,23 @@ $xamlString = @'
                         Background="{DynamicResource Bg1}"
                         BorderBrush="{DynamicResource Stroke}" BorderThickness="0,1,1,0"
                         CornerRadius="0,16,0,0">
-                    <Grid Width="88" HorizontalAlignment="Left">
+                    <Grid x:Name="NavHost" Width="88" HorizontalAlignment="Left">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="*"/>
                             <RowDefinition Height="Auto"/>
                         </Grid.RowDefinitions>
+
+                        <!-- Indicador de seleccion: UNO SOLO que se desliza
+                             de una entrada a otra, en vez de uno por boton
+                             que se enciende y se apaga. Lo coloca
+                             Move-NavIndicator (ui/Components/Shell/Sidebar.ps1);
+                             arranca invisible porque hasta que no hay
+                             medidas no se sabe adonde va. -->
+                        <Border x:Name="NavIndicator" Grid.Row="0" Grid.RowSpan="2"
+                                Width="3" Height="22" CornerRadius="0,2,2,0"
+                                HorizontalAlignment="Left" VerticalAlignment="Top"
+                                Background="{DynamicResource AccentGradient}"
+                                Opacity="0" IsHitTestVisible="False"/>
 
                         <StackPanel x:Name="NavTop" Grid.Row="0" Margin="0,14,0,0"/>
 
@@ -7407,6 +8673,18 @@ $xamlString = @'
                         </StackPanel>
                     </Grid>
                 </Border>
+
+                <!-- FONDO VIVO
+                     Las manchas de color que se mueven despacio detras del
+                     contenido. Solo el lienzo: las elipses las crea
+                     ui/Components/Shell/Backdrop.ps1.
+
+                     Va en la columna del contenido y NO detras de toda la
+                     ventana porque el menu lateral y la barra de titulo son
+                     opacos: ahi no se veria nada. Sordo al raton, o se
+                     comeria los clics de las tarjetas. -->
+                <Canvas x:Name="Backdrop" Grid.Column="1" ClipToBounds="True"
+                        IsHitTestVisible="False"/>
 
                 <!-- CONTENIDO PRINCIPAL -->
                 <!-- Con nombre porque ui/Engine/Router.ps1 guarda y restaura su
@@ -7421,7 +8699,7 @@ $xamlString = @'
                  Colapsada no ocupa alto, asi que la fila Auto desaparece y
                  el contenido no se mueve al aparecer y desaparecer. -->
             <Border x:Name="ProgressStrip" Grid.Row="3" Visibility="Collapsed"
-                    Background="{DynamicResource Bg1}"
+                    Background="{DynamicResource CardGradient}"
                     BorderBrush="{DynamicResource Stroke}" BorderThickness="0,1,0,0">
                 <StackPanel Margin="30,9,30,10">
                     <Grid>
@@ -7444,7 +8722,7 @@ $xamlString = @'
                                 <ColumnDefinition x:Name="ProgressDone" Width="0*"/>
                                 <ColumnDefinition x:Name="ProgressLeft" Width="1*"/>
                             </Grid.ColumnDefinitions>
-                            <Border Grid.Column="0" CornerRadius="2" Background="{DynamicResource Accent}"/>
+                            <Border Grid.Column="0" CornerRadius="2" Background="{DynamicResource AccentGradient}"/>
                         </Grid>
                     </Border>
                 </StackPanel>
@@ -7564,6 +8842,7 @@ function Set-ModeSelection {
         $win.FindName($name).Tag = $null
     }
     $Button.Tag = 'sel'
+    Move-ModeIndicator -Window $win -Animate
 }
 
 # ---- Menú lateral ----
@@ -7574,6 +8853,23 @@ Build-Sidebar -Window $Window
 $Window.FindName('BtnMenu').Add_Click({
     param($s, $e)
     Switch-Sidebar ([System.Windows.Window]::GetWindow($s))
+})
+
+# ---- Fondo vivo ----
+# Las manchas de color que se mueven detrás del contenido. Va
+# después del tema porque sus pinceles salen de él.
+Build-Backdrop -Window $Window
+
+# ---- Material de la ventana (Mica / Acrílico) ----
+# Solo hace algo si el usuario lo ha pedido y Windows lo admite;
+# en cualquier otro caso la ventana se queda con su fondo propio.
+#
+# En SourceInitialized y no aquí: antes de ese momento la ventana
+# todavía no tiene descriptor, y sin descriptor no hay nada a lo
+# que pedirle un material.
+$Window.Add_SourceInitialized({
+    param($s, $e)
+    Sync-WindowMaterial -Window $s
 })
 
 # ---- Textos e iconos que el XAML no puede traducir ----

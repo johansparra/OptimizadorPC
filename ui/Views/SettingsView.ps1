@@ -30,7 +30,7 @@ function Show-SettingsView {
         }
     }
 
-    # ---- 3. Pintar con transición de entrada ----
+    # ---- 3. Pintar con entrada en cascada ----
     $Window.FindName('MainContent').Content = $list
-    Start-EnterTransition $list
+    Start-StaggeredEnter $list
 }

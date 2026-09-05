@@ -26,5 +26,10 @@ Register-Preference @{
         Set-AppTheme -Window (Get-AppWindow) -Name $Value
         Set-AppSetting 'Theme' $Value
         Sync-ThemeButton
+
+        # Con Mica o Acrílico puestos, el material y el borde de la
+        # ventana los tiñe DWM y hay que volver a decirle si el
+        # contenido es claro u oscuro. Sin material no hace nada.
+        Sync-WindowMaterial -Window (Get-AppWindow)
     }
 }

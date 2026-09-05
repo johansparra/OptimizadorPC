@@ -221,13 +221,32 @@ Describe 'reglas del proyecto - trampas conocidas' {
         # claro y oscuro. En el XAML sí hay algunos a propósito
         # (la paleta de partida y el rojo de cerrar), por eso solo
         # se miran los .ps1.
-        $claves = (Get-Palette 'Light').Keys
+        #
+        # Se comprueban contra Get-ThemeKeys y no contra la paleta:
+        # desde que hay degradados, el tema publica DOS familias de
+        # pinceles y las dos son claves válidas.
+        $claves = Get-ThemeKeys
 
         foreach ($archivo in Get-SourceFiles) {
             $texto = Get-Content -Path $archivo.FullName -Raw
-            foreach ($llamada in ([regex]"Set-(?:TextFg|BoxBg|BoxLine)\s+\`$\w+\s+'([^']+)'").Matches($texto)) {
+            foreach ($llamada in ([regex]"Set-(?:TextFg|BoxBg|BoxLine|PanelBg|ShapeFill)\s+\`$\w+\s+'([^']+)'").Matches($texto)) {
                 $clave = $llamada.Groups[1].Value
                 Assert-Contains $clave $claves ("'$clave' en " + (Get-SourceRelativePath $archivo))
+            }
+        }
+    }
+
+    It 'cada degradado se compone de colores que existen' {
+        # Un token que apunte a una clave mal escrita no falla al
+        # cargar: falla al cambiar de tema, con la ventana ya
+        # abierta y un ColorConverter quejándose de $null.
+        $paleta = (Get-Palette 'Light').Keys
+
+        foreach ($nombre in $GradientTokens.Keys) {
+            $token = $GradientTokens[$nombre]
+            Assert-Contains $token.From $paleta "el degradado '$nombre' sale de un color que no existe"
+            if ($token.Kind -ne 'Radial') {
+                Assert-Contains $token.To $paleta "el degradado '$nombre' acaba en un color que no existe"
             }
         }
     }

@@ -170,6 +170,7 @@ function Set-ModeSelection {
         $win.FindName($name).Tag = $null
     }
     $Button.Tag = 'sel'
+    Move-ModeIndicator -Window $win -Animate
 }
 
 # ---- Menú lateral ----
@@ -180,6 +181,23 @@ Build-Sidebar -Window $Window
 $Window.FindName('BtnMenu').Add_Click({
     param($s, $e)
     Switch-Sidebar ([System.Windows.Window]::GetWindow($s))
+})
+
+# ---- Fondo vivo ----
+# Las manchas de color que se mueven detrás del contenido. Va
+# después del tema porque sus pinceles salen de él.
+Build-Backdrop -Window $Window
+
+# ---- Material de la ventana (Mica / Acrílico) ----
+# Solo hace algo si el usuario lo ha pedido y Windows lo admite;
+# en cualquier otro caso la ventana se queda con su fondo propio.
+#
+# En SourceInitialized y no aquí: antes de ese momento la ventana
+# todavía no tiene descriptor, y sin descriptor no hay nada a lo
+# que pedirle un material.
+$Window.Add_SourceInitialized({
+    param($s, $e)
+    Sync-WindowMaterial -Window $s
 })
 
 # ---- Textos e iconos que el XAML no puede traducir ----

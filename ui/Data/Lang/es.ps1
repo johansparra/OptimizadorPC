@@ -75,6 +75,8 @@ Register-Language 'es' @{
     'Show the registry keys each setting touches' = 'Enseñar las claves del registro que toca cada ajuste'
     'New badges'        = 'Insignias de nuevo'
     "Show the red 'NEW' tags on sections and settings" = "Enseñar las etiquetas rojas de 'nuevo' en secciones y ajustes"
+    'Grid view'         = 'Cuadrícula'
+    'Show the sections as tiles instead of rows' = 'Enseñar las secciones como baldosas en vez de filas'
 
     # ---- Insignias ----
     'NEW' = 'NUEVO'
@@ -153,6 +155,11 @@ Register-Language 'es' @{
     'Light or dark colour scheme' = 'Combinación de colores clara u oscura'
     'Light'      = 'Claro'
     'Dark'       = 'Oscuro'
+    'Window material' = 'Material de la ventana'
+    'Let the Windows 11 background show through the app. Needs Windows 11 22H2 or newer' = 'Dejar que se vea el fondo de Windows 11 a través del programa. Requiere Windows 11 22H2 o superior'
+    'Solid'      = 'Opaco'
+    'Mica'       = 'Mica'
+    'Acrylic'    = 'Acrílico'
 
     # ============================================================
     # CONTENIDO: nombres y descripciones de las secciones
