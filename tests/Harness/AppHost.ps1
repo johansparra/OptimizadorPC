@@ -55,6 +55,28 @@ foreach ($hostLine in (Get-Content -Path (Join-Path $AppRoot 'main.ps1'))) {
 }
 
 <#
+    LAS PRUEBAS NO ESCRIBEN EN LOS AJUSTES DE VERDAD.
+
+    ui/Engine/AppSettings.ps1 guarda en %APPDATA%\OptimizadorPC\settings.json,
+    y ese archivo es del usuario: tiene su tema, su idioma y sus
+    opciones de vista. Una prueba que toque una preferencia -y las
+    hay- lo reescribiría entero, porque aquí no se llama a
+    Import-AppSettings y la tabla arranca vacía.
+
+    Se redirige a un archivo temporal, y UNO POR PROCESO: con
+    -BothHosts las dos suites corren a la vez y con una ruta fija
+    se pisarían. La variable se reasigna sin más porque todo el
+    programa se carga con punto en este mismo ámbito.
+
+    Nadie lo borra al terminar a propósito: si una prueba falla,
+    poder mirar qué se guardó es justo lo que hace falta.
+#>
+$AppSettingsPath = Join-Path ([System.IO.Path]::GetTempPath()) "OptimizadorPC-Tests-$PID.json"
+if (Test-Path $AppSettingsPath) { Remove-Item $AppSettingsPath -Force }
+
+function Get-TestSettingsPath { $AppSettingsPath }
+
+<#
     Una ventana de verdad, con su XAML cargado y su tema puesto,
     pero SIN enseñar: no hace falta pintar nada para comprobar
     que el árbol de controles es el que debe ser.

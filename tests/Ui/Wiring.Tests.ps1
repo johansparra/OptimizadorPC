@@ -126,10 +126,20 @@ function Get-WiringProbe {
 function Invoke-WiringProbe {
     $raiz = Get-AppRoot
 
+    # La sonda toca preferencias de verdad -pulsa el botón de tema-
+    # y esto es main.ps1, no el arnés: sin redirigir, cada pasada de
+    # las pruebas le cambiaría el tema al usuario en
+    # %APPDATA%\OptimizadorPC\settings.json. Se le cuela la
+    # redirección justo antes de que lea nada.
+    $ajustes = Join-Path ([System.IO.Path]::GetTempPath()) ('optimizador-sonda-{0}.json' -f [Guid]::NewGuid())
+
     $lineas = New-Object System.Collections.Generic.List[string]
     foreach ($linea in (Get-Content -Path (Join-Path $raiz 'main.ps1'))) {
         if ($linea -match '^\$ScriptRoot = ') { $lineas.Add('$ScriptRoot = ''' + $raiz + '''') ; continue }
         if ($linea -match 'ShowDialog')       { continue }
+        if ($linea -match '^Import-AppSettings') {
+            $lineas.Add('$AppSettingsPath = ''' + $ajustes + '''')
+        }
         $lineas.Add($linea)
     }
     foreach ($linea in (Get-WiringProbe)) { $lineas.Add($linea) }
@@ -148,7 +158,7 @@ function Invoke-WiringProbe {
         Get-Content -Path $salida -Raw
     }
     finally {
-        foreach ($tmp in @($copia, $salida)) {
+        foreach ($tmp in @($copia, $salida, $ajustes)) {
             if (Test-Path $tmp) { Remove-Item $tmp -Force -ErrorAction SilentlyContinue }
         }
     }
