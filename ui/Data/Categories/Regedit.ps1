@@ -13,6 +13,15 @@
 # NO se declara Current: lo rellena core/Registry/CategoryState.ps1 leyendo
 # el equipo cada vez que se entra en la sección. Escribir en el
 # registro sigue sin estar implementado.
+#
+# TAMPOCO se declaran -Tags. El estado que sale en la tarjeta
+# -Optimizado / Recomendado de fábrica / Personalizado- se calcula
+# comparando lo leído contra esos dos valores declarados, así que
+# escribirlo a mano solo serviría para mentir. Ver
+# core/Registry/SettingStatus.ps1.
+#
+# De ahí que Recommended y Default sean el dato importante de cada
+# clave: si están mal, el estado sale mal.
 # ------------------------------------------------------------
 
 Register-Category @{
@@ -33,7 +42,6 @@ Register-Category @{
     Items = @(
         New-Setting -Name 'Network Throttling Mechanism' `
             -Description 'Limits network packet processing (NDIS) to 10 packets' `
-            -Tags 'Recommended', 'Default', 'Custom' `
             -Badge 'NEW' `
             -Value $true `
             -Registry @(
@@ -41,73 +49,6 @@ Register-Category @{
                    Name = 'NetworkThrottlingIndex'; Type = 'DWord'; Display = 'hex'
                    Recommended = '0xFFFFFFFF'; Default = '0x00000000' }
             )
-        New-Setting -Name 'User Account Control Level' `
-            -Description 'Controls UAC notification level and secure desktop behavior' `
-            -Tags 'Recommended', 'Default', 'Custom' `
-            -Options 'Always notify', 'Notify when apps try to make changes', 'Notify me only (no dim)', 'Never notify' `
-            -Value 'Notify when apps try to make changes' `
-            -Badge 'NEW' `
-            -Registry @(
-                @{ Path = 'HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System'
-                   Name = 'ConsentPromptBehaviorAdmin'; Type = 'DWord'
-                   Recommended = '0'; Default = '5' }
-                @{ Path = 'HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System'
-                   Name = 'PromptOnSecureDesktop'; Type = 'DWord'
-                   Recommended = '0'; Default = '1' }
-            )
-
-        New-Setting -Name 'Workplace Join Message Prompts' `
-            -Description "Show 'Allow my organization to manage my device' prompts throughout Windows" `
-            -Tags 'Recommended', 'Default', 'Custom' `
-            -Value $true `
-            -Registry @(
-                @{ Path = 'HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Windows\WorkplaceJoin'
-                   Name = 'BlockAADWorkplaceJoin'; Type = 'DWord'
-                   Recommended = '1'; Default = '0' }
-            )
-
-        New-Setting -Name 'BitLocker Auto Encryption' `
-            -Description 'Controls whether Windows can automatically encrypt drives with BitLocker. Has no effect if BitLocker encryption is already active on your device' `
-            -Tags 'Recommended', 'Default', 'Custom' `
-            -Value $false `
-            -Badge 'NEW' `
-            -Registry @(
-                @{ Path = 'HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\BitLocker'
-                   Name = 'PreventDeviceEncryption'; Type = 'DWord'
-                   Recommended = '1'; Default = '0' }
-            )
-
-        New-Setting -Name 'WiFi-Sense' `
-            -Description 'Allow sharing WiFi passwords with contacts and automatically connecting to suggested open hotspots' `
-            -Tags 'Recommended', 'Custom' `
-            -Value $true `
-            -Registry @(
-                @{ Path = 'HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\PolicyManager\default\WiFi\AllowWiFiHotSpotReporting'
-                   Name = 'Value'; Type = 'DWord'
-                   Recommended = '0'; Default = '1' }
-                @{ Path = 'HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\PolicyManager\default\WiFi\AllowAutoConnectToWiFiSenseHotspots'
-                   Name = 'Value'; Type = 'DWord'
-                   Recommended = '0'; Default = '1' }
-            )
-
-        New-Setting -Name 'Automatic Maintenance' `
-            -Description 'Choose if Windows should run automatic system maintenance tasks during idle time' `
-            -Tags 'Recommended', 'Default', 'Custom' `
-            -Value $false `
-            -Registry @(
-                @{ Path = 'HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Schedule\Maintenance'
-                   Name = 'MaintenanceDisabled'; Type = 'DWord'
-                   Recommended = '0'; Default = '0' }
-            )
-
-        New-Setting -Name 'Windows Error Reporting' `
-            -Description 'Choose if Windows should collect and send crash reports and error information to Microsoft' `
-            -Tags 'Recommended', 'Default', 'Custom' `
-            -Value $false `
-            -Registry @(
-                @{ Path = 'HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\Windows Error Reporting'
-                   Name = 'Disabled'; Type = 'DWord'
-                   Recommended = '1'; Default = '0' }
-            )
+       
     )
 }

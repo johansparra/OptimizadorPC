@@ -8,13 +8,21 @@
 #     (estrella) Recomendado 6/6   (rejilla) De fábrica 5/6
 #     (mando) Personalizado 6/6
 #
-# Los números salen de Get-CategoryCounts (ui/Engine/CategoryRegistry.ps1),
-# que los cuenta sobre los Items reales del archivo de la sección.
+# La fila se cuenta de dos maneras, y la sección decide cuál:
+#
+#   - Si sus ajustes leen el registro, por su ESTADO REAL
+#     (Get-CategoryStatusCounts): optimizado, de fábrica o a medida,
+#     lo que core/Registry/SettingStatus.ps1 acaba de sacar del equipo.
+#     Es el mismo dato -y el mismo catálogo de colores- que la
+#     etiqueta de cada tarjeta, así que fila y tarjetas no pueden
+#     contradecirse.
+#   - Si no, por las etiquetas declaradas a mano en el archivo de la
+#     sección (Get-CategoryCounts). Es lo que había siempre.
 #
 # Update-CategorySummary vuelve a contar y repinta la fila. Está
-# enganchado a los controles de ui/Components/Cards/SettingCard.ps1, así
-# que en cuanto la lógica real cambie las etiquetas de un ajuste
-# el resumen se moverá solo.
+# enganchado a los controles de ui/Components/Cards/SettingCard.ps1: el
+# día que tocar un interruptor escriba en el registro, los números
+# se moverán solos.
 # ============================================================
 
 # Etiqueta -> icono y colores. Mismo criterio que New-Tag (UiKit).
@@ -39,29 +47,60 @@ function New-CategorySummary {
     # pueda recontar sin closures (regla 4 de CLAUDE.md).
     $row.Tag = $Category
 
-    $counts = Get-CategoryCounts $Category
-    $total = $counts.Total
-
-    foreach ($style in $SummaryStyles) {
-        $n = $counts.($style.Tag)
-
-        $pill = New-Pill $style.Icon "$n/$total" $style.Fg $style.Bg ((T $style.Tip) -f $n, $total)
-        $pill.Margin = New-Object System.Windows.Thickness 4, 0, 4, 0
-
-        # La píldora lleva su propio texto, así que el nombre de la
-        # etiqueta se añade delante dentro de la misma píldora.
-        $label = New-Object System.Windows.Controls.TextBlock
-        $label.Text = (T $style.Tag) + '  '
-        $label.FontSize = 11
-        $label.FontWeight = 'SemiBold'
-        $label.VerticalAlignment = 'Center'
-        Set-TextFg $label $style.Fg
-        $pill.Child.Children.Insert(1, $label)
-
-        $row.Children.Add($pill) | Out-Null
-    }
+    # Si la sección lee el registro, sus ajustes traen un estado de
+    # verdad y se cuentan por él. Si no, por las etiquetas declaradas,
+    # que es todo lo que hay.
+    $counts = Get-CategoryStatusCounts $Category
+    if ($counts) { Add-StatusPills $row $counts } else { Add-TagPills $row (Get-CategoryCounts $Category) }
 
     $row
+}
+
+# Una píldora por estado real. La de 'desconocido' solo sale si hay
+# alguno: en cuanto se lee todo bien, sobra de la fila.
+function Add-StatusPills {
+    param($Row, $Counts)
+
+    foreach ($status in Get-SettingStatusNames) {
+        $n = [int]$Counts.$status
+        if ($status -eq 'unknown' -and $n -eq 0) { continue }
+
+        $style = Get-StatusStyle $status
+        $tip = (T $style.Count) -f $n, $Counts.Total
+        $Row.Children.Add((New-SummaryPill $style (T $style.Label) $n $Counts.Total $tip)) | Out-Null
+    }
+}
+
+# Una píldora por etiqueta declarada. Es lo de siempre, y lo que
+# siguen enseñando las secciones que aún no leen nada del equipo.
+function Add-TagPills {
+    param($Row, $Counts)
+
+    foreach ($style in $SummaryStyles) {
+        $n = [int]$Counts.($style.Tag)
+        $tip = (T $style.Tip) -f $n, $Counts.Total
+        $Row.Children.Add((New-SummaryPill $style (T $style.Tag) $n $Counts.Total $tip)) | Out-Null
+    }
+}
+
+# La píldora del resumen: icono, nombre y recuento, todo dentro de la
+# misma cápsula. New-Pill solo trae el icono y el texto, así que el
+# nombre se cuela entre los dos.
+function New-SummaryPill {
+    param($Style, [string]$Label, [int]$Count, [int]$Total, [string]$Tip)
+
+    $pill = New-Pill $Style.Icon "$Count/$Total" $Style.Fg $Style.Bg $Tip
+    $pill.Margin = New-Object System.Windows.Thickness 4, 0, 4, 0
+
+    $text = New-Object System.Windows.Controls.TextBlock
+    $text.Text = $Label + '  '
+    $text.FontSize = 11
+    $text.FontWeight = 'SemiBold'
+    $text.VerticalAlignment = 'Center'
+    Set-TextFg $text $Style.Fg
+    $pill.Child.Children.Insert(1, $text)
+
+    $pill
 }
 
 <#

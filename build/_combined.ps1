@@ -67,7 +67,7 @@ $Glyphs = @{
     Moon = 0xE708; Help = 0xE897; Heart = 0xEB51; Check = 0xE73E
     Info = 0xE946; Bulb = 0xEA80; Lock = 0xE72E; Apps = 0xF0E2
     ChevronUp = 0xE70E; OpenIn = 0xE8A7; Person = 0xE77B
-    Dock = 0xE73F
+    Dock = 0xE73F; Copy = 0xE8C8
     # registro de actividad (ui/Components/Shell/LogPanel.ps1)
     Pulse = 0xE9D9; Trash = 0xE74D; Save = 0xE74E; Alert = 0xE783
 }
@@ -195,8 +195,19 @@ function Start-EnterTransition {
 }
 
 # Elevación al pasar el ratón: sombra más marcada + 2px arriba.
+#
+# Quien escucha al ratón NO es la tarjeta, sino un envoltorio
+# transparente que ocupa su hueco y no se mueve nunca. En WPF el
+# RenderTransform arrastra consigo la zona sensible al ratón: si
+# escuchara la propia tarjeta, con el cursor parado sobre sus últimos
+# píxeles subirla lo dejaría fuera (MouseLeave), bajarla lo volvería a
+# meter dentro (MouseEnter) y el efecto no pararía jamás.
+#
+# Devuelve el envoltorio: es lo que hay que colgar del panel, y es
+# también donde van el cursor y el clic, para que respondan en todo el
+# rectángulo de la tarjeta -incluida la franja que deja libre al subir-.
 function Add-HoverLift {
-    param($Border, [double]$Lift = 2)
+    param($Border)
 
     $shadow = New-Object System.Windows.Media.Effects.DropShadowEffect
     $shadow.Color = [System.Windows.Media.Colors]::Black
@@ -204,21 +215,35 @@ function Add-HoverLift {
     $shadow.BlurRadius = 8;  $shadow.Opacity = 0.05
     $Border.Effect = $shadow
 
-    $tt = New-Object System.Windows.Media.TranslateTransform
-    $Border.RenderTransform = $tt
+    $Border.RenderTransform = New-Object System.Windows.Media.TranslateTransform
 
-    $Border.Add_MouseEnter({
+    # El margen se muda al envoltorio: así su área transparente es
+    # exactamente la de la tarjeta y el hueco entre tarjetas sigue
+    # siendo hueco, ni se ilumina ni se puede pulsar.
+    $slot = New-Object System.Windows.Controls.Grid
+    $slot.Background = [System.Windows.Media.Brushes]::Transparent
+    $slot.Margin = $Border.Margin
+    $Border.Margin = New-Object System.Windows.Thickness 0
+    $slot.Children.Add($Border) | Out-Null
+
+    # Nada de closures (regla 4): la tarjeta es el único hijo del
+    # envoltorio, así que el manejador la saca del emisor.
+    $slot.Add_MouseEnter({
         param($s, $e)
-        $s.RenderTransform.BeginAnimation([System.Windows.Media.TranslateTransform]::YProperty, (New-Anim 0 (-2) 160))
-        $s.Effect.BeginAnimation([System.Windows.Media.Effects.DropShadowEffect]::OpacityProperty, (New-Anim 0.05 0.16 160))
-        $s.Effect.BeginAnimation([System.Windows.Media.Effects.DropShadowEffect]::BlurRadiusProperty, (New-Anim 8 20 160))
+        $card = $s.Children[0]
+        $card.RenderTransform.BeginAnimation([System.Windows.Media.TranslateTransform]::YProperty, (New-Anim 0 (-2) 160))
+        $card.Effect.BeginAnimation([System.Windows.Media.Effects.DropShadowEffect]::OpacityProperty, (New-Anim 0.05 0.16 160))
+        $card.Effect.BeginAnimation([System.Windows.Media.Effects.DropShadowEffect]::BlurRadiusProperty, (New-Anim 8 20 160))
     })
-    $Border.Add_MouseLeave({
+    $slot.Add_MouseLeave({
         param($s, $e)
-        $s.RenderTransform.BeginAnimation([System.Windows.Media.TranslateTransform]::YProperty, (New-Anim (-2) 0 160))
-        $s.Effect.BeginAnimation([System.Windows.Media.Effects.DropShadowEffect]::OpacityProperty, (New-Anim 0.16 0.05 160))
-        $s.Effect.BeginAnimation([System.Windows.Media.Effects.DropShadowEffect]::BlurRadiusProperty, (New-Anim 20 8 160))
+        $card = $s.Children[0]
+        $card.RenderTransform.BeginAnimation([System.Windows.Media.TranslateTransform]::YProperty, (New-Anim (-2) 0 160))
+        $card.Effect.BeginAnimation([System.Windows.Media.Effects.DropShadowEffect]::OpacityProperty, (New-Anim 0.16 0.05 160))
+        $card.Effect.BeginAnimation([System.Windows.Media.Effects.DropShadowEffect]::BlurRadiusProperty, (New-Anim 20 8 160))
     })
+
+    $slot
 }
 
 # ---- fin incluido: ui/Design/Theme.ps1 ----
@@ -300,6 +325,84 @@ function New-Pill {
     $t.Text = $Text; $t.FontSize = 11; $t.FontWeight = 'SemiBold'
     $t.VerticalAlignment = 'Center'
     Set-TextFg $t $Fg
+    $sp.Children.Add($t) | Out-Null
+
+    $b.Child = $sp
+    $b
+}
+
+<#
+    Cómo se enseña cada estado de los que calcula
+    core/Registry/SettingStatus.ps1 mirando el registro de verdad.
+
+    Un único sitio con el nombre, el icono, los colores y el pie de
+    ayuda de cada estado: lo usan la etiqueta de la tarjeta de ajuste
+    y las píldoras del resumen de la sección, así que no pueden
+    acabar diciendo cosas distintas. Añadir un estado es añadir una
+    línea aquí y otra en core/.
+
+    Los textos se guardan en inglés y se traducen al pintarlos
+    (regla 15): aquí no se llama a T.
+#>
+$SettingStatusStyles = @{
+    'optimized' = @{ Label = 'Optimized';           Icon = 'StarFill'; Fg = 'Success';   Bg = 'SuccessSoft'
+                     Tip   = 'The registry value is the one this program recommends'
+                     Count = 'Optimized: {0} of {1}' }
+
+    'factory'   = @{ Label = 'Factory recommended'; Icon = 'Grid';     Fg = 'TextMuted'; Bg = 'SurfaceSunken'
+                     Tip   = 'The registry value is the Windows factory one'
+                     Count = 'Factory recommended: {0} of {1}' }
+
+    'custom'    = @{ Label = 'Custom';              Icon = 'Sliders';  Fg = 'Warn';      Bg = 'WarnSoft'
+                     Tip   = 'The registry value is neither the recommended nor the factory one'
+                     Count = 'Customised: {0} of {1}' }
+
+    'unknown'   = @{ Label = 'Unknown';             Icon = 'Help';     Fg = 'TextFaint'; Bg = 'SurfaceSunken'
+                     Tip   = 'The registry value could not be read'
+                     Count = 'Unknown: {0} of {1}' }
+}
+
+# Un estado que no esté en el catálogo se enseña como desconocido,
+# que es exactamente lo que es: nadie sabe qué significa.
+function Get-StatusStyle {
+    param([string]$Status)
+
+    $style = $SettingStatusStyles[[string]$Status]
+    if (-not $style) { $style = $SettingStatusStyles['unknown'] }
+    $style
+}
+
+<#
+    Etiqueta del estado REAL de un ajuste: icono, nombre y un pie de
+    ayuda que explica por qué está ahí.
+
+    Sustituye a las etiquetas declaradas (New-Tag) en los ajustes que
+    sí leen el registro; ver ui/Components/Cards/SettingCard.ps1.
+#>
+function New-StatusTag {
+    param([string]$Status)
+
+    $style = Get-StatusStyle $Status
+
+    $b = New-Object System.Windows.Controls.Border
+    $b.CornerRadius = New-Object System.Windows.CornerRadius 6
+    $b.Padding = New-Object System.Windows.Thickness 8, 2.5, 9, 3.5
+    $b.Margin = New-Object System.Windows.Thickness 0, 0, 6, 0
+    $b.ToolTip = T $style.Tip
+    Set-BoxBg $b $style.Bg
+
+    $sp = New-Object System.Windows.Controls.StackPanel
+    $sp.Orientation = 'Horizontal'
+
+    $icon = New-Icon $style.Icon 10 $style.Fg
+    $icon.Margin = New-Object System.Windows.Thickness 0, 0, 5, 0
+    $sp.Children.Add($icon) | Out-Null
+
+    $t = New-Object System.Windows.Controls.TextBlock
+    $t.Text = T $style.Label
+    $t.FontSize = 10.5; $t.FontWeight = 'SemiBold'
+    $t.VerticalAlignment = 'Center'
+    Set-TextFg $t $style.Fg
     $sp.Children.Add($t) | Out-Null
 
     $b.Child = $sp
@@ -721,6 +824,35 @@ function Get-CategoryCounts {
 }
 
 <#
+    Lo mismo, pero por ESTADO REAL: el que core/Registry/SettingStatus.ps1
+    deja en cada ajuste al leer el equipo.
+
+        optimized / factory / custom / unknown / Total
+
+    Devuelve $null cuando NINGÚN ajuste de la sección tiene estado,
+    que es tanto como decir que ninguno declara claves del registro.
+    Entonces la que vale sigue siendo Get-CategoryCounts, con las
+    etiquetas escritas a mano en ui/Data/Categories/.
+
+    Solo cuentan los ajustes que sí tienen estado: mezclar en el
+    total los que no leen nada haría que los números no cuadraran
+    con lo que se ve en las tarjetas.
+#>
+function Get-CategoryStatusCounts {
+    param($Category)
+
+    $items = @(@($Category.Items) | Where-Object { $_.Status })
+    if ($items.Count -eq 0) { return $null }
+
+    $counts = [ordered]@{}
+    foreach ($status in Get-SettingStatusNames) {
+        $counts[$status] = @($items | Where-Object { $_.Status -eq $status }).Count
+    }
+    $counts['Total'] = $items.Count
+    [PSCustomObject]$counts
+}
+
+<#
     Crea un ajuste para el array Items de una categoría.
 
     El tipo de control se deduce solo:
@@ -734,13 +866,17 @@ function Get-CategoryCounts {
         Path         Ruta completa, con la raíz sin abreviar.
         Name         Nombre del valor dentro de esa ruta.
         Type         Tipo del valor: 'DWord', 'String'...
-        Current      Valor que hay ahora.
+        Display      'hex' para enseñarlo como 0xFFFFFFFF.
         Recommended  Valor que propone el programa.
         Default      Valor de fábrica de Windows.
 
-    Los tres valores son texto y hoy son ESTÁTICOS: nadie lee el
-    registro todavía. Un ajuste sin -Registry sale con un aviso
-    en su lugar, no se rompe.
+    Current y Status NO se declaran: los rellena core/ al leer el
+    equipo (ver core/Registry/CategoryState.ps1). Recommended y Default sí
+    son texto escrito a mano, y son contra lo que se compara lo
+    leído para saber en qué estado está el ajuste.
+
+    Un ajuste sin -Registry sale con un aviso en su lugar, no se
+    rompe: se queda sin Status y la tarjeta enseña sus -Tags.
 
     Ejemplos:
         New-Setting -Name 'Game Mode' -Description '...' `
@@ -752,7 +888,7 @@ function Get-CategoryCounts {
                     -Registry @(
                         @{ Path = 'HKEY_CURRENT_USER\Control Panel\Mouse'
                            Name = 'MouseHoverTime'; Type = 'String'
-                           Current = '400'; Recommended = '200'; Default = '400' }
+                           Recommended = '200'; Default = '400' }
                     )
 #>
 function New-Setting {
@@ -777,6 +913,11 @@ function New-Setting {
         Value       = $Value
         Badge       = $Badge
         Registry    = $Registry
+
+        # NO se declara: lo rellena core/Registry/SettingStatus.ps1 al leer
+        # el equipo, igual que el Current de cada clave. Se reserva
+        # aquí el campo para poder asignarlo después.
+        Status      = $null
     }
 }
 
@@ -1204,23 +1345,34 @@ function Get-LanguageLabel {
 #
 #   Default    $true en el botón que sale marcado al arrancar.
 #
-#   View       Nombre de la función de vista a la que lleva. Crear
-#              una pantalla nueva es añadir su archivo a ui/Views/
-#              y apuntar aquí a su función.
+#   View       Nombre de la función de vista a la que lleva.
+#
+#              $null -> la sección todavía NO tiene pantalla. El
+#                       botón se ve y se pulsa como los demás -ni
+#                       gris ni con candado-, pero el clic no hace
+#                       nada: ni navega, ni cambia el contenido, ni
+#                       mueve la selección. Te quedas donde estabas.
+#
+#              Crear una pantalla es añadir su archivo a ui/Views/ y
+#              escribir aquí el nombre de su función; el botón
+#              empieza a funcionar solo, sin tocar nada más.
 #
 #   Icon       Nombre de glifo del catálogo de ui/Design/Theme.ps1.
 # ============================================================
 
+# Hoy solo hay pantalla para dos entradas -Optimize y Settings-. Las
+# otras cuatro siguen aquí a propósito: mantienen la estructura del
+# menú a la vista, y activarlas será rellenar su View.
 $NavigationIndex = @(
 
     #  Id             Icono        Etiqueta       Grupo      Visible  Bloqueado   Vista
-    @{ Id = 'software';  Icon = 'Apps';    Label = 'Software';  Group = 'Top';    Visible = $true; Locked = $false; View = 'Show-OptimizationsListView' }
+    @{ Id = 'software';  Icon = 'Apps';    Label = 'Software';  Group = 'Top';    Visible = $true; Locked = $false; View = $null }
     @{ Id = 'optimize';  Icon = 'Gauge';   Label = 'Optimize';  Group = 'Top';    Visible = $true; Locked = $false; View = 'Show-OptimizationsListView'; Default = $true }
-    @{ Id = 'customize'; Icon = 'Palette'; Label = 'Customize'; Group = 'Top';    Visible = $true; Locked = $false; View = 'Show-OptimizationsListView' }
+    @{ Id = 'customize'; Icon = 'Palette'; Label = 'Customize'; Group = 'Top';    Visible = $true; Locked = $false; View = $null }
 
-    @{ Id = 'advanced';  Icon = 'Wrench';  Label = 'Advanced';  Group = 'Bottom'; Visible = $true; Locked = $false; View = 'Show-OptimizationsListView' }
+    @{ Id = 'advanced';  Icon = 'Wrench';  Label = 'Advanced';  Group = 'Bottom'; Visible = $true; Locked = $false; View = $null }
     @{ Id = 'settings';  Icon = 'Gear';    Label = 'Settings';  Group = 'Bottom'; Visible = $true; Locked = $false; View = 'Show-SettingsView' }
-    @{ Id = 'more';      Icon = 'More';    Label = 'More';      Group = 'Bottom'; Visible = $true; Locked = $false; View = 'Show-OptimizationsListView' }
+    @{ Id = 'more';      Icon = 'More';    Label = 'More';      Group = 'Bottom'; Visible = $true; Locked = $false; View = $null }
 
 )
 
@@ -1559,6 +1711,11 @@ function Export-AppLog {
 
         Current   texto ya formateado, o $null si no se pudo leer
         State     'read' | 'missing' | 'denied' | 'badpath'
+        Status    'optimized' | 'factory' | 'custom' | 'unknown'
+
+    Y, con sus claves ya leídas, deja también el Status de cada
+    ajuste: en qué estado ha quedado comparando lo leído con lo
+    declarado (ver core/Registry/SettingStatus.ps1).
 
     El Current que venga escrito en ui/Data/Categories/ se ignora: el
     valor bueno es el del equipo.
@@ -1579,12 +1736,7 @@ function Update-CategoryRegistryState {
         [scriptblock]$OnProgress
     )
 
-    $keys = New-Object System.Collections.Generic.List[object]
-    foreach ($setting in @($Category.Items)) {
-        foreach ($key in @($setting.Registry)) { $keys.Add($key) }
-    }
-
-    $total = $keys.Count
+    $total = Get-CategoryRegistryKeyCount $Category
     if ($total -eq 0) { return 0 }
 
     # Cabecera del bloque en el registro de actividad: sin ella,
@@ -1599,23 +1751,34 @@ function Update-CategoryRegistryState {
     $done = 0
     if ($OnProgress) { & $OnProgress $done $total }
 
-    foreach ($key in $keys) {
-        $result = Read-RegistryValue $key.Path $key.Name
+    # Se recorre ajuste por ajuste -y no una lista plana de claves-
+    # porque en cuanto están leídas las suyas hay que decidir en qué
+    # estado ha quedado ese ajuste.
+    foreach ($setting in @($Category.Items)) {
+        foreach ($key in @($setting.Registry)) {
+            $result = Read-RegistryValue $key.Path $key.Name
 
-        # Las claves de -Registry son hashtables, así que se
-        # rellenan en el sitio y la tarjeta las lee tal cual.
-        $key['State'] = $result.State
-        if ($result.State -eq 'read') {
-            $key['Current'] = Format-RegistryValue $result.Value $result.Kind $key.Display
+            # Las claves de -Registry son hashtables, así que se
+            # rellenan en el sitio y la tarjeta las lee tal cual.
+            $key['State'] = $result.State
+            if ($result.State -eq 'read') {
+                $key['Current'] = Format-RegistryValue $result.Value $result.Kind $key.Display
+            }
+            else {
+                $key['Current'] = $null
+            }
+
+            $states[$result.State] = 1 + [int]$states[$result.State]
+
+            $done++
+            if ($OnProgress) { & $OnProgress $done $total }
         }
-        else {
-            $key['Current'] = $null
-        }
 
-        $states[$result.State] = 1 + [int]$states[$result.State]
-
-        $done++
-        if ($OnProgress) { & $OnProgress $done $total }
+        # Recomendado / de fábrica / a medida, comparando lo leído con
+        # lo declarado (core/Registry/SettingStatus.ps1). Va aquí y no en la
+        # interfaz para que se recalcule SIEMPRE que se lee: entrar en
+        # la sección y refrescar pasan los dos por este mismo sitio.
+        Update-SettingStatus $setting | Out-Null
     }
 
     $watch.Stop()
@@ -1869,6 +2032,186 @@ function Format-RegistryValue {
 }
 
 # ---- fin incluido: core/Registry/Reader.ps1 ----
+# ---- inicio incluido: core/Registry/SettingStatus.ps1 ----
+# ============================================================
+# core/Registry/SettingStatus.ps1
+# En qué estado está un ajuste, comparando lo que hay en el equipo
+# con lo que declara ui/Data/Categories/.
+#
+# Cada clave de -Registry trae dos valores escritos a mano:
+#
+#     Recommended   el que propone el programa   ->  'optimized'
+#     Default       el de fábrica de Windows     ->  'factory'
+#
+# y core/Registry/CategoryState.ps1 le añade el que acaba de leer del
+# equipo (Current). Comparar los tres da el estado del ajuste:
+#
+#     'optimized'   el equipo tiene el valor que propone el programa
+#     'factory'     tiene el de fábrica, o no tiene ninguno y Windows
+#                   está usando el suyo interno
+#     'custom'      no es ninguno de los dos: alguien lo ha tocado
+#     'unknown'     no se ha podido mirar -sin permiso, raíz mala o
+#                   todavía sin leer-. No se afirma nada.
+#
+# El estado se calcula SIEMPRE que se lee (ver CategoryState.ps1), así
+# que entrar en la sección y pulsar refrescar lo dejan al día solos.
+#
+# Como todo lo de core/: no sabe de interfaz -devuelve palabras en
+# inglés, sin traducir ni colores- y no lanza nunca.
+# ============================================================
+
+# Los cuatro estados, en el orden en que se enseñan. La interfaz los
+# recorre en vez de escribirlos a mano.
+$SettingStatusNames = @('optimized', 'factory', 'custom', 'unknown')
+
+function Get-SettingStatusNames { $SettingStatusNames }
+
+<#
+    Un valor de registro escrito como texto, pasado a número. Si no
+    lo parece, devuelve $null.
+
+    Hace falta porque lo declarado y lo leído no tienen por qué venir
+    escritos igual: '0xFFFFFFFF' y '4294967295' son el mismo DWord, y
+    '-1' es como se escribe a mano ese mismo valor.
+#>
+function ConvertTo-RegistryNumber {
+    param([string]$Text)
+
+    if ([string]::IsNullOrWhiteSpace($Text)) { return $null }
+    $t = $Text.Trim()
+
+    try {
+        if ($t -match '^0[xX][0-9a-fA-F]{1,16}$') { return [System.Convert]::ToUInt64($t.Substring(2), 16) }
+        if ($t -match '^[0-9]{1,20}$')            { return [System.UInt64]::Parse($t) }
+
+        # Un negativo declarado a mano es el mismo valor que se lee
+        # sin signo: -1 en un DWord es 0xFFFFFFFF. Se reinterpreta
+        # por bytes, no casteando, porque [uint32](-1) revienta.
+        if ($t -match '^-[0-9]{1,19}$') {
+            $n = [System.Int64]::Parse($t)
+            if ($n -ge [System.Int32]::MinValue) {
+                return [System.UInt64][System.BitConverter]::ToUInt32([System.BitConverter]::GetBytes([System.Int32]$n), 0)
+            }
+            return [System.BitConverter]::ToUInt64([System.BitConverter]::GetBytes($n), 0)
+        }
+    }
+    catch { }
+
+    $null
+}
+
+<#
+    ¿Son el mismo valor?
+
+    Si los dos lados parecen números -decimal, 0x... o negativo-, se
+    comparan como números, que es lo que evita que '0x0000000A' y
+    '10' pasen por distintos. Si no, como texto: sin espacios de más
+    y sin distinguir mayúsculas.
+#>
+function Test-RegistryValueMatch {
+    param([string]$Left, [string]$Right)
+
+    if ([string]::IsNullOrEmpty($Left) -or [string]::IsNullOrEmpty($Right)) { return $false }
+
+    $ln = ConvertTo-RegistryNumber $Left
+    $rn = ConvertTo-RegistryNumber $Right
+    if ($null -ne $ln -and $null -ne $rn) { return $ln -eq $rn }
+
+    [string]::Equals($Left.Trim(), $Right.Trim(), [System.StringComparison]::OrdinalIgnoreCase)
+}
+
+<#
+    El estado de UNA clave, comparando su Current -lo que se acaba de
+    leer del equipo- con lo que declara ui/Data/Categories/.
+#>
+function Get-RegistryKeyStatus {
+    param($Key)
+
+    if (-not $Key) { return 'unknown' }
+
+    # Sin nada declarado con lo que comparar no se puede decir en qué
+    # estado está: 'custom' sería una acusación sin pruebas.
+    if ([string]::IsNullOrEmpty([string]$Key.Recommended) -and
+        [string]::IsNullOrEmpty([string]$Key.Default)) { return 'unknown' }
+
+    # El valor no está puesto: Windows usa el suyo interno, así que el
+    # equipo ESTÁ como salió de fábrica para este ajuste. No se compara
+    # contra el Default declarado -que es solo el número que habría
+    # que escribir para volver-, porque un valor ausente no es igual a
+    # ninguno escrito.
+    if ($Key.State -eq 'missing') { return 'factory' }
+
+    # Sin permiso, raíz inventada o todavía sin leer.
+    if ($Key.State -ne 'read') { return 'unknown' }
+
+    # De fábrica se mira primero: si lo recomendado ya es lo de
+    # fábrica, no hay nada aplicado y lo honesto es decir eso.
+    if (Test-RegistryValueMatch $Key.Current $Key.Default)     { return 'factory' }
+    if (Test-RegistryValueMatch $Key.Current $Key.Recommended) { return 'optimized' }
+    'custom'
+}
+
+<#
+    El estado de un ajuste ENTERO, a partir de todas sus claves:
+
+        sin claves          ->  $null       no hay nada que mirar
+        alguna sin leer     ->  'unknown'   no se puede afirmar nada
+        todas de acuerdo    ->  ese estado
+        unas y otras        ->  'custom'    aplicado a medias
+
+    Hoy todos los ajustes de Regedit declaran una sola clave, pero la
+    regla ya vale para los que declaren varias.
+#>
+function Get-SettingStatus {
+    param($Setting)
+
+    if (-not $Setting) { return $null }
+
+    $keys = @($Setting.Registry)
+    if ($keys.Count -eq 0) { return $null }
+
+    $seen = @{}
+    foreach ($key in $keys) {
+        $status = Get-RegistryKeyStatus $key
+        # Con una sola clave que no se haya podido leer, del conjunto
+        # ya no se puede decir nada.
+        if ($status -eq 'unknown') { return 'unknown' }
+        $seen[$status] = $true
+    }
+
+    if ($seen.Count -eq 1) { return @($seen.Keys)[0] }
+
+    # Unas de fábrica y otras optimizadas: el ajuste está a medias,
+    # que es tanto como decir que lleva una combinación a medida.
+    'custom'
+}
+
+<#
+    Deja el estado escrito en el sitio: cada clave se queda con su
+    Status y el ajuste con el suyo. Es lo que lee la interfaz.
+
+    Devuelve el estado del ajuste.
+#>
+function Update-SettingStatus {
+    param($Setting)
+
+    if (-not $Setting) { return $null }
+
+    foreach ($key in @($Setting.Registry)) { $key['Status'] = Get-RegistryKeyStatus $key }
+
+    $status = Get-SettingStatus $Setting
+
+    # Los ajustes salen de New-Setting, que ya reserva el campo. Lo
+    # demás es para no lanzar si algún día llega otra cosa: un
+    # PSCustomObject sin la propiedad se queja al asignarla.
+    if ($Setting -is [hashtable])                   { $Setting['Status'] = $status }
+    elseif ($Setting.PSObject.Properties['Status']) { $Setting.Status = $status }
+    else { $Setting | Add-Member -NotePropertyName 'Status' -NotePropertyValue $status -Force }
+
+    $status
+}
+
+# ---- fin incluido: core/Registry/SettingStatus.ps1 ----
 
 # ---- 5. Datos: secciones, opciones e idiomas ----
 # Se registran al cargarse, de ahí que vayan después del paso 2.
@@ -2012,6 +2355,15 @@ Register-Category @{
 # NO se declara Current: lo rellena core/Registry/CategoryState.ps1 leyendo
 # el equipo cada vez que se entra en la sección. Escribir en el
 # registro sigue sin estar implementado.
+#
+# TAMPOCO se declaran -Tags. El estado que sale en la tarjeta
+# -Optimizado / Recomendado de fábrica / Personalizado- se calcula
+# comparando lo leído contra esos dos valores declarados, así que
+# escribirlo a mano solo serviría para mentir. Ver
+# core/Registry/SettingStatus.ps1.
+#
+# De ahí que Recommended y Default sean el dato importante de cada
+# clave: si están mal, el estado sale mal.
 # ------------------------------------------------------------
 
 Register-Category @{
@@ -2032,7 +2384,6 @@ Register-Category @{
     Items = @(
         New-Setting -Name 'Network Throttling Mechanism' `
             -Description 'Limits network packet processing (NDIS) to 10 packets' `
-            -Tags 'Recommended', 'Default', 'Custom' `
             -Badge 'NEW' `
             -Value $true `
             -Registry @(
@@ -2040,74 +2391,7 @@ Register-Category @{
                    Name = 'NetworkThrottlingIndex'; Type = 'DWord'; Display = 'hex'
                    Recommended = '0xFFFFFFFF'; Default = '0x00000000' }
             )
-        New-Setting -Name 'User Account Control Level' `
-            -Description 'Controls UAC notification level and secure desktop behavior' `
-            -Tags 'Recommended', 'Default', 'Custom' `
-            -Options 'Always notify', 'Notify when apps try to make changes', 'Notify me only (no dim)', 'Never notify' `
-            -Value 'Notify when apps try to make changes' `
-            -Badge 'NEW' `
-            -Registry @(
-                @{ Path = 'HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System'
-                   Name = 'ConsentPromptBehaviorAdmin'; Type = 'DWord'
-                   Recommended = '0'; Default = '5' }
-                @{ Path = 'HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System'
-                   Name = 'PromptOnSecureDesktop'; Type = 'DWord'
-                   Recommended = '0'; Default = '1' }
-            )
-
-        New-Setting -Name 'Workplace Join Message Prompts' `
-            -Description "Show 'Allow my organization to manage my device' prompts throughout Windows" `
-            -Tags 'Recommended', 'Default', 'Custom' `
-            -Value $true `
-            -Registry @(
-                @{ Path = 'HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Windows\WorkplaceJoin'
-                   Name = 'BlockAADWorkplaceJoin'; Type = 'DWord'
-                   Recommended = '1'; Default = '0' }
-            )
-
-        New-Setting -Name 'BitLocker Auto Encryption' `
-            -Description 'Controls whether Windows can automatically encrypt drives with BitLocker. Has no effect if BitLocker encryption is already active on your device' `
-            -Tags 'Recommended', 'Default', 'Custom' `
-            -Value $false `
-            -Badge 'NEW' `
-            -Registry @(
-                @{ Path = 'HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\BitLocker'
-                   Name = 'PreventDeviceEncryption'; Type = 'DWord'
-                   Recommended = '1'; Default = '0' }
-            )
-
-        New-Setting -Name 'WiFi-Sense' `
-            -Description 'Allow sharing WiFi passwords with contacts and automatically connecting to suggested open hotspots' `
-            -Tags 'Recommended', 'Custom' `
-            -Value $true `
-            -Registry @(
-                @{ Path = 'HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\PolicyManager\default\WiFi\AllowWiFiHotSpotReporting'
-                   Name = 'Value'; Type = 'DWord'
-                   Recommended = '0'; Default = '1' }
-                @{ Path = 'HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\PolicyManager\default\WiFi\AllowAutoConnectToWiFiSenseHotspots'
-                   Name = 'Value'; Type = 'DWord'
-                   Recommended = '0'; Default = '1' }
-            )
-
-        New-Setting -Name 'Automatic Maintenance' `
-            -Description 'Choose if Windows should run automatic system maintenance tasks during idle time' `
-            -Tags 'Recommended', 'Default', 'Custom' `
-            -Value $false `
-            -Registry @(
-                @{ Path = 'HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Schedule\Maintenance'
-                   Name = 'MaintenanceDisabled'; Type = 'DWord'
-                   Recommended = '0'; Default = '0' }
-            )
-
-        New-Setting -Name 'Windows Error Reporting' `
-            -Description 'Choose if Windows should collect and send crash reports and error information to Microsoft' `
-            -Tags 'Recommended', 'Default', 'Custom' `
-            -Value $false `
-            -Registry @(
-                @{ Path = 'HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\Windows Error Reporting'
-                   Name = 'Disabled'; Type = 'DWord'
-                   Recommended = '1'; Default = '0' }
-            )
+       
     )
 }
 
@@ -2254,7 +2538,10 @@ Register-Language 'es' @{
     'NEW' = 'NUEVO'
 
     # ---- Detalles técnicos ----
-    'Registry changes' = 'Cambios en el registro'
+    'Copy the registry path' = 'Copiar la ruta del registro'
+    'Copy the value name'    = 'Copiar el nombre del valor'
+    'Copied'                 = 'Copiado'
+    'Select it or press Ctrl+C to copy it' = 'Selecciónalo o pulsa Ctrl+C para copiarlo'
     'Path:'            = 'Ruta:'
     'Value:'           = 'Valor:'
     'Current:'         = 'Actual:'
@@ -2281,6 +2568,21 @@ Register-Language 'es' @{
     'Recommended' = 'Recomendado'
     'Default'     = 'De fábrica'
     'Custom'      = 'Personalizado'
+
+    # ---- Estado real de un ajuste (core/Registry/SettingStatus.ps1) ----
+    # 'Custom' sale un poco más arriba: es la misma palabra.
+    'Optimized'           = 'Optimizado'
+    'Factory recommended' = 'Recomendado de fábrica'
+    'Unknown'             = 'Desconocido'
+
+    'The registry value is the one this program recommends' = 'El valor del registro es el que recomienda el programa'
+    'The registry value is the Windows factory one'         = 'El valor del registro es el de fábrica de Windows'
+    'The registry value is neither the recommended nor the factory one' = 'El valor del registro no es ni el recomendado ni el de fábrica'
+    'The registry value could not be read'                  = 'No se ha podido leer el valor del registro'
+
+    'Optimized: {0} of {1}'           = 'Optimizados: {0} de {1}'
+    'Factory recommended: {0} of {1}' = 'Recomendados de fábrica: {0} de {1}'
+    'Unknown: {0} of {1}'             = 'Desconocidos: {0} de {1}'
 
     # ---- Indicadores ----
     'On'  = 'Sí'
@@ -2508,8 +2810,13 @@ function New-CategoryCard {
     $card = New-Object System.Windows.Controls.Border
     $card.Style = $Window.FindResource('CardStyle')
     $card.Padding = New-Object System.Windows.Thickness 18, 15, 20, 15
-    $card.Cursor = 'Hand'
-    Add-HoverLift $card
+
+    # La tarjeta se eleva al pasar el ratón, y en WPF eso mueve también
+    # su zona sensible. Por eso quien oye al ratón -y quien recibe el
+    # clic- es el envoltorio quieto que la sostiene, no ella misma:
+    # es lo que devuelve Add-HoverLift (ver ui/Design/Theme.ps1).
+    $slot = Add-HoverLift $card
+    $slot.Cursor = 'Hand'
 
     $grid = New-Object System.Windows.Controls.Grid
     Add-GridColumns $grid 'Auto', '*', 'Auto', 'Auto'
@@ -2575,13 +2882,13 @@ function New-CategoryCard {
     # llamara directamente, el enrutador seguiría creyendo que estamos
     # en la lista y cualquier repintado -cambiar de idioma, tocar una
     # casilla del botón "Vista"- saltaría de vuelta a ella.
-    $card.Tag = $Category
-    $card.Add_MouseLeftButtonUp({
+    $slot.Tag = $Category
+    $slot.Add_MouseLeftButtonUp({
         param($s, $e)
         Show-View -Name 'Show-CategoryDetailView' -Arguments @{ Category = $s.Tag }
     })
 
-    $card
+    $slot
 }
 
 # Las tres píldoras de la derecha: Recommended / Default / Custom.
@@ -2756,6 +3063,13 @@ function New-PreferenceControl {
 # construye ui/Components/Cards/TechnicalDetails.ps1. Sale o no según
 # la opción 'technical' del botón "Vista"; la insignia del título
 # hace lo propio con la opción 'badges'.
+#
+# La etiqueta de debajo del nombre sale del ESTADO REAL del ajuste
+# -optimizado, de fábrica o a medida- cuando lo hay: lo calcula
+# core/Registry/SettingStatus.ps1 comparando lo que se acaba de leer del
+# registro con lo que declara ui/Data/Categories/. Los ajustes que
+# todavía no declaran claves siguen enseñando sus -Tags escritas a
+# mano, que es lo único que tienen.
 # ============================================================
 
 function New-SettingCard {
@@ -2828,9 +3142,21 @@ function New-SettingInfo {
     Set-TextFg $desc 'TextMuted'
     $left.Children.Add($desc) | Out-Null
 
+    # Etiquetas. Si el ajuste declara claves del registro, core/ le ha
+    # dejado un Status leyendo el equipo (ver SettingStatus.ps1) y manda
+    # ese: es UNO de los tres estados, y es un hecho. Las -Tags
+    # declaradas a mano son la versión de mentira de lo mismo, así que
+    # solo salen mientras no haya nada real que enseñar.
     $tags = New-Object System.Windows.Controls.StackPanel
     $tags.Orientation = 'Horizontal'
-    foreach ($tag in $Setting.Tags) { $tags.Children.Add((New-Tag $tag)) | Out-Null }
+
+    if ($Setting.Status) {
+        $tags.Children.Add((New-StatusTag $Setting.Status)) | Out-Null
+    }
+    else {
+        foreach ($tag in $Setting.Tags) { $tags.Children.Add((New-Tag $tag)) | Out-Null }
+    }
+
     $left.Children.Add($tags) | Out-Null
 
     $left
@@ -2844,14 +3170,26 @@ function New-SettingControl {
     $right.Orientation = 'Horizontal'
     $right.VerticalAlignment = 'Center'
 
-    # Indicadores: el valor actual coincide con el recomendado / el de fábrica.
-    if ($Setting.Tags -contains 'Recommended') {
+    # Indicadores: el valor actual coincide con el recomendado / el de
+    # fábrica. Que es justo lo que dice el Status cuando lo hay, así
+    # que ahí mandan los hechos y no las etiquetas declaradas -que
+    # además solían salir las dos a la vez, lo cual era imposible-.
+    if ($Setting.Status) {
+        $isRecommended = $Setting.Status -eq 'optimized'
+        $isFactory     = $Setting.Status -eq 'factory'
+    }
+    else {
+        $isRecommended = $Setting.Tags -contains 'Recommended'
+        $isFactory     = $Setting.Tags -contains 'Default'
+    }
+
+    if ($isRecommended) {
         $star = New-Icon 'StarFill' 13 'Success'
         $star.Margin = New-Object System.Windows.Thickness 0, 0, 10, 0
         $star.ToolTip = T 'Recommended value'
         $right.Children.Add($star) | Out-Null
     }
-    if ($Setting.Tags -contains 'Default') {
+    if ($isFactory) {
         $grid = New-Icon 'Grid' 13 'TextFaint'
         $grid.Margin = New-Object System.Windows.Thickness 0, 0, 14, 0
         $grid.ToolTip = T 'Windows factory value'
@@ -2906,18 +3244,24 @@ function New-SettingControl {
 #   ---------------------------------------------
 #   (i) Detalles técnicos                       v
 #   ---------------------------------------------
-#      Cambios en el registro
-#      [/]  Ruta:  HKEY_LOCAL_MACHINE\...        Actual: 5
-#           Valor: ConsentPromptBehaviorAdmin    Recomendado: 0
+#      Claves de registro de Windows
+#      [/]  Ruta:  HKEY_LOCAL_MACHINE\...  [c]   Actual: 5
+#           Valor: ConsentPromptBehaviorAdmin [c] Recomendado: 0
 #                                                Predeterminado: 5
+#
+# La ruta y el valor se pueden seleccionar con el ratón y copiar con
+# Ctrl+C, y cada uno tiene su botón [c] al lado (ver New-MonoField).
 #
 # Los datos salen del campo Registry del ajuste (ver -Registry
 # en New-Setting, ui/Engine/CategoryRegistry.ps1). Un ajuste que aún no
 # lo declare enseña un aviso en su lugar, para que se vea que la
 # fila existe pero le falta el dato.
 #
-# NADA de esto lee ni escribe el registro todavía: los valores
-# son los declarados en ui/Data/Categories/.
+# "Actual" es lo que se acaba de leer del equipo (lo rellena
+# core/Registry/CategoryState.ps1); "Recomendado" y "Predeterminado" son
+# los valores declarados, y son contra los que se compara para
+# decidir en qué estado está el ajuste. Escribir en el registro
+# sigue sin hacerse.
 # ============================================================
 
 function New-TechnicalDetails {
@@ -3010,7 +3354,7 @@ function New-TechnicalBody {
     Set-BoxBg $strip 'SurfaceSunken'
 
     $stripText = New-Object System.Windows.Controls.TextBlock
-    $stripText.Text = T 'Registry changes'
+    $stripText.Text = T 'Windows registry keys'
     $stripText.FontSize = 11.5
     $stripText.FontWeight = 'SemiBold'
     Set-TextFg $stripText 'TextMuted'
@@ -3052,14 +3396,17 @@ function New-RegistryKeyRow {
     $open.Child = (New-Icon 'OpenIn' 12 'TextMuted')
     Add-ToColumn $grid $open 0
 
-    # --- columna 1: ruta y valor ---
+    # --- columna 1: ruta y valor, seleccionables y copiables ---
     $texts = New-Object System.Windows.Controls.StackPanel
     $texts.Margin = New-Object System.Windows.Thickness 0, 0, 24, 0
 
     $type = $null
     if ($Key.Type) { $type = "($($Key.Type))" }
-    $texts.Children.Add((New-MonoLine $Window (T 'Path:')  $Key.Path)) | Out-Null
-    $texts.Children.Add((New-MonoLine $Window (T 'Value:') $Key.Name $type)) | Out-Null
+
+    $texts.Children.Add((New-MonoField -Window $Window -Label (T 'Path:') -Value $Key.Path `
+        -Tip 'Copy the registry path')) | Out-Null
+    $texts.Children.Add((New-MonoField -Window $Window -Label (T 'Value:') -Value $Key.Name -Suffix $type `
+        -Tip 'Copy the value name')) | Out-Null
 
     Add-ToColumn $grid $texts 1
 
@@ -3090,7 +3437,17 @@ function New-CurrentLine {
     $label = T 'Current:'
 
     switch ($Key.State) {
-        'read'    { return (New-StateLine $Window $label $Key.Current            'Text') }
+        'read'    {
+            # El color dice de un vistazo contra qué ha cuadrado el
+            # valor: verde si es el recomendado, apagado si es el de
+            # fábrica y naranja si no es ninguno. Mismo catálogo que
+            # la etiqueta de la tarjeta (Get-StatusStyle), así que no
+            # pueden decir cosas distintas. Sin Status -esta clave no
+            # se ha comparado con nada- se queda en el color normal.
+            $fg = 'Text'
+            if ($Key.Status) { $fg = (Get-StatusStyle $Key.Status).Fg }
+            return (New-StateLine $Window $label $Key.Current $fg)
+        }
         'missing' { return (New-StateLine $Window $label (T 'not set')           'TextFaint') }
         'denied'  { return (New-StateLine $Window $label (T 'no access')         'Danger') }
         'badpath' { return (New-StateLine $Window $label (T 'unknown root key')  'Danger') }
@@ -3100,33 +3457,171 @@ function New-CurrentLine {
     New-StateLine $Window $label (T 'not read') 'TextFaint'
 }
 
-# "Ruta:  HKEY_LOCAL_MACHINE\..." en tipografía monoespaciada,
-# con la etiqueta en negrita y el dato en color normal.
-function New-MonoLine {
-    param($Window, [string]$Label, [string]$Value, [string]$Suffix)
+<#
+    "Ruta:  HKEY_LOCAL_MACHINE\..." en tipografía monoespaciada, con
+    la etiqueta en negrita, el dato en color normal y un botón para
+    copiarlo al portapapeles.
 
-    $line = New-Object System.Windows.Controls.TextBlock
-    $line.FontFamily = $Window.FindResource('MonoFont')
-    $line.FontSize = 11
-    $line.LineHeight = 17
-    $line.TextWrapping = 'Wrap'
+    El dato va en un TextBox de SOLO LECTURA, no en un TextBlock: en
+    WPF un TextBlock no se puede seleccionar con el ratón ni copiar
+    con Ctrl+C, y esto es justo lo que uno quiere pegar en el Editor
+    del registro. Sin borde, sin fondo y sin cursor de escritura se ve
+    igual que el texto de al lado, pero se selecciona, tiene su menú
+    contextual y responde a Ctrl+C y Ctrl+A. De solo lectura quiere
+    decir que no se puede escribir en él: no es un campo editable.
 
-    $tag = New-Object System.Windows.Documents.Run ($Label + ' ')
-    $tag.FontWeight = 'SemiBold'
-    Set-TextFg $tag 'TextMuted'
-    $line.Inlines.Add($tag)
+    Las tres columnas son etiqueta / dato / botón. El dato va en la
+    columna elástica y con TextWrapping, que es lo que hace que una
+    ruta larga baje de línea en vez de salirse de la tarjeta.
+#>
+function New-MonoField {
+    param($Window, [string]$Label, [string]$Value, [string]$Suffix, [string]$Tip)
 
-    $data = New-Object System.Windows.Documents.Run $Value
-    Set-TextFg $data 'Text'
-    $line.Inlines.Add($data)
+    $grid = New-Object System.Windows.Controls.Grid
+    $grid.Margin = New-Object System.Windows.Thickness 0, 0, 0, 3
+    Add-GridColumns $grid 'Auto', '*', 'Auto'
+
+    # --- columna 0: la etiqueta, y con ella el tipo ---
+    # El tipo se pega a la etiqueta y no detrás del dato porque ahí
+    # entraría en la selección y se copiaría con él.
+    $tag = New-Object System.Windows.Controls.TextBlock
+    $tag.FontFamily = $Window.FindResource('MonoFont')
+    $tag.FontSize = 11
+    $tag.VerticalAlignment = 'Top'
+    $tag.Margin = New-Object System.Windows.Thickness 0, 1, 7, 0
+
+    $name = New-Object System.Windows.Documents.Run $Label
+    $name.FontWeight = 'SemiBold'
+    Set-TextFg $name 'TextMuted'
+    $tag.Inlines.Add($name)
 
     if ($Suffix) {
-        $extra = New-Object System.Windows.Documents.Run ('   ' + $Suffix)
+        $extra = New-Object System.Windows.Documents.Run (' ' + $Suffix)
         Set-TextFg $extra 'TextFaint'
-        $line.Inlines.Add($extra)
+        $tag.Inlines.Add($extra)
     }
+    Add-ToColumn $grid $tag 0
 
-    $line
+    # --- columna 1: el dato ---
+    $box = New-Object System.Windows.Controls.TextBox
+    $box.Text = $Value
+    $box.IsReadOnly = $true
+    $box.IsReadOnlyCaretVisible = $false
+    $box.BorderThickness = New-Object System.Windows.Thickness 0
+    $box.Background = [System.Windows.Media.Brushes]::Transparent
+    $box.Padding = New-Object System.Windows.Thickness 0
+    $box.Margin = New-Object System.Windows.Thickness 0
+    $box.FontFamily = $Window.FindResource('MonoFont')
+    $box.FontSize = 11
+    $box.TextWrapping = 'Wrap'
+    $box.HorizontalAlignment = 'Left'
+    $box.VerticalAlignment = 'Top'
+    $box.ToolTip = T 'Select it or press Ctrl+C to copy it'
+    Set-TextFg $box 'Text'
+    Add-ToColumn $grid $box 1
+
+    # --- columna 2: copiar ---
+    Add-ToColumn $grid (New-CopyButton $Value $Tip) 2
+
+    $grid
+}
+
+<#
+    El botón de copiar de cada campo.
+
+    Lo que se copia viaja en el Tag junto con su propio pie de ayuda,
+    para poder devolverlo a su sitio después del aviso: nada de
+    closures (regla 4 de CLAUDE.md).
+#>
+function New-CopyButton {
+    param([string]$Text, [string]$Tip)
+
+    $button = New-Object System.Windows.Controls.Border
+    $button.Name = 'BtnCopy'
+    $button.Width = 24; $button.Height = 21
+    $button.CornerRadius = New-Object System.Windows.CornerRadius 6
+    $button.Margin = New-Object System.Windows.Thickness 10, 0, 0, 0
+    $button.VerticalAlignment = 'Top'
+    $button.Cursor = 'Hand'
+    $button.Background = [System.Windows.Media.Brushes]::Transparent
+    $button.ToolTip = T $Tip
+    $button.Child = (New-Icon 'Copy' 11 'TextFaint')
+    $button.Tag = [PSCustomObject]@{ Text = $Text; Tip = $Tip }
+
+    $button.Add_MouseEnter({ param($s, $e) Set-BoxBg $s 'SurfaceHover' })
+    $button.Add_MouseLeave({ param($s, $e) $s.Background = [System.Windows.Media.Brushes]::Transparent })
+    $button.Add_MouseLeftButtonUp({ param($s, $e) Copy-TechnicalValue $s })
+
+    $button
+}
+
+# ---- Copiar al portapapeles -------------------------------------
+#
+# El aviso de "copiado" lo enseña UN botón cada vez: el que se acaba
+# de pulsar. Si se copia otra cosa antes de que se apague, el anterior
+# vuelve a su sitio en el acto. Guardarlo aquí -y no en cada botón-
+# es lo que permite que el temporizador sea uno solo y que su
+# manejador no necesite saber a quién apagar.
+$CopyFeedbackButton = $null
+$CopyFeedbackTimer = $null
+$CopyFeedbackMs = 1400
+
+<#
+    Copia al portapapeles el texto que lleva el botón en su Tag.
+
+    El portapapeles es de todo Windows y otro programa puede tenerlo
+    tomado, en cuyo caso SetText lanza. Aquí eso no puede tumbar la
+    ventana: si no se ha podido copiar, no se avisa de que sí.
+#>
+function Copy-TechnicalValue {
+    param($Button)
+
+    $info = $Button.Tag
+    if (-not $info -or [string]::IsNullOrEmpty([string]$info.Text)) { return $false }
+
+    try { [System.Windows.Clipboard]::SetText([string]$info.Text) }
+    catch { return $false }
+
+    Show-CopyFeedback $Button
+    $true
+}
+
+# El aviso: el icono se vuelve una marca verde durante algo más de un
+# segundo, y el pie de ayuda dice "Copiado" por si se vuelve a pasar
+# el ratón por encima.
+function Show-CopyFeedback {
+    param($Button)
+
+    Reset-CopyFeedback
+
+    $script:CopyFeedbackButton = $Button
+    $Button.Child.Text = Glyph 'Check'
+    Set-TextFg $Button.Child 'Success'
+    $Button.ToolTip = T 'Copied'
+
+    if (-not $script:CopyFeedbackTimer) {
+        $script:CopyFeedbackTimer = New-Object System.Windows.Threading.DispatcherTimer
+        $script:CopyFeedbackTimer.Interval = [TimeSpan]::FromMilliseconds($CopyFeedbackMs)
+        # El manejador llama a la función y es ella la que sabe a quién
+        # apagar: un DispatcherTimer no tiene Tag donde dejar el botón.
+        $script:CopyFeedbackTimer.Add_Tick({ param($s, $e) Reset-CopyFeedback })
+    }
+    $script:CopyFeedbackTimer.Stop()
+    $script:CopyFeedbackTimer.Start()
+}
+
+# Devuelve el botón que estuviera avisando a su aspecto normal.
+# Llamarla sin nadie avisando no hace nada.
+function Reset-CopyFeedback {
+    if ($script:CopyFeedbackTimer) { $script:CopyFeedbackTimer.Stop() }
+
+    $button = $script:CopyFeedbackButton
+    $script:CopyFeedbackButton = $null
+    if (-not $button) { return }
+
+    $button.Child.Text = Glyph 'Copy'
+    Set-TextFg $button.Child 'TextFaint'
+    $button.ToolTip = T $button.Tag.Tip
 }
 
 # "Actual: 5" alineado a la derecha.
@@ -3243,13 +3738,21 @@ function New-LockedBanner {
 #     (estrella) Recomendado 6/6   (rejilla) De fábrica 5/6
 #     (mando) Personalizado 6/6
 #
-# Los números salen de Get-CategoryCounts (ui/Engine/CategoryRegistry.ps1),
-# que los cuenta sobre los Items reales del archivo de la sección.
+# La fila se cuenta de dos maneras, y la sección decide cuál:
+#
+#   - Si sus ajustes leen el registro, por su ESTADO REAL
+#     (Get-CategoryStatusCounts): optimizado, de fábrica o a medida,
+#     lo que core/Registry/SettingStatus.ps1 acaba de sacar del equipo.
+#     Es el mismo dato -y el mismo catálogo de colores- que la
+#     etiqueta de cada tarjeta, así que fila y tarjetas no pueden
+#     contradecirse.
+#   - Si no, por las etiquetas declaradas a mano en el archivo de la
+#     sección (Get-CategoryCounts). Es lo que había siempre.
 #
 # Update-CategorySummary vuelve a contar y repinta la fila. Está
-# enganchado a los controles de ui/Components/Cards/SettingCard.ps1, así
-# que en cuanto la lógica real cambie las etiquetas de un ajuste
-# el resumen se moverá solo.
+# enganchado a los controles de ui/Components/Cards/SettingCard.ps1: el
+# día que tocar un interruptor escriba en el registro, los números
+# se moverán solos.
 # ============================================================
 
 # Etiqueta -> icono y colores. Mismo criterio que New-Tag (UiKit).
@@ -3274,29 +3777,60 @@ function New-CategorySummary {
     # pueda recontar sin closures (regla 4 de CLAUDE.md).
     $row.Tag = $Category
 
-    $counts = Get-CategoryCounts $Category
-    $total = $counts.Total
-
-    foreach ($style in $SummaryStyles) {
-        $n = $counts.($style.Tag)
-
-        $pill = New-Pill $style.Icon "$n/$total" $style.Fg $style.Bg ((T $style.Tip) -f $n, $total)
-        $pill.Margin = New-Object System.Windows.Thickness 4, 0, 4, 0
-
-        # La píldora lleva su propio texto, así que el nombre de la
-        # etiqueta se añade delante dentro de la misma píldora.
-        $label = New-Object System.Windows.Controls.TextBlock
-        $label.Text = (T $style.Tag) + '  '
-        $label.FontSize = 11
-        $label.FontWeight = 'SemiBold'
-        $label.VerticalAlignment = 'Center'
-        Set-TextFg $label $style.Fg
-        $pill.Child.Children.Insert(1, $label)
-
-        $row.Children.Add($pill) | Out-Null
-    }
+    # Si la sección lee el registro, sus ajustes traen un estado de
+    # verdad y se cuentan por él. Si no, por las etiquetas declaradas,
+    # que es todo lo que hay.
+    $counts = Get-CategoryStatusCounts $Category
+    if ($counts) { Add-StatusPills $row $counts } else { Add-TagPills $row (Get-CategoryCounts $Category) }
 
     $row
+}
+
+# Una píldora por estado real. La de 'desconocido' solo sale si hay
+# alguno: en cuanto se lee todo bien, sobra de la fila.
+function Add-StatusPills {
+    param($Row, $Counts)
+
+    foreach ($status in Get-SettingStatusNames) {
+        $n = [int]$Counts.$status
+        if ($status -eq 'unknown' -and $n -eq 0) { continue }
+
+        $style = Get-StatusStyle $status
+        $tip = (T $style.Count) -f $n, $Counts.Total
+        $Row.Children.Add((New-SummaryPill $style (T $style.Label) $n $Counts.Total $tip)) | Out-Null
+    }
+}
+
+# Una píldora por etiqueta declarada. Es lo de siempre, y lo que
+# siguen enseñando las secciones que aún no leen nada del equipo.
+function Add-TagPills {
+    param($Row, $Counts)
+
+    foreach ($style in $SummaryStyles) {
+        $n = [int]$Counts.($style.Tag)
+        $tip = (T $style.Tip) -f $n, $Counts.Total
+        $Row.Children.Add((New-SummaryPill $style (T $style.Tag) $n $Counts.Total $tip)) | Out-Null
+    }
+}
+
+# La píldora del resumen: icono, nombre y recuento, todo dentro de la
+# misma cápsula. New-Pill solo trae el icono y el texto, así que el
+# nombre se cuela entre los dos.
+function New-SummaryPill {
+    param($Style, [string]$Label, [int]$Count, [int]$Total, [string]$Tip)
+
+    $pill = New-Pill $Style.Icon "$Count/$Total" $Style.Fg $Style.Bg $Tip
+    $pill.Margin = New-Object System.Windows.Thickness 4, 0, 4, 0
+
+    $text = New-Object System.Windows.Controls.TextBlock
+    $text.Text = $Label + '  '
+    $text.FontSize = 11
+    $text.FontWeight = 'SemiBold'
+    $text.VerticalAlignment = 'Center'
+    Set-TextFg $text $Style.Fg
+    $pill.Child.Children.Insert(1, $text)
+
+    $pill
 }
 
 <#
@@ -4663,16 +5197,24 @@ function New-NavButton {
 function Set-NavSelection {
     param($Button)
 
+    # Cada entrada declara su vista en ui/Index/NavigationIndex.ps1.
+    #
+    # Sin View, la sección aún no tiene pantalla y el clic se queda
+    # aquí: NADA de mandar a una vista de relleno -eso deja el menú
+    # marcando una cosa y la pantalla enseñando otra-. El botón se ve
+    # y responde como los demás, pero no navega ni mueve la
+    # selección, así que el usuario sigue exactamente donde estaba.
+    $item = Get-NavigationItem $Button.Uid
+    if (-not $item -or -not $item.View) { return }
+
     $window = [System.Windows.Window]::GetWindow($Button)
-    foreach ($item in Get-NavigationItems) {
-        $window.FindName((Get-NavElementName $item.Id)).Tag = $null
+    foreach ($nav in Get-NavigationItems) {
+        $window.FindName((Get-NavElementName $nav.Id)).Tag = $null
     }
     $Button.Tag = 'sel'
     Update-NavColors $window
 
-    # Cada entrada declara su vista en ui/Index/NavigationIndex.ps1.
-    $item = Get-NavigationItem $Button.Uid
-    if ($item -and $item.View) { Show-View -Name $item.View } else { Show-View -Name 'Show-OptimizationsListView' }
+    Show-View -Name $item.View
 }
 
 # El estilo del XAML pinta el fondo del botón seleccionado; el

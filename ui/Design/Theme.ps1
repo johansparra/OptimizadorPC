@@ -26,7 +26,7 @@ $Glyphs = @{
     Moon = 0xE708; Help = 0xE897; Heart = 0xEB51; Check = 0xE73E
     Info = 0xE946; Bulb = 0xEA80; Lock = 0xE72E; Apps = 0xF0E2
     ChevronUp = 0xE70E; OpenIn = 0xE8A7; Person = 0xE77B
-    Dock = 0xE73F
+    Dock = 0xE73F; Copy = 0xE8C8
     # registro de actividad (ui/Components/Shell/LogPanel.ps1)
     Pulse = 0xE9D9; Trash = 0xE74D; Save = 0xE74E; Alert = 0xE783
 }
@@ -154,8 +154,19 @@ function Start-EnterTransition {
 }
 
 # Elevación al pasar el ratón: sombra más marcada + 2px arriba.
+#
+# Quien escucha al ratón NO es la tarjeta, sino un envoltorio
+# transparente que ocupa su hueco y no se mueve nunca. En WPF el
+# RenderTransform arrastra consigo la zona sensible al ratón: si
+# escuchara la propia tarjeta, con el cursor parado sobre sus últimos
+# píxeles subirla lo dejaría fuera (MouseLeave), bajarla lo volvería a
+# meter dentro (MouseEnter) y el efecto no pararía jamás.
+#
+# Devuelve el envoltorio: es lo que hay que colgar del panel, y es
+# también donde van el cursor y el clic, para que respondan en todo el
+# rectángulo de la tarjeta -incluida la franja que deja libre al subir-.
 function Add-HoverLift {
-    param($Border, [double]$Lift = 2)
+    param($Border)
 
     $shadow = New-Object System.Windows.Media.Effects.DropShadowEffect
     $shadow.Color = [System.Windows.Media.Colors]::Black
@@ -163,19 +174,33 @@ function Add-HoverLift {
     $shadow.BlurRadius = 8;  $shadow.Opacity = 0.05
     $Border.Effect = $shadow
 
-    $tt = New-Object System.Windows.Media.TranslateTransform
-    $Border.RenderTransform = $tt
+    $Border.RenderTransform = New-Object System.Windows.Media.TranslateTransform
 
-    $Border.Add_MouseEnter({
+    # El margen se muda al envoltorio: así su área transparente es
+    # exactamente la de la tarjeta y el hueco entre tarjetas sigue
+    # siendo hueco, ni se ilumina ni se puede pulsar.
+    $slot = New-Object System.Windows.Controls.Grid
+    $slot.Background = [System.Windows.Media.Brushes]::Transparent
+    $slot.Margin = $Border.Margin
+    $Border.Margin = New-Object System.Windows.Thickness 0
+    $slot.Children.Add($Border) | Out-Null
+
+    # Nada de closures (regla 4): la tarjeta es el único hijo del
+    # envoltorio, así que el manejador la saca del emisor.
+    $slot.Add_MouseEnter({
         param($s, $e)
-        $s.RenderTransform.BeginAnimation([System.Windows.Media.TranslateTransform]::YProperty, (New-Anim 0 (-2) 160))
-        $s.Effect.BeginAnimation([System.Windows.Media.Effects.DropShadowEffect]::OpacityProperty, (New-Anim 0.05 0.16 160))
-        $s.Effect.BeginAnimation([System.Windows.Media.Effects.DropShadowEffect]::BlurRadiusProperty, (New-Anim 8 20 160))
+        $card = $s.Children[0]
+        $card.RenderTransform.BeginAnimation([System.Windows.Media.TranslateTransform]::YProperty, (New-Anim 0 (-2) 160))
+        $card.Effect.BeginAnimation([System.Windows.Media.Effects.DropShadowEffect]::OpacityProperty, (New-Anim 0.05 0.16 160))
+        $card.Effect.BeginAnimation([System.Windows.Media.Effects.DropShadowEffect]::BlurRadiusProperty, (New-Anim 8 20 160))
     })
-    $Border.Add_MouseLeave({
+    $slot.Add_MouseLeave({
         param($s, $e)
-        $s.RenderTransform.BeginAnimation([System.Windows.Media.TranslateTransform]::YProperty, (New-Anim (-2) 0 160))
-        $s.Effect.BeginAnimation([System.Windows.Media.Effects.DropShadowEffect]::OpacityProperty, (New-Anim 0.16 0.05 160))
-        $s.Effect.BeginAnimation([System.Windows.Media.Effects.DropShadowEffect]::BlurRadiusProperty, (New-Anim 20 8 160))
+        $card = $s.Children[0]
+        $card.RenderTransform.BeginAnimation([System.Windows.Media.TranslateTransform]::YProperty, (New-Anim (-2) 0 160))
+        $card.Effect.BeginAnimation([System.Windows.Media.Effects.DropShadowEffect]::OpacityProperty, (New-Anim 0.16 0.05 160))
+        $card.Effect.BeginAnimation([System.Windows.Media.Effects.DropShadowEffect]::BlurRadiusProperty, (New-Anim 20 8 160))
     })
+
+    $slot
 }

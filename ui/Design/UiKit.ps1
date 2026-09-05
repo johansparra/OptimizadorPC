@@ -81,6 +81,84 @@ function New-Pill {
     $b
 }
 
+<#
+    Cómo se enseña cada estado de los que calcula
+    core/Registry/SettingStatus.ps1 mirando el registro de verdad.
+
+    Un único sitio con el nombre, el icono, los colores y el pie de
+    ayuda de cada estado: lo usan la etiqueta de la tarjeta de ajuste
+    y las píldoras del resumen de la sección, así que no pueden
+    acabar diciendo cosas distintas. Añadir un estado es añadir una
+    línea aquí y otra en core/.
+
+    Los textos se guardan en inglés y se traducen al pintarlos
+    (regla 15): aquí no se llama a T.
+#>
+$SettingStatusStyles = @{
+    'optimized' = @{ Label = 'Optimized';           Icon = 'StarFill'; Fg = 'Success';   Bg = 'SuccessSoft'
+                     Tip   = 'The registry value is the one this program recommends'
+                     Count = 'Optimized: {0} of {1}' }
+
+    'factory'   = @{ Label = 'Factory recommended'; Icon = 'Grid';     Fg = 'TextMuted'; Bg = 'SurfaceSunken'
+                     Tip   = 'The registry value is the Windows factory one'
+                     Count = 'Factory recommended: {0} of {1}' }
+
+    'custom'    = @{ Label = 'Custom';              Icon = 'Sliders';  Fg = 'Warn';      Bg = 'WarnSoft'
+                     Tip   = 'The registry value is neither the recommended nor the factory one'
+                     Count = 'Customised: {0} of {1}' }
+
+    'unknown'   = @{ Label = 'Unknown';             Icon = 'Help';     Fg = 'TextFaint'; Bg = 'SurfaceSunken'
+                     Tip   = 'The registry value could not be read'
+                     Count = 'Unknown: {0} of {1}' }
+}
+
+# Un estado que no esté en el catálogo se enseña como desconocido,
+# que es exactamente lo que es: nadie sabe qué significa.
+function Get-StatusStyle {
+    param([string]$Status)
+
+    $style = $SettingStatusStyles[[string]$Status]
+    if (-not $style) { $style = $SettingStatusStyles['unknown'] }
+    $style
+}
+
+<#
+    Etiqueta del estado REAL de un ajuste: icono, nombre y un pie de
+    ayuda que explica por qué está ahí.
+
+    Sustituye a las etiquetas declaradas (New-Tag) en los ajustes que
+    sí leen el registro; ver ui/Components/Cards/SettingCard.ps1.
+#>
+function New-StatusTag {
+    param([string]$Status)
+
+    $style = Get-StatusStyle $Status
+
+    $b = New-Object System.Windows.Controls.Border
+    $b.CornerRadius = New-Object System.Windows.CornerRadius 6
+    $b.Padding = New-Object System.Windows.Thickness 8, 2.5, 9, 3.5
+    $b.Margin = New-Object System.Windows.Thickness 0, 0, 6, 0
+    $b.ToolTip = T $style.Tip
+    Set-BoxBg $b $style.Bg
+
+    $sp = New-Object System.Windows.Controls.StackPanel
+    $sp.Orientation = 'Horizontal'
+
+    $icon = New-Icon $style.Icon 10 $style.Fg
+    $icon.Margin = New-Object System.Windows.Thickness 0, 0, 5, 0
+    $sp.Children.Add($icon) | Out-Null
+
+    $t = New-Object System.Windows.Controls.TextBlock
+    $t.Text = T $style.Label
+    $t.FontSize = 10.5; $t.FontWeight = 'SemiBold'
+    $t.VerticalAlignment = 'Center'
+    Set-TextFg $t $style.Fg
+    $sp.Children.Add($t) | Out-Null
+
+    $b.Child = $sp
+    $b
+}
+
 # Etiqueta de clasificación (Recommended / Default / Custom).
 function New-Tag {
     param([string]$Text)

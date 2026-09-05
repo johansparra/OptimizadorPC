@@ -77,6 +77,14 @@ function Get-WiringProbe {
         'Push-Boton $vlog.FindName(''LogBtnDock'')'
         'Write-Host ("LOG-DENTRO={0} CAJON-OTRA-VEZ={1}" -f (Get-LogDetached), (Get-LogPanelOpen))'
         'Hide-LogPanel $Window'
+        ''
+        '# El menu lateral, en el host de verdad: una entrada con'
+        '# pantalla y otra sin ella. Las que no la tienen no navegan.'
+        'Push-Boton $Window.FindName(''NavSettings'')'
+        'Write-Host ("NAV-CON-PANTALLA={0}" -f (Get-CurrentViewName))'
+        'Push-Boton $Window.FindName(''NavSoftware'')'
+        'Write-Host ("NAV-SIN-PANTALLA={0} MARCA={1}" -f (Get-CurrentViewName), ($null -ne $Window.FindName(''NavSoftware'').Tag))'
+        ''
         'Write-Host "SONDA-COMPLETA"'
     )
 }
@@ -174,6 +182,11 @@ Describe 'main.ps1 - los botones responden' {
     It 'el log sale a su ventana y vuelve al cajón' {
         Assert-Match 'LOG-FUERA=True CAJON=False' $WiringOutput 'sacarlo debería cerrar el cajón'
         Assert-Match 'LOG-DENTRO=False CAJON-OTRA-VEZ=True' $WiringOutput 'acoplarlo debería reabrirlo'
+    }
+
+    It 'una entrada del menú sin pantalla no lleva a ninguna parte' {
+        Assert-Match 'NAV-CON-PANTALLA=Show-SettingsView' $WiringOutput 'Ajustes sí debería navegar'
+        Assert-Match 'NAV-SIN-PANTALLA=Show-SettingsView MARCA=False' $WiringOutput 'Software no debía moverse de sitio ni marcarse'
     }
 
     It 'ningún manejador ha lanzado' {

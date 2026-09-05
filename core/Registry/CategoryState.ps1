@@ -19,6 +19,11 @@
 
         Current   texto ya formateado, o $null si no se pudo leer
         State     'read' | 'missing' | 'denied' | 'badpath'
+        Status    'optimized' | 'factory' | 'custom' | 'unknown'
+
+    Y, con sus claves ya leídas, deja también el Status de cada
+    ajuste: en qué estado ha quedado comparando lo leído con lo
+    declarado (ver core/Registry/SettingStatus.ps1).
 
     El Current que venga escrito en ui/Data/Categories/ se ignora: el
     valor bueno es el del equipo.
@@ -39,12 +44,7 @@ function Update-CategoryRegistryState {
         [scriptblock]$OnProgress
     )
 
-    $keys = New-Object System.Collections.Generic.List[object]
-    foreach ($setting in @($Category.Items)) {
-        foreach ($key in @($setting.Registry)) { $keys.Add($key) }
-    }
-
-    $total = $keys.Count
+    $total = Get-CategoryRegistryKeyCount $Category
     if ($total -eq 0) { return 0 }
 
     # Cabecera del bloque en el registro de actividad: sin ella,
@@ -59,23 +59,34 @@ function Update-CategoryRegistryState {
     $done = 0
     if ($OnProgress) { & $OnProgress $done $total }
 
-    foreach ($key in $keys) {
-        $result = Read-RegistryValue $key.Path $key.Name
+    # Se recorre ajuste por ajuste -y no una lista plana de claves-
+    # porque en cuanto están leídas las suyas hay que decidir en qué
+    # estado ha quedado ese ajuste.
+    foreach ($setting in @($Category.Items)) {
+        foreach ($key in @($setting.Registry)) {
+            $result = Read-RegistryValue $key.Path $key.Name
 
-        # Las claves de -Registry son hashtables, así que se
-        # rellenan en el sitio y la tarjeta las lee tal cual.
-        $key['State'] = $result.State
-        if ($result.State -eq 'read') {
-            $key['Current'] = Format-RegistryValue $result.Value $result.Kind $key.Display
+            # Las claves de -Registry son hashtables, así que se
+            # rellenan en el sitio y la tarjeta las lee tal cual.
+            $key['State'] = $result.State
+            if ($result.State -eq 'read') {
+                $key['Current'] = Format-RegistryValue $result.Value $result.Kind $key.Display
+            }
+            else {
+                $key['Current'] = $null
+            }
+
+            $states[$result.State] = 1 + [int]$states[$result.State]
+
+            $done++
+            if ($OnProgress) { & $OnProgress $done $total }
         }
-        else {
-            $key['Current'] = $null
-        }
 
-        $states[$result.State] = 1 + [int]$states[$result.State]
-
-        $done++
-        if ($OnProgress) { & $OnProgress $done $total }
+        # Recomendado / de fábrica / a medida, comparando lo leído con
+        # lo declarado (core/Registry/SettingStatus.ps1). Va aquí y no en la
+        # interfaz para que se recalcule SIEMPRE que se lee: entrar en
+        # la sección y refrescar pasan los dos por este mismo sitio.
+        Update-SettingStatus $setting | Out-Null
     }
 
     $watch.Stop()

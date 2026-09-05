@@ -45,8 +45,11 @@ tests/
 | `Core/Log.Tests.ps1` | El registro de actividad: apuntar, filtrar, el tope del buffer, el volcado a archivo. |
 | `Core/Registry.Tests.ps1` | Leer el registro **de verdad**: los cuatro estados, el DWord con signo, que nunca lance. |
 | `Core/RegistryState.Tests.ps1` | El volcado a los datos de `ui/Data/Categories/` y el aviso de avance. |
+| `Core/SettingStatus.Tests.ps1` | En qué estado queda cada ajuste al comparar lo leído con lo declarado. |
 | `Ui/Window.Tests.ps1` | La ventana, los temas, la barra de título, el menú lateral, las vistas. |
 | `Ui/LogPanel.Tests.ps1` | El cajón del log: abrir, cerrar, las filas, el idioma. |
+| `Ui/LogWindow.Tests.ps1` | El log sacado a su propia ventana y devuelto al cajón. |
+| `Ui/TechnicalDetails.Tests.ps1` | El pie de la tarjeta: que la ruta y el valor se puedan seleccionar y copiar. |
 | `Ui/Language.Tests.ps1` | Que no quede ni un texto sin traducir en toda la interfaz. |
 | `Ui/Wiring.Tests.ps1` | Que los botones de `main.ps1` respondan al pulsarlos. |
 | `Source/Rules.Tests.ps1` | Las reglas de `CLAUDE.md` que se ven leyendo el código, el orden de carga de las capas y que el paquete de `build.ps1` parsee. |
@@ -55,6 +58,15 @@ tests/
 cargan con punto desde `Run-Tests.ps1` antes que nada, para que todo lo demás vea sus
 funciones. Las carpetas restantes se recorren solas: un `*.Tests.ps1` nuevo en
 cualquiera de ellas se ejecuta sin registrarlo en ningún sitio.
+
+**`Find-Visuals` NO se envuelve en `@()`.** Termina en `, $found.ToArray()` a
+propósito, para que el array llegue entero aunque traiga un solo elemento o ninguno.
+Poner `@(Find-Visuals ...)` mete ese array DENTRO de otro, y el fallo no se ve: la
+lista pasa a tener un elemento que es a su vez la lista, y `$_.Tag.Text` sobre ella
+devuelve todos los textos pegados por la enumeración de miembros de PowerShell. Se
+usa tal cual, y si hace falta devolverlo desde una función auxiliar, con la misma
+coma delante. Y **el orden no está garantizado** —va con una pila, así que sale al
+revés—: se comprueba por contenido, nunca por índice.
 
 `Ui/Wiring.Tests.ps1` es el raro: `main.ps1` no se puede cargar como los demás porque
 termina en `ShowDialog()`. Hace una copia sin esa línea, le pega unas pulsaciones al

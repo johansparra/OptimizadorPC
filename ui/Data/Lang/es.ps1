@@ -80,7 +80,10 @@ Register-Language 'es' @{
     'NEW' = 'NUEVO'
 
     # ---- Detalles técnicos ----
-    'Registry changes' = 'Cambios en el registro'
+    'Copy the registry path' = 'Copiar la ruta del registro'
+    'Copy the value name'    = 'Copiar el nombre del valor'
+    'Copied'                 = 'Copiado'
+    'Select it or press Ctrl+C to copy it' = 'Selecciónalo o pulsa Ctrl+C para copiarlo'
     'Path:'            = 'Ruta:'
     'Value:'           = 'Valor:'
     'Current:'         = 'Actual:'
@@ -107,6 +110,21 @@ Register-Language 'es' @{
     'Recommended' = 'Recomendado'
     'Default'     = 'De fábrica'
     'Custom'      = 'Personalizado'
+
+    # ---- Estado real de un ajuste (core/Registry/SettingStatus.ps1) ----
+    # 'Custom' sale un poco más arriba: es la misma palabra.
+    'Optimized'           = 'Optimizado'
+    'Factory recommended' = 'Recomendado de fábrica'
+    'Unknown'             = 'Desconocido'
+
+    'The registry value is the one this program recommends' = 'El valor del registro es el que recomienda el programa'
+    'The registry value is the Windows factory one'         = 'El valor del registro es el de fábrica de Windows'
+    'The registry value is neither the recommended nor the factory one' = 'El valor del registro no es ni el recomendado ni el de fábrica'
+    'The registry value could not be read'                  = 'No se ha podido leer el valor del registro'
+
+    'Optimized: {0} of {1}'           = 'Optimizados: {0} de {1}'
+    'Factory recommended: {0} of {1}' = 'Recomendados de fábrica: {0} de {1}'
+    'Unknown: {0} of {1}'             = 'Desconocidos: {0} de {1}'
 
     # ---- Indicadores ----
     'On'  = 'Sí'

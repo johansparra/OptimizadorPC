@@ -104,16 +104,23 @@ Por orden de lo que más tiempo ahorra:
    `.claude/hooks/Normalize-PsEncoding.ps1` deja cada `.ps1` y `.xaml` en UTF-8 con
    BOM y CRLF en cuanto se escribe (regla 3). Ya no hay que normalizar a mano;
    verificar con `file` sigue siendo gratis.
+4. **Las skills se cargan al empezar, no cuando alguien las nombra.** Son
+   instrucciones que entran en el turno: no arrancan en frío ni gastan contexto de
+   más, así que no hay nada que amortizar. La que toque según la tarea
+   (`windows-desktop-architect` para interfaz, `powershell-engineer` para cualquier
+   `.ps1`, `exploracion` para leer y buscar, `versionado` para confirmar), y se dice
+   en una línea.
 
 **El freno de verdad son los permisos.** Un comando que no esté en la lista de
 `.claude/settings.local.json` detiene la sesión hasta que alguien lo apruebe. Si algo
 se repite y es de solo lectura, su sitio es esa lista y no cada turno.
 
-**Delegar en agentes cuesta contexto.** Un agente arranca en frío y tiene que
+**Delegar en agentes SÍ cuesta contexto.** Un agente arranca en frío y tiene que
 redescubrir el proyecto: para un cambio de uno o dos archivos sale más caro que
 hacerlo. Se delega cuando hay **dos o más frentes que no se tocan entre sí** —una
 sección nueva y una auditoría de pruebas, por ejemplo— y entonces se lanzan **a la
-vez**, no en fila. Ver `.claude/agents/README.md`.
+vez**, no en fila. **Esa decisión la toma Claude solo**, sin preguntar. Ver
+`.claude/agents/README.md`.
 
 ## Reglas del proyecto
 
@@ -145,6 +152,8 @@ vez**, no en fila. Ver `.claude/agents/README.md`.
 12. **Iconos: `Glyph 'Nombre'` del catálogo de `Theme.ps1`** (fuente *Segoe Fluent Icons*, nativa de Windows 11), nunca emoji. Antes de usar un codepoint nuevo, comprueba que existe con `GlyphTypeface.CharacterToGlyphMap` y míralo renderizado: varios glifos parecidos tienen significados distintos (p. ej. `E7ED` es una campana **tachada**, la campana normal es `EA8F`).
 
 13. **El menú lateral se construye por código, no en el XAML.** `MainWindow.xaml` solo aporta el `Border` llamado `Sidebar` con dos `StackPanel` vacíos (`NavTop` y `NavBottom`); los botones los crea `Build-Sidebar` a partir de `ui/Index/NavigationIndex.ps1`. Cada botón se registra con `$Window.RegisterName('Nav<Id>', ...)`, así que `FindName('NavSettings')` sigue funcionando — si añades uno nuevo, respeta ese nombrado.
+
+    **Una entrada sin `View` no navega, y es a propósito.** Hoy solo Optimize y Settings tienen pantalla; las otras cuatro siguen en el menú para conservar la estructura, se ven igual que las demás (ni en gris ni con candado) y `Set-NavSelection` sale antes de tocar nada: ni cambia de vista, ni repinta, ni mueve la marca del menú. **No las mandes a una vista de relleno** — el menú marcaría una cosa y la pantalla enseñaría otra. Activar una es escribir el nombre de su función de vista en `View`.
 14. **Al plegar el menú se anima el ancho del `Border`, nunca la columna del `Grid`.** La columna es `Auto` y sigue al `Border` sola; animar un `GridLength` exigiría escribir una animación propia porque WPF no trae ninguna. El borde derecho de 1px se pone a 0 al plegar, o el ancho nunca llegaría a cero.
 
 15. **Todo texto visible pasa por `T`.** El inglés es el idioma fuente y se traduce por texto original, no por clave (ver `ui/Engine/Translation.ps1`). Un literal sin `T` sale siempre en inglés y no aparece en `Get-MissingTranslations`, así que es un fallo silencioso. El XAML no puede llamar a `T`: sus textos se fijan en `ui/Components/Shell/TitleBar.ps1`.
@@ -168,6 +177,10 @@ vez**, no en fila. Ver `.claude/agents/README.md`.
     ```
     Al llamar a un **comando** (`Write-Host (...)`, `-Detail (...)`) no pasa: ahí los paréntesis envuelven una expresión y la coma es suya.
 
+21. **Un `RenderTransform` mueve también la zona sensible al ratón.** Elevar una tarjeta al pasar por encima la aparta del cursor: con el puntero parado sobre sus últimos píxeles, subirla dispara `MouseLeave`, bajarla `MouseEnter`, y el efecto se queda en bucle para siempre. **El que escucha al ratón no puede ser el control que se mueve**, sino un envoltorio quieto —con `Background = Transparent`, o no oye nada— que ocupa su hueco entero; el margen se muda a ese envoltorio para que el hueco entre tarjetas siga sin responder. `Add-HoverLift` devuelve ese envoltorio, y ahí van también el cursor y el clic. Un efecto que solo *agranda* (una escala) no tiene el problema; uno que desplaza, sí.
+
+22. **Un `TextBlock` no se puede seleccionar ni copiar.** WPF no trae selección en `TextBlock`: para que el usuario pueda seleccionar con el ratón y copiar con Ctrl+C hace falta un `TextBox` con `IsReadOnly = $true`, `IsReadOnlyCaretVisible = $false`, `BorderThickness = 0`, `Background = Transparent` y `Padding = 0` — así se ve igual que el texto de al lado, pero se selecciona, trae su menú contextual y responde a Ctrl+C y Ctrl+A. De solo lectura **no** es lo mismo que editable. Su color se pone con `Set-TextFg` como en cualquier otro sitio: `TextBlock.ForegroundProperty` y `Control.ForegroundProperty` son la **misma** `DependencyProperty` (a diferencia de `Background`, que sí son dos distintas — por eso existe `Set-WinBg`). Lo hace `New-MonoField` en `ui/Components/Cards/TechnicalDetails.ps1` con la ruta y el valor del registro. Al copiar, el aviso lo enseña **un solo botón a la vez**: un `DispatcherTimer` no tiene `Tag` donde dejar a quién apagar, así que el manejador llama a una función y es ella la que mira el estado del módulo.
+
 ## Al implementar tweaks reales
 
 Ya hay lógica real: `core/` **lee** el registro. Escribir sigue sin hacerse.
@@ -178,6 +191,8 @@ Ya hay lógica real: `core/` **lee** el registro. Escribir sigue sin hacerse.
 - **Un DWord llega como `Int32` con signo.** `0xFFFFFFFF` se lee como `-1`. Hay que reinterpretarlo sin signo (`Format-RegistryValue`) o los valores altos salen negativos y no cuadran con lo declarado.
 - **Se abre siempre `RegistryView::Registry64`.** Si el `.exe` se compilara a 32 bits, `HKLM\SOFTWARE` se redirigiría a `Wow6432Node` en silencio.
 - El estado real se lee al entrar en la sección y se vuelca en las claves de `-Registry`; el `Current` **no se declara** en `ui/Data/Categories/`.
+- **La etiqueta de un ajuste que lee el registro se calcula, no se declara.** `core/Registry/SettingStatus.ps1` compara lo leído con el `Recommended` y el `Default` de cada clave y deja un `Status`: `optimized`, `factory`, `custom` o `unknown`. Un ajuste con `-Registry` **no lleva `-Tags`** — serían la versión inventada de lo mismo. Se compara por valor y no por escritura (`0x0000000A` = `10` = `0XA`, y `-1` = `0xFFFFFFFF`), un valor ausente es `factory` (Windows usa el suyo), y sin nada declarado con lo que comparar es `unknown`, nunca `custom`.
+- **El estado se calcula donde se lee, no donde se pinta.** Cuelga de `Update-CategoryRegistryState`, así que entrar en la sección y pulsar *Refrescar* lo dejan al día por el mismo camino. La interfaz solo lee `$Setting.Status` y `$Key.Status`; los colores y los nombres salen todos de `Get-StatusStyle` (`ui/Design/UiKit.ps1`), que es el único sitio donde se escriben.
 - Todo cambio de registro/servicio debe ser reversible y tener su valor de restauración documentado.
 
 ## El registro de actividad (el botón "log")

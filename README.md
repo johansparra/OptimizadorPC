@@ -185,14 +185,14 @@ ahora son datos y los dibuja `ui/Components/Shell/Sidebar.ps1`.
 ```powershell
 $NavigationIndex = @(
 
-    #  Id             Icono        Etiqueta       Grupo      Visible  Bloqueado
-    @{ Id = 'software';  Icon = 'Apps';    Label = 'Software';  Group = 'Top';    Visible = $true; Locked = $false }
-    @{ Id = 'optimize';  Icon = 'Gauge';   Label = 'Optimize';  Group = 'Top';    Visible = $true; Locked = $false; Default = $true }
-    @{ Id = 'customize'; Icon = 'Palette'; Label = 'Customize'; Group = 'Top';    Visible = $true; Locked = $false }
+    #  Id             Icono        Etiqueta       Grupo      Visible  Bloqueado   Vista
+    @{ Id = 'software';  Icon = 'Apps';    Label = 'Software';  Group = 'Top';    Visible = $true; Locked = $false; View = $null }
+    @{ Id = 'optimize';  Icon = 'Gauge';   Label = 'Optimize';  Group = 'Top';    Visible = $true; Locked = $false; View = 'Show-OptimizationsListView'; Default = $true }
+    @{ Id = 'customize'; Icon = 'Palette'; Label = 'Customize'; Group = 'Top';    Visible = $true; Locked = $false; View = $null }
 
-    @{ Id = 'advanced';  Icon = 'Wrench';  Label = 'Advanced';  Group = 'Bottom'; Visible = $true; Locked = $false }
-    @{ Id = 'settings';  Icon = 'Gear';    Label = 'Settings';  Group = 'Bottom'; Visible = $true; Locked = $false }
-    @{ Id = 'more';      Icon = 'More';    Label = 'More';      Group = 'Bottom'; Visible = $true; Locked = $false }
+    @{ Id = 'advanced';  Icon = 'Wrench';  Label = 'Advanced';  Group = 'Bottom'; Visible = $true; Locked = $false; View = $null }
+    @{ Id = 'settings';  Icon = 'Gear';    Label = 'Settings';  Group = 'Bottom'; Visible = $true; Locked = $false; View = 'Show-SettingsView' }
+    @{ Id = 'more';      Icon = 'More';    Label = 'More';      Group = 'Bottom'; Visible = $true; Locked = $false; View = $null }
 
 )
 ```
@@ -203,12 +203,21 @@ $NavigationIndex = @(
 | `Group` | `'Top'` arriba, `'Bottom'` pegado abajo tras la línea separadora |
 | `Visible` | `$false` lo oculta sin borrar nada |
 | `Locked` | `$true` lo muestra con candado, en gris y sin responder al clic |
+| `View` | La pantalla a la que lleva. `$null` = todavía no tiene, y el clic no hace nada |
 | `Default` | El botón que sale marcado al arrancar |
 | `Icon` | Nombre de glifo del catálogo de `ui/Design/Theme.ps1` |
 
 Añadir una entrada al menú es añadir una línea aquí. Aunque los botones ya no estén
 en el XAML, siguen registrados con su nombre, así que `$Window.FindName('NavSettings')`
 funciona igual que antes.
+
+**Hoy solo dos entradas tienen pantalla**: Optimize y Settings. Las otras cuatro
+siguen en el menú a propósito, para que se vea la estructura de navegación, y salen
+igual que las demás —ni en gris ni con candado—, pero **pulsarlas no hace nada**: no
+navegan, no repintan y ni siquiera mueven la marca del menú, así que te quedas donde
+estabas. Es cosa de `Set-NavSelection`, que se planta antes de tocar nada si la
+entrada no declara `View`; mandarlas a una vista de relleno dejaría el menú marcando
+una cosa y la pantalla enseñando otra. Activar una es escribir su vista en `View`.
 
 ### Plegar el menú
 
@@ -343,6 +352,40 @@ Register-Category @{
 Solo `Id`, `Name`, `Icon`, `Description` e `Items` son obligatorios; el resto tiene
 valores por defecto.
 
+### El estado de cada ajuste
+
+Un ajuste que declara claves con `-Registry` **no lleva `-Tags`**: su etiqueta se
+calcula. Tras leer el equipo, `core/Registry/SettingStatus.ps1` compara lo leído
+(`Current`) con los dos valores declarados en la clave y decide en cuál de los
+estados está:
+
+| Lo que hay en el registro | Estado | Lo que se ve |
+| ------------------------- | ------ | ------------ |
+| Igual que `Recommended` | `optimized` | **Optimizado** — estrella verde |
+| Igual que `Default`, **o el valor no existe** | `factory` | **Recomendado de fábrica** |
+| Cualquier otra cosa | `custom` | **Personalizado** |
+| No se pudo leer (sin permiso, raíz mala) | `unknown` | **Desconocido** |
+
+Detalles que importan al declarar una clave:
+
+- **Se compara por valor, no por cómo esté escrito**: `0x0000000A`, `10` y `0XA` son
+  el mismo DWord, y `-1` es `0xFFFFFFFF`. Lo que no sea número se compara como texto,
+  sin distinguir mayúsculas.
+- **Un valor ausente es estar de fábrica**, no "personalizado": Windows está usando su
+  valor interno. Es lo único que no se decide comparando números.
+- **Si `Recommended` y `Default` son el mismo valor, gana `factory`**: no hay nada
+  aplicado que apuntarse.
+- **Un ajuste con varias claves** sale `optimized` o `factory` solo si TODAS lo están;
+  a medias es `custom`, y con una sola clave ilegible es `unknown`.
+- **Sin `Recommended` ni `Default` declarados** el estado es `unknown`: sin nada con lo
+  que comparar, decir "personalizado" sería una acusación sin pruebas.
+
+Se recalcula **en cada lectura** —al entrar en la sección y al pulsar *Refrescar*—,
+porque cuelga de `Update-CategoryRegistryState` y no de la interfaz. La fila de
+píldoras de la cabecera cuenta lo mismo (`Get-CategoryStatusCounts`), así que tarjetas
+y resumen no pueden contradecirse. Las secciones que todavía no leen el registro
+siguen enseñando sus `-Tags` escritas a mano.
+
 ### Diagrama de módulos
 
 ```mermaid
@@ -456,11 +499,17 @@ flowchart LR
     LISTV -->|click en tarjeta| DETV["<b>Show-CategoryDetailView</b><br/>ítems con toggles,<br/>dropdowns y tags"]
     DETV -->|breadcrumb 'Optimizations'| LISTV
 
-    SIDEBAR{{"Sidebar:<br/>Optimize · Software · Customize<br/>Advanced · Settings · More"}} -.->|los 6 apuntan<br/>a la misma vista| LISTV
+    SIDEBAR{{"Sidebar:<br/>Optimize"}} -.->|su View| LISTV
+    NAVSET{{"Sidebar:<br/>Settings"}} -.->|su View| SETV["<b>Show-SettingsView</b><br/>las preferencias de<br/>ui/Data/Preferences/"]
+    MUDOS{{"Sidebar:<br/>Software · Customize<br/>Advanced · More"}} -.->|sin View| NADA["te quedas donde estabas:<br/>ni navega ni repinta<br/>ni mueve la marca"]
 
     style LISTV fill:#EAF2FF,stroke:#2D7DFB
     style DETV fill:#E8F5E9,stroke:#2E7D32
+    style SETV fill:#EAF2FF,stroke:#2D7DFB
+    style NADA fill:#FFF4E5,stroke:#B26A00
     style SIDEBAR fill:#F2F2F2,stroke:#999,stroke-dasharray: 4 3
+    style NAVSET fill:#F2F2F2,stroke:#999,stroke-dasharray: 4 3
+    style MUDOS fill:#F2F2F2,stroke:#999,stroke-dasharray: 4 3
 ```
 
 ### Categorías definidas
@@ -469,7 +518,7 @@ Una fila por archivo de `ui/Data/Categories/`. El orden mostrado es el de `ui/In
 
 | Archivo | Id | Categoría | Icono | Badge | Ajustes |
 | ------- | -- | --------- | ----- | ----- | ------- |
-| `Regedit.ps1` | `regedit` | Regedit | `Shield` | NEW 3 *(contado)* | 6 |
+| `Regedit.ps1` | `regedit` | Regedit | `Shield` | NEW 1 *(contado)* | 1 |
 | `Power.ps1` | `power` | Power | `Power` | — | 3 |
 | `Gaming.ps1` | `gaming` | Gaming & Performance | `Game` | NEW 16 *(a mano)* | 5 |
 | `Update.ps1` | `update` | Update | `Sync` | NEW 1 *(a mano)* | 2 |
@@ -478,7 +527,7 @@ Una fila por archivo de `ui/Data/Categories/`. El orden mostrado es el de `ui/In
 
 > **El badge se cuenta solo** a partir de los ajustes que llevan su propio `-Badge 'NEW'`: una categoría que no declare `Badge` sale con `NEW <n>`, o sin badge si no hay ninguno marcado. `Gaming.ps1` y `Update.ps1` todavía lo declaran a mano; borrar esa línea los pasa al recuento automático.
 >
-> Los contadores de las píldoras (`29/88`, etc.) siguen siendo **valores fijos declarados a mano**, no cuentan los ajustes reales del archivo. Cuando haya lógica real conviene calcularlos.
+> Los contadores de las píldoras de la LISTA (`29/88`, etc.) siguen siendo **valores fijos declarados a mano**, no cuentan los ajustes reales del archivo. La fila de la pantalla de detalle sí es de verdad: cuenta por el estado leído del registro (ver *El estado de cada ajuste*).
 
 
 ---
@@ -563,11 +612,13 @@ Detalles en [`tests/README.md`](tests/README.md), que además explica **por qué
 
 ## Pendiente
 
-- [ ] Lógica real de tweaks (registro, servicios, planes de energía) en módulos separados de `ui/`
-- [ ] Leer el estado real del sistema en vez del `Value` estático de los archivos de `ui/Data/Categories/`
+- [ ] **Escribir** en el registro: hoy solo se lee. Falta aplicar y revertir cada tweak
+- [ ] Lógica real del resto de mecanismos (servicios, planes de energía) en módulos separados de `ui/`
+- [ ] Que el control de la tarjeta —interruptor o desplegable— refleje el valor leído, y no el `Value` estático del archivo de la sección. La etiqueta de estado ya es real; el control todavía no
+- [ ] Llevar `-Registry` al resto de secciones: sin claves declaradas no hay estado que calcular
 - [ ] Restauración / rollback por tweak
-- [ ] Diferenciar las 6 entradas del sidebar (hoy las seis abren la misma vista)
+- [ ] Pantalla propia para Software, Customize, Advanced y More (hoy están en el menú pero no navegan)
 - [ ] Funcionalidad de búsqueda, "Quick Actions", "View" y "Reset" (hoy son decorativos)
 - [ ] Recordar el tema elegido entre sesiones
-- [ ] Contadores de estadísticas calculados en vez de fijos
+- [ ] Contadores de las píldoras de la lista calculados en vez de fijos
 - [ ] Prueba de humo sobre el `.exe` compilado con `System.Windows.Automation` (ver `tests/README.md`)

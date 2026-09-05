@@ -38,6 +38,25 @@ Describe 'ui/Engine/Translation.ps1 - el mecanismo' {
         Set-AppLanguage 'en'
     }
 
+    It 'los cuatro estados de un ajuste están traducidos' {
+        # La prueba gorda de abajo solo ve los textos que se han
+        # pintado, y de los cuatro estados este equipo enseñará uno.
+        # Los otros tres se quedarían sin auditar hasta que alguien
+        # los viera en pantalla, así que se comprueban a mano.
+        foreach ($idioma in Get-AvailableLanguages) {
+            if ($idioma.Source) { continue }
+            Set-AppLanguage $idioma.Code
+
+            foreach ($estado in Get-SettingStatusNames) {
+                $estilo = Get-StatusStyle $estado
+                foreach ($texto in @($estilo.Label, $estilo.Tip, $estilo.Count)) {
+                    Assert-NotEqual $texto (T $texto) "'$texto' sin traducir en '$($idioma.Code)'"
+                }
+            }
+        }
+        Set-AppLanguage 'en'
+    }
+
     It 'el idioma por defecto existe en el índice' {
         Assert-Contains (Get-DefaultLanguage) (@(Get-AvailableLanguages).Code)
     }
@@ -74,6 +93,13 @@ Describe 'ui/Lang - no falta ninguna traducción' {
         # La cabecera flotante del log tiene sus propios botones, y
         # solo se construyen al sacarlo fuera.
         New-LogContent $ventana -Floating | Out-Null
+
+        # El "Copiado" de los detalles técnicos tampoco sale al pintar:
+        # solo al pulsar el botón de copiar. No se toca el portapapeles,
+        # que es lo único de ahí que no es asunto de la traducción.
+        $copiar = New-CopyButton 'HKEY_CURRENT_USER\Software' 'Copy the registry path'
+        Show-CopyFeedback $copiar
+        Reset-CopyFeedback
 
         New-TestLogEntries 2
         Show-LogPanel $ventana

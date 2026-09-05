@@ -67,17 +67,30 @@ function New-TestCategory {
     }
 }
 
-# Una clave de las de -Registry, apuntando a la rama de prueba.
+<#
+    Una clave de las de -Registry, apuntando a la rama de prueba.
+
+    Recommended y Default son contra lo que compara
+    core/Registry/SettingStatus.ps1, así que se pueden fijar para montar
+    cada estado: -Recommended '5' sobre un valor que vale 5 deja el
+    ajuste en 'optimized', -Default '5' en 'factory', y ninguno de los
+    dos en 'custom'.
+#>
 function New-TestKey {
-    param([string]$Name, [string]$Display)
+    param(
+        [string]$Name,
+        [string]$Display,
+        [string]$Recommended = '0',
+        [string]$Default = '0'
+    )
 
     @{
         Path = Get-TestRegFullPath
         Name = $Name
         Type = 'DWord'
         Display = $Display
-        Recommended = '0'
-        Default = '0'
+        Recommended = $Recommended
+        Default = $Default
     }
 }
 

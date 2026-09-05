@@ -15,6 +15,13 @@
 # construye ui/Components/Cards/TechnicalDetails.ps1. Sale o no según
 # la opción 'technical' del botón "Vista"; la insignia del título
 # hace lo propio con la opción 'badges'.
+#
+# La etiqueta de debajo del nombre sale del ESTADO REAL del ajuste
+# -optimizado, de fábrica o a medida- cuando lo hay: lo calcula
+# core/Registry/SettingStatus.ps1 comparando lo que se acaba de leer del
+# registro con lo que declara ui/Data/Categories/. Los ajustes que
+# todavía no declaran claves siguen enseñando sus -Tags escritas a
+# mano, que es lo único que tienen.
 # ============================================================
 
 function New-SettingCard {
@@ -87,9 +94,21 @@ function New-SettingInfo {
     Set-TextFg $desc 'TextMuted'
     $left.Children.Add($desc) | Out-Null
 
+    # Etiquetas. Si el ajuste declara claves del registro, core/ le ha
+    # dejado un Status leyendo el equipo (ver SettingStatus.ps1) y manda
+    # ese: es UNO de los tres estados, y es un hecho. Las -Tags
+    # declaradas a mano son la versión de mentira de lo mismo, así que
+    # solo salen mientras no haya nada real que enseñar.
     $tags = New-Object System.Windows.Controls.StackPanel
     $tags.Orientation = 'Horizontal'
-    foreach ($tag in $Setting.Tags) { $tags.Children.Add((New-Tag $tag)) | Out-Null }
+
+    if ($Setting.Status) {
+        $tags.Children.Add((New-StatusTag $Setting.Status)) | Out-Null
+    }
+    else {
+        foreach ($tag in $Setting.Tags) { $tags.Children.Add((New-Tag $tag)) | Out-Null }
+    }
+
     $left.Children.Add($tags) | Out-Null
 
     $left
@@ -103,14 +122,26 @@ function New-SettingControl {
     $right.Orientation = 'Horizontal'
     $right.VerticalAlignment = 'Center'
 
-    # Indicadores: el valor actual coincide con el recomendado / el de fábrica.
-    if ($Setting.Tags -contains 'Recommended') {
+    # Indicadores: el valor actual coincide con el recomendado / el de
+    # fábrica. Que es justo lo que dice el Status cuando lo hay, así
+    # que ahí mandan los hechos y no las etiquetas declaradas -que
+    # además solían salir las dos a la vez, lo cual era imposible-.
+    if ($Setting.Status) {
+        $isRecommended = $Setting.Status -eq 'optimized'
+        $isFactory     = $Setting.Status -eq 'factory'
+    }
+    else {
+        $isRecommended = $Setting.Tags -contains 'Recommended'
+        $isFactory     = $Setting.Tags -contains 'Default'
+    }
+
+    if ($isRecommended) {
         $star = New-Icon 'StarFill' 13 'Success'
         $star.Margin = New-Object System.Windows.Thickness 0, 0, 10, 0
         $star.ToolTip = T 'Recommended value'
         $right.Children.Add($star) | Out-Null
     }
-    if ($Setting.Tags -contains 'Default') {
+    if ($isFactory) {
         $grid = New-Icon 'Grid' 13 'TextFaint'
         $grid.Margin = New-Object System.Windows.Thickness 0, 0, 14, 0
         $grid.ToolTip = T 'Windows factory value'

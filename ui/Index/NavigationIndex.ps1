@@ -23,23 +23,34 @@
 #
 #   Default    $true en el botón que sale marcado al arrancar.
 #
-#   View       Nombre de la función de vista a la que lleva. Crear
-#              una pantalla nueva es añadir su archivo a ui/Views/
-#              y apuntar aquí a su función.
+#   View       Nombre de la función de vista a la que lleva.
+#
+#              $null -> la sección todavía NO tiene pantalla. El
+#                       botón se ve y se pulsa como los demás -ni
+#                       gris ni con candado-, pero el clic no hace
+#                       nada: ni navega, ni cambia el contenido, ni
+#                       mueve la selección. Te quedas donde estabas.
+#
+#              Crear una pantalla es añadir su archivo a ui/Views/ y
+#              escribir aquí el nombre de su función; el botón
+#              empieza a funcionar solo, sin tocar nada más.
 #
 #   Icon       Nombre de glifo del catálogo de ui/Design/Theme.ps1.
 # ============================================================
 
+# Hoy solo hay pantalla para dos entradas -Optimize y Settings-. Las
+# otras cuatro siguen aquí a propósito: mantienen la estructura del
+# menú a la vista, y activarlas será rellenar su View.
 $NavigationIndex = @(
 
     #  Id             Icono        Etiqueta       Grupo      Visible  Bloqueado   Vista
-    @{ Id = 'software';  Icon = 'Apps';    Label = 'Software';  Group = 'Top';    Visible = $true; Locked = $false; View = 'Show-OptimizationsListView' }
+    @{ Id = 'software';  Icon = 'Apps';    Label = 'Software';  Group = 'Top';    Visible = $true; Locked = $false; View = $null }
     @{ Id = 'optimize';  Icon = 'Gauge';   Label = 'Optimize';  Group = 'Top';    Visible = $true; Locked = $false; View = 'Show-OptimizationsListView'; Default = $true }
-    @{ Id = 'customize'; Icon = 'Palette'; Label = 'Customize'; Group = 'Top';    Visible = $true; Locked = $false; View = 'Show-OptimizationsListView' }
+    @{ Id = 'customize'; Icon = 'Palette'; Label = 'Customize'; Group = 'Top';    Visible = $true; Locked = $false; View = $null }
 
-    @{ Id = 'advanced';  Icon = 'Wrench';  Label = 'Advanced';  Group = 'Bottom'; Visible = $true; Locked = $false; View = 'Show-OptimizationsListView' }
+    @{ Id = 'advanced';  Icon = 'Wrench';  Label = 'Advanced';  Group = 'Bottom'; Visible = $true; Locked = $false; View = $null }
     @{ Id = 'settings';  Icon = 'Gear';    Label = 'Settings';  Group = 'Bottom'; Visible = $true; Locked = $false; View = 'Show-SettingsView' }
-    @{ Id = 'more';      Icon = 'More';    Label = 'More';      Group = 'Bottom'; Visible = $true; Locked = $false; View = 'Show-OptimizationsListView' }
+    @{ Id = 'more';      Icon = 'More';    Label = 'More';      Group = 'Bottom'; Visible = $true; Locked = $false; View = $null }
 
 )
 

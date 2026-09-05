@@ -162,6 +162,35 @@ function Get-CategoryCounts {
 }
 
 <#
+    Lo mismo, pero por ESTADO REAL: el que core/Registry/SettingStatus.ps1
+    deja en cada ajuste al leer el equipo.
+
+        optimized / factory / custom / unknown / Total
+
+    Devuelve $null cuando NINGÚN ajuste de la sección tiene estado,
+    que es tanto como decir que ninguno declara claves del registro.
+    Entonces la que vale sigue siendo Get-CategoryCounts, con las
+    etiquetas escritas a mano en ui/Data/Categories/.
+
+    Solo cuentan los ajustes que sí tienen estado: mezclar en el
+    total los que no leen nada haría que los números no cuadraran
+    con lo que se ve en las tarjetas.
+#>
+function Get-CategoryStatusCounts {
+    param($Category)
+
+    $items = @(@($Category.Items) | Where-Object { $_.Status })
+    if ($items.Count -eq 0) { return $null }
+
+    $counts = [ordered]@{}
+    foreach ($status in Get-SettingStatusNames) {
+        $counts[$status] = @($items | Where-Object { $_.Status -eq $status }).Count
+    }
+    $counts['Total'] = $items.Count
+    [PSCustomObject]$counts
+}
+
+<#
     Crea un ajuste para el array Items de una categoría.
 
     El tipo de control se deduce solo:
@@ -175,13 +204,17 @@ function Get-CategoryCounts {
         Path         Ruta completa, con la raíz sin abreviar.
         Name         Nombre del valor dentro de esa ruta.
         Type         Tipo del valor: 'DWord', 'String'...
-        Current      Valor que hay ahora.
+        Display      'hex' para enseñarlo como 0xFFFFFFFF.
         Recommended  Valor que propone el programa.
         Default      Valor de fábrica de Windows.
 
-    Los tres valores son texto y hoy son ESTÁTICOS: nadie lee el
-    registro todavía. Un ajuste sin -Registry sale con un aviso
-    en su lugar, no se rompe.
+    Current y Status NO se declaran: los rellena core/ al leer el
+    equipo (ver core/Registry/CategoryState.ps1). Recommended y Default sí
+    son texto escrito a mano, y son contra lo que se compara lo
+    leído para saber en qué estado está el ajuste.
+
+    Un ajuste sin -Registry sale con un aviso en su lugar, no se
+    rompe: se queda sin Status y la tarjeta enseña sus -Tags.
 
     Ejemplos:
         New-Setting -Name 'Game Mode' -Description '...' `
@@ -193,7 +226,7 @@ function Get-CategoryCounts {
                     -Registry @(
                         @{ Path = 'HKEY_CURRENT_USER\Control Panel\Mouse'
                            Name = 'MouseHoverTime'; Type = 'String'
-                           Current = '400'; Recommended = '200'; Default = '400' }
+                           Recommended = '200'; Default = '400' }
                     )
 #>
 function New-Setting {
@@ -218,5 +251,10 @@ function New-Setting {
         Value       = $Value
         Badge       = $Badge
         Registry    = $Registry
+
+        # NO se declara: lo rellena core/Registry/SettingStatus.ps1 al leer
+        # el equipo, igual que el Current de cada clave. Se reserva
+        # aquí el campo para poder asignarlo después.
+        Status      = $null
     }
 }

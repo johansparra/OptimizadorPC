@@ -90,16 +90,24 @@ function New-NavButton {
 function Set-NavSelection {
     param($Button)
 
+    # Cada entrada declara su vista en ui/Index/NavigationIndex.ps1.
+    #
+    # Sin View, la sección aún no tiene pantalla y el clic se queda
+    # aquí: NADA de mandar a una vista de relleno -eso deja el menú
+    # marcando una cosa y la pantalla enseñando otra-. El botón se ve
+    # y responde como los demás, pero no navega ni mueve la
+    # selección, así que el usuario sigue exactamente donde estaba.
+    $item = Get-NavigationItem $Button.Uid
+    if (-not $item -or -not $item.View) { return }
+
     $window = [System.Windows.Window]::GetWindow($Button)
-    foreach ($item in Get-NavigationItems) {
-        $window.FindName((Get-NavElementName $item.Id)).Tag = $null
+    foreach ($nav in Get-NavigationItems) {
+        $window.FindName((Get-NavElementName $nav.Id)).Tag = $null
     }
     $Button.Tag = 'sel'
     Update-NavColors $window
 
-    # Cada entrada declara su vista en ui/Index/NavigationIndex.ps1.
-    $item = Get-NavigationItem $Button.Uid
-    if ($item -and $item.View) { Show-View -Name $item.View } else { Show-View -Name 'Show-OptimizationsListView' }
+    Show-View -Name $item.View
 }
 
 # El estilo del XAML pinta el fondo del botón seleccionado; el

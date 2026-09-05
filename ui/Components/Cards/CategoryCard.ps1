@@ -15,8 +15,13 @@ function New-CategoryCard {
     $card = New-Object System.Windows.Controls.Border
     $card.Style = $Window.FindResource('CardStyle')
     $card.Padding = New-Object System.Windows.Thickness 18, 15, 20, 15
-    $card.Cursor = 'Hand'
-    Add-HoverLift $card
+
+    # La tarjeta se eleva al pasar el ratón, y en WPF eso mueve también
+    # su zona sensible. Por eso quien oye al ratón -y quien recibe el
+    # clic- es el envoltorio quieto que la sostiene, no ella misma:
+    # es lo que devuelve Add-HoverLift (ver ui/Design/Theme.ps1).
+    $slot = Add-HoverLift $card
+    $slot.Cursor = 'Hand'
 
     $grid = New-Object System.Windows.Controls.Grid
     Add-GridColumns $grid 'Auto', '*', 'Auto', 'Auto'
@@ -82,13 +87,13 @@ function New-CategoryCard {
     # llamara directamente, el enrutador seguiría creyendo que estamos
     # en la lista y cualquier repintado -cambiar de idioma, tocar una
     # casilla del botón "Vista"- saltaría de vuelta a ella.
-    $card.Tag = $Category
-    $card.Add_MouseLeftButtonUp({
+    $slot.Tag = $Category
+    $slot.Add_MouseLeftButtonUp({
         param($s, $e)
         Show-View -Name 'Show-CategoryDetailView' -Arguments @{ Category = $s.Tag }
     })
 
-    $card
+    $slot
 }
 
 # Las tres píldoras de la derecha: Recommended / Default / Custom.

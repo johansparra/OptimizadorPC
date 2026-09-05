@@ -143,6 +143,16 @@ Describe 'ui/Components/Shell/TitleBar.ps1' {
     }
 }
 
+# Pulsa un botón del menú lateral por su evento Click, que es lo que
+# dispara al manejador de verdad -llamar a Set-NavSelection a mano se
+# saltaría justamente el cableado que se quiere probar-.
+function Push-NavButton {
+    param($Window, [string]$Id)
+
+    $boton = $Window.FindName((Get-NavElementName $Id))
+    $boton.RaiseEvent((New-Object System.Windows.RoutedEventArgs ([System.Windows.Controls.Primitives.ButtonBase]::ClickEvent)))
+}
+
 Describe 'ui/Components/Shell/Sidebar.ps1' {
 
     It 'crea un botón por cada entrada visible del índice' {
@@ -166,6 +176,42 @@ Describe 'ui/Components/Shell/Sidebar.ps1' {
             Assert-NotNull $ventana.FindName($nombre) "no se ha registrado '$nombre'"
         }
         Assert-NotNull $ventana.FindName('NavSettings')
+    }
+
+    It 'una entrada con pantalla navega y se marca' {
+        $ventana = New-AppWindow
+        Build-Sidebar -Window $ventana
+
+        Push-NavButton $ventana 'settings'
+
+        Assert-Equal 'Show-SettingsView' (Get-CurrentViewName)
+        Assert-Equal 'sel' ([string]$ventana.FindName('NavSettings').Tag)
+    }
+
+    It 'una entrada sin pantalla no navega ni mueve la selección' {
+        # Las secciones sin implementar siguen en el menú para que se
+        # vea la estructura, pero pulsarlas no puede llevar a ningún
+        # sitio: ni a una vista vacía ni de vuelta a la lista. El
+        # usuario se queda mirando exactamente lo mismo.
+        $ventana = New-AppWindow
+        Build-Sidebar -Window $ventana
+        Push-NavButton $ventana 'settings'
+
+        $antesVista     = Get-CurrentViewName
+        $antesContenido = $ventana.FindName('MainContent').Content
+
+        foreach ($nav in Get-NavigationItems) {
+            if ($nav.View) { continue }
+
+            $boton = $ventana.FindName((Get-NavElementName $nav.Id))
+            Assert-True $boton.IsEnabled "'$($nav.Id)' tiene que seguir habilitado a la vista"
+            Assert-NoThrow { Push-NavButton $ventana $nav.Id } "pulsar '$($nav.Id)'"
+
+            Assert-Equal $antesVista (Get-CurrentViewName) "'$($nav.Id)' ha navegado"
+            Assert-True ([object]::ReferenceEquals($antesContenido, $ventana.FindName('MainContent').Content)) "'$($nav.Id)' ha repintado la pantalla"
+            Assert-Null $boton.Tag "'$($nav.Id)' se ha quedado marcado en el menú"
+            Assert-Equal 'sel' ([string]$ventana.FindName('NavSettings').Tag) "'$($nav.Id)' ha desmarcado la sección en la que estabas"
+        }
     }
 
     It 'reconstruirlo dos veces no lanza' {
@@ -194,14 +240,50 @@ Describe 'ui/Views - las pantallas se pintan' {
         $ventana = New-AppWindow
         Build-Sidebar -Window $ventana
 
+        $conPantalla = 0
         foreach ($nav in Get-NavigationItems) {
+            # Una entrada sin View es una sección todavía sin pantalla.
+            if (-not $nav.View) { continue }
+
+            $conPantalla++
             Assert-NoThrow { Show-View -Name $nav.View } "la vista de '$($nav.Id)'"
             Assert-NotNull $ventana.FindName('MainContent').Content "'$($nav.View)' no ha dejado nada en pantalla"
         }
+        Assert-True ($conPantalla -gt 0) 'ninguna entrada del menú lleva a una pantalla'
     }
 
     It 'una vista que no existe se queja con nombre y apellidos' {
         Assert-Throws { Show-View -Name 'Show-EstaVistaNoExiste' }
+    }
+
+    It 'las tarjetas de la lista se elevan dentro de un envoltorio quieto' {
+        # El efecto de elevación mueve la tarjeta, y en WPF el
+        # RenderTransform mueve con ella su zona sensible al ratón. Si
+        # quien escuchara fuese la propia tarjeta, con el cursor parado
+        # sobre sus últimos píxeles la animación no pararía nunca:
+        # sube -> MouseLeave -> baja -> MouseEnter -> sube...
+        $ventana = New-AppWindow
+        Show-View -Name 'Show-OptimizationsListView'
+        $lista = $ventana.FindName('MainContent').Content
+
+        Assert-Equal @(Get-OptimizationCategories).Count $lista.Children.Count
+
+        foreach ($envoltorio in $lista.Children) {
+            $tarjeta = $envoltorio.Children[0]
+
+            Assert-NotNull $envoltorio.Background 'el envoltorio tiene que oír al ratón en todo su hueco'
+            Assert-True $envoltorio.RenderTransform.Value.IsIdentity 'el envoltorio no se mueve; la que se mueve es la tarjeta'
+            Assert-True ($tarjeta.RenderTransform -is [System.Windows.Media.TranslateTransform]) 'la tarjeta es la que sube y baja'
+
+            # El hueco entre tarjetas queda FUERA del envoltorio, o se
+            # iluminaría y se podría pulsar el aire entre dos secciones.
+            Assert-Equal 0 $tarjeta.Margin.Bottom 'el margen se muda al envoltorio'
+            Assert-True ($envoltorio.Margin.Bottom -gt 0) 'el envoltorio se queda el margen de la tarjeta'
+
+            # Y el clic va en el mismo sitio que la escucha.
+            Assert-NotNull $envoltorio.Tag 'la categoría viaja en el Tag del envoltorio'
+            Assert-Equal 'Hand' ([string]$envoltorio.Cursor)
+        }
     }
 
     It 'el detalle de cada sección pinta una tarjeta por ajuste' {
@@ -234,6 +316,73 @@ Describe 'ui/Views - las pantallas se pintan' {
 
         $texto = Get-VisualText $ventana.FindName('MainContent').Content
         Assert-Match ([regex]::Escape($leidas[0].Current)) $texto
+    }
+
+    It 'la tarjeta enseña el estado real, no las etiquetas declaradas' {
+        # Lo que el usuario acaba leyendo: "Optimizado", "Recomendado
+        # de fábrica" o "Personalizado" según lo que haya AHORA en el
+        # registro de este equipo. Como el resultado depende de la
+        # máquina, se comprueba contra lo que ha decidido core/, y que
+        # no salga ninguno de los otros dos.
+        $ventana = New-AppWindow
+        $cat = Get-CategoryById 'regedit'
+        Show-View -Name 'Show-CategoryDetailView' -Arguments @{ Category = $cat }
+
+        $texto = Get-VisualText $ventana.FindName('MainContent').Content
+
+        foreach ($ajuste in @($cat.Items)) {
+            Assert-NotNull $ajuste.Status "el ajuste '$($ajuste.Name)' tendría que traer estado"
+
+            foreach ($estado in Get-SettingStatusNames) {
+                $etiqueta = [regex]::Escape((T (Get-StatusStyle $estado).Label))
+                if ($estado -eq $ajuste.Status) {
+                    Assert-Match $etiqueta $texto "falta la etiqueta de '$estado'"
+                }
+                else {
+                    Assert-False ($texto -match $etiqueta) "no debería salir la etiqueta de '$estado'"
+                }
+            }
+        }
+    }
+
+    It 'el resumen de la cabecera cuenta por estado real' {
+        $ventana = New-AppWindow
+        $cat = Get-CategoryById 'regedit'
+        Show-View -Name 'Show-CategoryDetailView' -Arguments @{ Category = $cat }
+
+        $cuentas = Get-CategoryStatusCounts $cat
+        Assert-NotNull $cuentas 'Regedit lee el registro: tiene que contar por estado'
+        Assert-Equal @($cat.Items).Count $cuentas.Total
+
+        # Cada ajuste cae en un estado y en uno solo, así que la suma
+        # de los cuatro es el total. Con las etiquetas declaradas esto
+        # no se cumplía: el mismo ajuste salía en las tres píldoras.
+        $suma = 0
+        foreach ($estado in Get-SettingStatusNames) { $suma += [int]$cuentas.$estado }
+        Assert-Equal $cuentas.Total $suma
+
+        $fila = $ventana.FindName('HeaderSummaryArea').Children[0]
+        $texto = Get-VisualText $fila
+        foreach ($estado in Get-SettingStatusNames) {
+            $n = [int]$cuentas.$estado
+            if ($estado -eq 'unknown' -and $n -eq 0) { continue }
+
+            Assert-Match ([regex]::Escape((T (Get-StatusStyle $estado).Label))) $texto
+            Assert-Match ([regex]::Escape("$n/$($cuentas.Total)")) $texto "el recuento de '$estado'"
+        }
+    }
+
+    It 'una sección que no lee el registro sigue con sus etiquetas' {
+        # El resto del programa no se mueve: sin claves declaradas no
+        # hay estado que calcular, y la fila cuenta por etiquetas.
+        $ventana = New-AppWindow
+        $cat = Get-OptimizationCategories | Where-Object { (Get-CategoryRegistryKeyCount $_) -eq 0 } | Select-Object -First 1
+        if (-not $cat) { Skip-Test 'todas las secciones leen ya el registro' }
+
+        Show-View -Name 'Show-CategoryDetailView' -Arguments @{ Category = $cat }
+
+        Assert-Null (Get-CategoryStatusCounts $cat)
+        Assert-Match 'Recommended' (Get-VisualText $ventana.FindName('HeaderSummaryArea').Children[0])
     }
 
     It 'la barra de progreso se recoge al terminar de leer' {
