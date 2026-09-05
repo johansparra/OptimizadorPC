@@ -125,19 +125,39 @@ Describe 'core/Diagnostics/Log.ps1 - volcado a texto' {
                      -Message 'HKEY_LOCAL_MACHINE\SAM\SAM' -Detail '1,2 ms'
 
         $linea = Format-AppLogLine @(Get-AppLog)[0]
-        Assert-Match '^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}' $linea
-        Assert-Match 'ERROR'      $linea
-        Assert-Match 'registry'   $linea
+        Assert-Match '^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\] \[ERROR\] \[REGISTRY\]' $linea
         Assert-Match '\[no access\]' $linea
         Assert-Match 'SAM'        $linea
         Assert-Match '1,2 ms'     $linea
     }
 
-    It 'sin estado ni detalle no deja corchetes ni barras sueltas' {
+    It 'los tres campos fijos van entre corchetes y en ese orden' {
+        # Cuándo, con qué gravedad y de dónde. Es lo que hace que la
+        # línea se pueda partir con una expresión regular aunque el
+        # mensaje lleve espacios o barras.
+        Clear-AppLog
+        Write-AppLog -Source 'registry' -Level 'info' -Message 'Registry export finished'
+
+        $linea = Format-AppLogLine @(Get-AppLog)[0]
+        Assert-Match '^\[[^\]]+\] \[[A-Z]+\] \[[A-Z]+\] \S' $linea
+
+        # Y el mensaje sale entero detrás del tercer corchete.
+        $partes = [regex]::Match($linea, '^\[([^\]]+)\] \[([A-Z]+)\] \[([A-Z]+)\] (.+)$')
+        Assert-True $partes.Success 'la línea no se deja partir'
+        Assert-Equal 'INFO'     $partes.Groups[2].Value
+        Assert-Equal 'REGISTRY' $partes.Groups[3].Value
+        Assert-Equal 'Registry export finished' $partes.Groups[4].Value
+    }
+
+    It 'sin estado ni detalle no deja corchetes vacíos ni barras sueltas' {
         Clear-AppLog
         Write-AppLog -Message 'algo'
         $linea = Format-AppLogLine @(Get-AppLog)[0]
-        Assert-True ($linea -notmatch '\[') 'no debería haber etiqueta'
+
+        # Los tres de siempre sí están; lo que no puede quedar es un
+        # hueco vacío del estado que falta.
+        Assert-Match '\[APP\] algo$' $linea
+        Assert-True ($linea -notmatch '\[\s*\]') 'ha quedado un corchete vacío'
         Assert-True ($linea -notmatch '\|') 'no debería haber separador de detalle'
     }
 
@@ -155,6 +175,48 @@ Describe 'core/Diagnostics/Log.ps1 - volcado a texto' {
 }
 
 Describe 'core/Diagnostics/Log.ps1 - guardar en archivo' {
+
+    It 'el nombre sugerido es opt-<fecha>.log' {
+        # opt-2026-09-05_14-30-12.log
+        Assert-Match '^opt-\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\.log$' (Get-AppLogFileName)
+    }
+
+    It 'con el registro vacío no se escribe ningún archivo' {
+        # Un archivo con la cabecera y ninguna línea no le sirve a
+        # nadie. La interfaz apaga el botón, pero la garantía está
+        # aquí, que es por donde pasa todo el que quiera guardar.
+        Clear-AppLog
+
+        $destino = Join-Path ([System.IO.Path]::GetTempPath()) ('opt-{0}.log' -f [Guid]::NewGuid())
+        Assert-Null (Export-AppLog -Path $destino)
+        Assert-False (Test-Path $destino) 'no debería haber creado nada'
+    }
+
+    It 'ese nombre no lleva nada que Windows prohíba' {
+        # Los dos puntos de la hora son la trampa: con ellos el
+        # archivo no se escribiría y no habría forma de saber por qué.
+        $nombre = Get-AppLogFileName
+        $prohibidos = [System.IO.Path]::GetInvalidFileNameChars()
+        $malos = @($nombre.ToCharArray() | Where-Object { $prohibidos -contains $_ })
+        Assert-Equal 0 $malos.Count ("caracteres no válidos en '$nombre'")
+    }
+
+    It 'el archivo lleva el registro entero, no lo que haya pintado' {
+        # Lo que se guarda es el buffer, no las filas del cajón: por
+        # eso el archivo puede traer más de lo que se ve.
+        Clear-AppLog
+        foreach ($n in 1..5) { Write-AppLog -Source 'registry' -Status 'read' -Message "Clave$n" }
+
+        $destino = Join-Path ([System.IO.Path]::GetTempPath()) ('opt-{0}.log' -f [Guid]::NewGuid())
+        try {
+            Assert-NotNull (Export-AppLog -Path $destino)
+            $contenido = Get-Content -Path $destino -Raw
+            foreach ($n in 1..5) { Assert-Match "Clave$n" $contenido }
+        }
+        finally {
+            if (Test-Path $destino) { Remove-Item $destino -Force }
+        }
+    }
 
     It 'escribe el archivo y devuelve su ruta' {
         Clear-AppLog

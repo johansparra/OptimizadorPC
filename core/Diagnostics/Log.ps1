@@ -121,18 +121,33 @@ function Clear-AppLog {
 <#
     Una entrada como línea de archivo:
 
-        2026-09-03 20:14:03.118  INFO   registry  [read] HKEY_...\Valor  |  5 - DWord - 0,4 ms
+        [2026-09-03 20:14:03] [INFO] [REGISTRY] [read] HKEY_...\Valor | 5 - DWord - 0,4 ms
 
-    El archivo va siempre en inglés: es para pegarlo en un
-    informe, no para leerlo en pantalla.
+    CADA CAMPO FIJO ENTRE CORCHETES, y siempre los mismos tres por
+    delante: cuándo, con qué gravedad y de dónde viene. Antes iban
+    sueltos y alineados a columnas, que se lee bien pero obliga a
+    contar espacios para separarlos; así cada campo se delimita
+    solo y una línea se parte con una expresión regular de una
+    línea, aunque el mensaje lleve espacios o barras.
+
+    El estado -cuando lo hay- va como cuarto corchete, y el
+    detalle detrás de una barra. Los dos son opcionales: sin ellos
+    no queda ningún corchete vacío ni ninguna barra suelta.
+
+    El archivo va siempre en inglés y en mayúsculas para nivel y
+    origen: es para pegarlo en un informe, no para leerlo en
+    pantalla. La interfaz no pasa por aquí -pinta los campos uno a
+    uno-, así que este formato es solo el del volcado.
 #>
 function Format-AppLogLine {
     param([Parameter(Mandatory)]$Entry)
 
-    $line = '{0:yyyy-MM-dd HH:mm:ss.fff}  {1,-5}  {2,-9}' -f $Entry.Time, $Entry.Level.ToUpper(), $Entry.Source
-    if ($Entry.Status)  { $line += '  [{0}]' -f $Entry.Status }
-    if ($Entry.Message) { $line += '  {0}'   -f $Entry.Message }
-    if ($Entry.Detail)  { $line += '  |  {0}' -f $Entry.Detail }
+    $line = '[{0:yyyy-MM-dd HH:mm:ss}] [{1}] [{2}]' -f `
+        $Entry.Time, ([string]$Entry.Level).ToUpper(), ([string]$Entry.Source).ToUpper()
+
+    if ($Entry.Status)  { $line += ' [{0}]' -f $Entry.Status }
+    if ($Entry.Message) { $line += ' {0}'   -f $Entry.Message }
+    if ($Entry.Detail)  { $line += ' | {0}' -f $Entry.Detail }
     $line
 }
 
@@ -161,22 +176,54 @@ function Get-AppLogFolder {
 }
 
 <#
+    El nombre que se propone al guardar:
+
+        opt-2026-09-05_20-14-03.log
+
+    Se lee igual que la fecha de dentro del archivo, pero con
+    guiones donde iría lo que Windows no admite en un nombre. Los
+    DOS PUNTOS de la hora son la trampa -ni : \ / * ? " < > |- y
+    son justo lo que dejaría un formato descuidado: el archivo no
+    se escribiría y no habría forma de saber por qué.
+#>
+function Get-AppLogFileName {
+    'opt-{0:yyyy-MM-dd_HH-mm-ss}.log' -f [DateTime]::Now
+}
+
+<#
     Vuelca el registro a un archivo de texto.
 
-        $ruta = Export-AppLog             -> %APPDATA%\...\logs\log-<fecha>.txt
-        $ruta = Export-AppLog -Path 'C:\x.txt'
+        $ruta = Export-AppLog             -> %APPDATA%\...\logs\opt-<fecha>.log
+        $ruta = Export-AppLog -Path 'D:\Informes\opt.log'
+
+    Escribe el registro ENTERO -lo que quepa en el buffer, no las
+    filas que haya pintadas-, así que el archivo puede llevar más
+    de lo que se ve en pantalla.
+
+    La ruta la elige quien llama: la interfaz la pide con el
+    diálogo de Windows (ver ui/Components/Shell/LogPanel.ps1). Sin
+    ruta se cae a la carpeta de APPDATA, que es el único sitio
+    donde se puede escribir seguro.
+
+    Con el registro VACÍO no escribe nada y devuelve $null: un
+    archivo con la cabecera y ninguna línea no le sirve a nadie, y
+    borrarlo después sería cosa del usuario. La interfaz además
+    apaga el botón, pero la garantía está aquí, que es por donde
+    pasa todo el que quiera guardar.
 
     Devuelve la ruta escrita, o $null si no se ha podido (sin
-    permisos, disco lleno...). No lanza: quien llame decide qué
-    contarle al usuario.
+    permisos, disco lleno, ruta inválida...). No lanza: quien
+    llame decide qué contarle al usuario.
 #>
 function Export-AppLog {
     param([string]$Path)
 
+    if ($AppLogEntries.Count -eq 0) { return $null }
+
     try {
         if (-not $Path) {
             $folder = Get-AppLogFolder
-            $Path = Join-Path $folder ('log-{0:yyyyMMdd-HHmmss}.txt' -f [DateTime]::Now)
+            $Path = Join-Path $folder (Get-AppLogFileName)
         }
 
         $folder = Split-Path -Parent $Path

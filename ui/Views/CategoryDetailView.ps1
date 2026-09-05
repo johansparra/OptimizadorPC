@@ -56,6 +56,12 @@ function Show-CategoryDetailView {
             # tecleo. Se avisa desde aquí y no desde core/, que no sabe
             # -ni debe saber- que existe un buscador.
             Reset-SearchIndex
+
+            # Y por el mismo motivo, el registro de actividad: la
+            # lectura acaba de apuntar sus líneas y nadie las pinta
+            # sola. Si el log está sacado a su ventana, ahí sigue
+            # delante mientras se lee.
+            Sync-LogView
         }
         finally {
             Hide-ProgressStrip $Window

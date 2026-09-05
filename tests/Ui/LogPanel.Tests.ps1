@@ -206,21 +206,219 @@ Describe 'ui/Components/Shell/LogPanel.ps1 - idioma' {
 
 Describe 'ui/Components/Shell/LogPanel.ps1 - guardar en archivo' {
 
-    It 'el pie contesta con la ruta escrita' {
+    # El diálogo NO se enseña en ninguna prueba: es modal y se
+    # quedaría esperando a que alguien pulse. Por eso está partido
+    # en armar / leer la respuesta / escribir, y lo único sin
+    # cubrir es la línea que llama a ShowDialog.
+
+    It 'el diálogo propone opt-<fecha>.log' {
+        $dialogo = New-LogSaveDialog
+        Assert-Match '^opt-\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\.log$' $dialogo.FileName
+    }
+
+    It 'y se abre en la carpeta que toque' {
+        Set-AppSetting 'LogSaveFolder' $null
+        $dialogo = New-LogSaveDialog
+        Assert-Equal ([Environment]::GetFolderPath('DesktopDirectory')) ([string]$dialogo.InitialDirectory)
+    }
+
+    It 'y guarda con extensión .log aunque se escriba un nombre a secas' {
+        $dialogo = New-LogSaveDialog
+        Assert-Equal 'log' ([string]$dialogo.DefaultExt)
+        Assert-True $dialogo.AddExtension 'sin esto, un nombre sin extensión se guardaría sin .log'
+        Assert-True $dialogo.OverwritePrompt 'debería avisar antes de machacar un archivo'
+    }
+
+    It 'deja elegir cualquier carpeta y filtra por .log' {
+        $dialogo = New-LogSaveDialog
+        Assert-Match '\*\.log' $dialogo.Filter
+        Assert-Match '\*\.\*'  $dialogo.Filter 'también debería poder verse todo'
+
+        # Ni carpeta fija ni ruta impuesta: solo un punto de partida.
+        Assert-NotNull $dialogo.Title
+    }
+
+    It 'sus rótulos están traducidos' {
+        Set-AppLanguage 'es'
+        try {
+            $dialogo = New-LogSaveDialog
+            Assert-Match 'Guardar el registro' ([string]$dialogo.Title)
+            Assert-Match 'Archivos de registro' ([string]$dialogo.Filter)
+        }
+        finally { Set-AppLanguage 'en' }
+    }
+
+    It 'se puede abrir con dueño' {
+        # La única línea que ninguna prueba ejecuta es el ShowDialog:
+        # enseñar un modal dejaría la suite colgada. Al menos se
+        # comprueba que la llamada existe tal como la hace
+        # Get-LogSavePath, con la ventana como dueño.
+        $conDuenno = [Microsoft.Win32.SaveFileDialog].GetMethod('ShowDialog', [type[]]@([System.Windows.Window]))
+        Assert-NotNull $conDuenno 'no existe ShowDialog(Window)'
+        Assert-NotNull ([Microsoft.Win32.SaveFileDialog].GetMethod('ShowDialog', [type[]]@())) 'ni ShowDialog()'
+    }
+
+    It 'cancelar no devuelve ruta' {
+        # $false es el botón Cancelar; $null, cerrar con la X o Escape.
+        $dialogo = New-LogSaveDialog
+        Assert-Null (Read-LogSaveResult $false $dialogo) 'cancelar no debería guardar nada'
+        Assert-Null (Read-LogSaveResult $null  $dialogo) 'cerrar el diálogo, tampoco'
+        Assert-Equal $dialogo.FileName (Read-LogSaveResult $true $dialogo)
+    }
+
+    It 'guardar de verdad escribe el archivo y lo dice en el pie' {
         $ventana = New-AppWindow -Language 'en'
         New-TestLogEntries 2
         Show-LogPanel $ventana
 
-        $destino = Join-Path ([System.IO.Path]::GetTempPath()) ('opt-log-{0}.txt' -f [Guid]::NewGuid())
+        $destino = Join-Path ([System.IO.Path]::GetTempPath()) ('opt-{0}.log' -f [Guid]::NewGuid())
         try {
-            $ruta = Export-AppLog -Path $destino
-            Set-LogFooterText $ventana ((T 'Saved to {0}') -f $ruta) 'Success'
+            Assert-Equal $destino (Save-AppLogTo $ventana $destino)
+            Assert-True (Test-Path $destino) 'no ha escrito el archivo'
+
+            $contenido = Get-Content -Path $destino -Raw
+            Assert-Match 'Prueba\\Valor1' $contenido 'el archivo no lleva lo que hay en el registro'
             Assert-Match ([regex]::Escape($destino)) ([string]$ventana.FindName('LogFooterText').Text)
         }
         finally {
             if (Test-Path $destino) { Remove-Item $destino -Force }
             Hide-LogPanel $ventana
         }
+    }
+
+    It 'la primera vez se abre en el Escritorio' {
+        # Sin nada guardado: el Escritorio, que es donde la gente
+        # deja lo que va a mandar a alguien.
+        Set-AppSetting 'LogSaveFolder' $null
+        Assert-Equal ([Environment]::GetFolderPath('DesktopDirectory')) (Get-LogSaveFolder)
+    }
+
+    It 'la próxima vez el diálogo se abre donde se guardó, y entre sesiones' {
+        $ventana = New-AppWindow -Language 'en'
+        New-TestLogEntries 1
+        Show-LogPanel $ventana
+
+        $carpeta = [System.IO.Path]::GetTempPath().TrimEnd('\')
+        $destino = Join-Path $carpeta ('opt-{0}.log' -f [Guid]::NewGuid())
+        try {
+            Save-AppLogTo $ventana $destino | Out-Null
+            Assert-Equal $carpeta ((Get-LogSaveFolder).TrimEnd('\'))
+
+            # Y no en una variable que se pierde al cerrar: queda en
+            # settings.json como cualquier otra preferencia.
+            Assert-Equal $carpeta ([string](Get-AppSetting 'LogSaveFolder')).TrimEnd('\')
+            Assert-Match 'LogSaveFolder' (Get-Content -Path (Get-TestSettingsPath) -Raw)
+        }
+        finally {
+            if (Test-Path $destino) { Remove-Item $destino -Force }
+            Hide-LogPanel $ventana
+        }
+    }
+
+    It 'si la carpeta guardada ya no existe se vuelve al Escritorio' {
+        # Un USB que se fue, una carpeta renombrada. Dejarle al
+        # diálogo una ruta muerta es peor que empezar de cero.
+        $fantasma = Join-Path ([System.IO.Path]::GetTempPath()) ('opt-fantasma-{0}' -f [Guid]::NewGuid())
+        Set-AppSetting 'LogSaveFolder' $fantasma
+        try {
+            Assert-Equal ([Environment]::GetFolderPath('DesktopDirectory')) (Get-LogSaveFolder)
+        }
+        finally { Set-AppSetting 'LogSaveFolder' $null }
+    }
+
+    It 'una ruta imposible guardada tampoco rompe nada' {
+        # settings.json se puede editar a mano: Test-Path lanza con
+        # caracteres que no valen en una ruta.
+        Set-AppSetting 'LogSaveFolder' 'ZZ:\<no>|vale'
+        try {
+            Assert-NoThrow { Get-LogSaveFolder }
+            Assert-Equal ([Environment]::GetFolderPath('DesktopDirectory')) (Get-LogSaveFolder)
+        }
+        finally { Set-AppSetting 'LogSaveFolder' $null }
+    }
+
+    It 'sin ventana no lanza' {
+        # Guardar puede pedirse sin cajón pintado -y así lo hace la
+        # sonda que abre el diálogo de verdad-. El aviso no tiene
+        # dónde salir, pero eso no es motivo para tumbar nada.
+        New-TestLogEntries 1
+        $destino = Join-Path ([System.IO.Path]::GetTempPath()) ('opt-{0}.log' -f [Guid]::NewGuid())
+        try {
+            Assert-NoThrow { Save-AppLogTo $null $destino }
+            Assert-True (Test-Path $destino) 'debería haber escrito el archivo igualmente'
+        }
+        finally {
+            if (Test-Path $destino) { Remove-Item $destino -Force }
+        }
+    }
+
+    It 'una ruta imposible avisa en el pie y no tumba nada' {
+        # Unidad que no existe: Export-AppLog devuelve $null en vez
+        # de lanzar (regla de core/) y aquí sale el aviso en rojo.
+        $ventana = New-AppWindow -Language 'en'
+        New-TestLogEntries 2
+        Show-LogPanel $ventana
+
+        try {
+            Assert-NoThrow { Save-AppLogTo $ventana 'ZZ:\no\existe\opt.log' }
+            Assert-Null (Save-AppLogTo $ventana 'ZZ:\no\existe\opt.log')
+            Assert-Match 'could not be written' ([string]$ventana.FindName('LogFooterText').Text)
+        }
+        finally { Hide-LogPanel $ventana }
+    }
+}
+
+Describe 'ui/Components/Shell/LogPanel.ps1 - con el registro vacío no se guarda' {
+
+    It 'el botón sale apagado y diciendo por qué' {
+        $ventana = New-AppWindow -Language 'en'
+        Clear-AppLog
+        Show-LogPanel $ventana
+
+        try {
+            $boton = $ventana.FindName('LogBtnSave')
+            Assert-NotNull $boton 'el botón de guardar debería tener nombre'
+            Assert-False $boton.IsEnabled 'no hay nada que guardar y sigue encendido'
+            Assert-Match 'Nothing to save' ([string]$boton.ToolTip)
+        }
+        finally { Hide-LogPanel $ventana }
+    }
+
+    It 'se enciende en cuanto se apunta algo, y se apaga al vaciar' {
+        # La disponibilidad tiene que seguir a las entradas sola:
+        # Update-LogList es por donde pasan todos los cambios.
+        $ventana = New-AppWindow -Language 'en'
+        Clear-AppLog
+        Show-LogPanel $ventana
+
+        try {
+            $boton = $ventana.FindName('LogBtnSave')
+            Assert-False $boton.IsEnabled
+
+            Write-AppLog -Source 'registry' -Status 'read' -Message 'HKCU\Software\X'
+            Update-LogList $ventana
+            Assert-True $boton.IsEnabled 'con una entrada debería poder guardarse'
+            Assert-Match 'Save the log' ([string]$boton.ToolTip)
+
+            Clear-AppLog
+            Update-LogList $ventana
+            Assert-False $boton.IsEnabled 'al vaciar debería volver a apagarse'
+        }
+        finally { Hide-LogPanel $ventana }
+    }
+
+    It 'pedirlo a mano tampoco escribe nada: avisa en el pie' {
+        # El botón está apagado, pero la acción se puede llamar de
+        # todos modos. Ni diálogo ni archivo.
+        $ventana = New-AppWindow -Language 'en'
+        Clear-AppLog
+        Show-LogPanel $ventana
+
+        try {
+            Assert-Null (Save-AppLogAs $ventana)
+            Assert-Match 'Nothing to save' ([string]$ventana.FindName('LogFooterText').Text)
+        }
+        finally { Hide-LogPanel $ventana }
     }
 }
 
@@ -242,6 +440,21 @@ Describe 'ui/Components/Shell/LogPanel.ps1 - de la lectura a la pantalla' {
         # cabecera + una por clave + resumen
         $claves = Get-CategoryRegistryKeyCount (Get-CategoryById 'regedit')
         Assert-Equal ($claves + 2) $ventana.FindName('LogList').Children.Count
+
+        Hide-LogPanel $ventana
+    }
+
+    It 'lo apuntado con el cajón ya abierto también entra' {
+        # Aquí no se nota tanto -el cajón se rehace al abrirlo-,
+        # pero es el mismo aviso que salva a la ventana suelta.
+        $ventana = New-AppWindow -Language 'en'
+        New-TestLogEntries 2
+        Show-LogPanel $ventana
+
+        Write-AppLog -Source 'registry' -Status 'read' -Message 'MAS-TARDE'
+        Sync-LogView
+
+        Assert-Match 'MAS-TARDE' (Get-VisualText $ventana.FindName('LogList'))
 
         Hide-LogPanel $ventana
     }

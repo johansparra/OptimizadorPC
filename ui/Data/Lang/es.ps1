@@ -53,6 +53,15 @@ Register-Language 'es' @{
     'Saved to {0}'    = 'Guardado en {0}'
     'The log file could not be written' = 'No se ha podido escribir el archivo del registro'
 
+    # El diálogo "Guardar como" de Windows. Los rótulos de los
+    # filtros se traducen sueltos y luego se juntan: la cadena de
+    # filtro lleva su propia sintaxis y no es texto de pantalla.
+    'Save the activity log' = 'Guardar el registro de actividad'
+    'Log files'       = 'Archivos de registro'
+    'All files'       = 'Todos los archivos'
+    'Save the log to a file' = 'Guardar el registro en un archivo'
+    'Nothing to save yet'    = 'Todavía no hay nada que guardar'
+
     # Etiquetas de estado de cada línea. Las cuatro primeras son
     # las mismas que usa el detalle técnico de las tarjetas.
     'read'    = 'leído'

@@ -108,12 +108,22 @@ Describe 'ui/Lang - no falta ninguna traducción' {
         # solo se construyen al sacarlo fuera.
         New-LogContent $ventana -Floating | Out-Null
 
+        # El diálogo de guardar tiene título y rótulos de filtro que
+        # solo se piden al pulsar. Se arma pero NO se enseña: es
+        # modal y las pruebas se quedarían esperando.
+        New-LogSaveDialog | Out-Null
+
         # El "Copiado" de los detalles técnicos tampoco sale al pintar:
         # solo al pulsar el botón de copiar. No se toca el portapapeles,
         # que es lo único de ahí que no es asunto de la traducción.
         $copiar = New-CopyButton 'HKEY_CURRENT_USER\Software' 'Copy the registry path'
         Show-CopyFeedback $copiar
         Reset-CopyFeedback
+
+        # El botón de guardar dice una cosa u otra según haya algo
+        # apuntado, y los dos rótulos tienen que estar traducidos.
+        Clear-AppLog
+        New-LogContent $ventana | Out-Null
 
         New-TestLogEntries 2
         Show-LogPanel $ventana

@@ -75,10 +75,11 @@ function Open-LogWindow {
     Close-LogOverlay $main
 
     $script:LogFloating = $true
-    $script:LogWindow = New-LogWindow $main
 
-    # Después de guardar la ventana, no antes: Update-LogList
-    # pregunta por Get-LogHostWindow para dejar el scroll al final.
+    # Antes de pintar nada, no después: Update-LogList pregunta por
+    # Get-LogHostWindow para dejar el scroll al final, y hasta que la
+    # ventana no está guardada el alojamiento sigue siendo el cajón.
+    Set-LogWindowState (New-LogWindow $main)
     Update-LogList $script:LogWindow
 
     $script:LogWindow.Show()
@@ -222,6 +223,11 @@ function New-LogWindow {
     $win
 }
 
+# Quién es la ventana suelta. Son las DOS únicas puertas a ese
+# dato: Open-LogWindow al sacarla y el manejador Closed al morir.
+# Y las pruebas, que así pueden armar el caso "el log está fuera"
+# sin enseñar ninguna ventana.
+function Set-LogWindowState   { param($Window) $script:LogWindow = $Window }
 function Clear-LogWindowState { $script:LogWindow = $null }
 
 # Rehace el contenido de la ventana. Lo llama el cambio de idioma,

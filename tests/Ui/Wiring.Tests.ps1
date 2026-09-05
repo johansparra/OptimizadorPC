@@ -74,6 +74,16 @@ function Get-WiringProbe {
         'Push-Boton $Window.FindName(''LogBtnPopOut'')'
         'Write-Host ("LOG-FUERA={0} CAJON={1}" -f (Get-LogDetached), (Get-LogPanelOpen))'
         '$vlog = Get-LogWindow'
+        ''
+        '# Con el log YA FUERA: vaciarlo y refrescar la seccion tiene'
+        '# que repintar esa ventana, sin volver a acoplarla. El cajon'
+        '# no cazaba esto porque se rehace entero cada vez que se abre.'
+        'Clear-AppLog'
+        'Update-LogList $vlog'
+        'Push-Boton $Window.FindName(''BtnRefresh'')'
+        'Update-UiNow $Window'
+        'Write-Host ("FUERA-REFRESCO={0} ESPERADAS={1}" -f $vlog.FindName(''LogList'').Children.Count, ($claves + 2))'
+        ''
         'Push-Boton $vlog.FindName(''LogBtnDock'')'
         'Write-Host ("LOG-DENTRO={0} CAJON-OTRA-VEZ={1}" -f (Get-LogDetached), (Get-LogPanelOpen))'
         'Hide-LogPanel $Window'
@@ -215,6 +225,16 @@ Describe 'main.ps1 - los botones responden' {
     It 'el log sale a su ventana y vuelve al cajón' {
         Assert-Match 'LOG-FUERA=True CAJON=False' $WiringOutput 'sacarlo debería cerrar el cajón'
         Assert-Match 'LOG-DENTRO=False CAJON-OTRA-VEZ=True' $WiringOutput 'acoplarlo debería reabrirlo'
+    }
+
+    It 'refrescar con el log fuera repinta su ventana' {
+        # Vaciado y sacado a su ventana, refrescar la sección tiene
+        # que dejar sus líneas AHÍ. Antes se quedaba en blanco hasta
+        # volver a acoplarlo.
+        if ($WiringOutput -match 'FUERA-REFRESCO=(\d+) ESPERADAS=(\d+)') {
+            Assert-Equal $Matches[2] $Matches[1] 'filas en la ventana suelta tras refrescar'
+        }
+        else { throw 'la sonda no ha dicho nada del refresco con el log fuera' }
     }
 
     It 'una entrada del menú sin pantalla no lleva a ninguna parte' {

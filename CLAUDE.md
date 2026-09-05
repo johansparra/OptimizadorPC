@@ -122,6 +122,36 @@ sección nueva y una auditoría de pruebas, por ejemplo— y entonces se lanzan 
 vez**, no en fila. **Esa decisión la toma Claude solo**, sin preguntar. Ver
 `.claude/agents/README.md`.
 
+### El grafo de graphify: para qué sirve y para qué no
+
+Hay un grafo del proyecto en `graphify-out/` (ver su `README.md`). **No sustituye a
+este archivo**, y conviene saber por qué antes de perder tiempo con él. Medido sobre
+la primera pasada, 673 nodos y 1.355 aristas:
+
+| Sirve | No sirve |
+| ----- | -------- |
+| `graphify path A B` y `graphify explain X` sobre **símbolos de código**: se quedan en la capa del árbol sintáctico, que es exacta y trae número de línea. | `graphify query "<pregunta en lenguaje natural>"`. |
+| El `graph.html` para ver el mapa de un vistazo. | Preguntas de "¿cómo funciona esto?": para eso, leer el código. |
+| Los *god nodes* del informe: `T()` con 61 aristas describe este proyecto de una. | Encontrar dónde va algo: para eso está este archivo. |
+
+**Por qué falla la consulta en lenguaje natural: `0` de 1.355 aristas conectan el
+código con la documentación.** No es un grafo, son dos grafos desconectados en el
+mismo archivo — el AST no sabe qué dice `CLAUDE.md` y la documentación no sabe qué
+función implementa cada regla. Preguntando *"cómo se guarda el registro en un
+archivo"* devolvió 36 nodos de documentación y **ninguna** de las ocho funciones que
+lo hacen, más una comunidad entera de ruido enganchada por la palabra "archivos".
+
+**La descripción de la skill dice que, existiendo `graphify-out/`, cualquier pregunta
+sobre el código se trate primero como consulta al grafo. Aquí NO.** Con la calidad
+medida eso empeora las respuestas: se empieza por nodos de documentación y se pierde
+el código. El orden bueno sigue siendo este archivo, luego búsqueda directa, y el
+grafo solo para lo de la columna izquierda.
+
+**El grafo envejece en silencio.** Se construyó del árbol de trabajo, no del commit;
+tras tocar código hay que pasar `/graphify . --update` o dejará de cuadrar. Si algún
+día se quieren de verdad los puentes documentación↔código, hay que pedirlos en la
+extracción (`--mode deep`, o que los nodos de documentación citen los símbolos).
+
 ## Reglas del proyecto
 
 1. **Editar siempre los archivos fuente**, nunca `build/_combined.ps1` — es generado y se sobrescribe en cada build.
@@ -309,6 +339,25 @@ título abre el cajón que las enseña (`ui/Components/Shell/LogPanel.ps1`).
 - **El buffer es circular** (`$AppLogCapacity`, mil entradas) y **se pintan como mucho
   `$LogPanelMaxRows`**. Si algún día se apunta mucho más, esos dos números son los que
   hay que mirar.
+- **Guardar abre el "Guardar como" de Windows**, y lo que se escribe es el buffer
+  entero, no las filas pintadas. El diálogo está partido en tres —`New-LogSaveDialog`
+  lo arma, `Read-LogSaveResult` traduce su respuesta (cancelar es `$null`: ni archivo
+  ni aviso) y `Save-AppLogTo` escribe— porque **un modal no se puede probar**: la suite
+  se quedaría esperando a que alguien pulse. Así lo único sin cubrir es la línea del
+  `ShowDialog`. El nombre sugerido lo pone `Get-AppLogFileName` en `core/`
+  (`opt-<fecha>.log`, **sin dos puntos**: Windows no los admite en un nombre).
+- **La carpeta de guardado se recuerda en `settings.json`** (`LogSaveFolder`, vía
+  `Set-AppSetting` como cualquier preferencia). La primera vez, y **siempre que la
+  guardada ya no exista**, se cae al Escritorio —preguntado a Windows, no compuesto a
+  mano: con OneDrive el Escritorio de verdad está dentro de OneDrive—.
+- **Con el registro vacío no se guarda.** `Update-LogSaveButton` apaga el botón desde
+  `Update-LogList` (por donde pasan todos los cambios de las filas) y `Export-AppLog`
+  se niega igualmente: la garantía de que no salga un archivo con solo la cabecera
+  está en `core/`, no en el botón.
+- **El volcado usa `[fecha] [NIVEL] [FUENTE]`,** con el estado como cuarto corchete y
+  el detalle tras una barra. Cada campo se delimita solo, así que una línea se parte
+  con una expresión regular aunque el mensaje lleve espacios. Solo afecta al archivo:
+  el panel pinta los campos uno a uno y no pasa por `Format-AppLogLine`.
 - `Read-RegistryValue` solo cronometra y apunta; la lectura pelada es
   `Read-RegistryValueRaw`.
 
@@ -333,6 +382,13 @@ acoplarlo. Lo que hay que saber:
 - **Una ventana creada por código no trae `NameScope`** —el de la principal lo monta
   el cargador de XAML— y sin él `RegisterName` lanza. Hay que ponérselo antes de
   construir nada que se registre.
+- **Las líneas nuevas NO se pintan solas: hay que llamar a `Sync-LogView`.**
+  `Write-AppLog` apunta en `core/` y ahí se acaba; nadie avisa a la interfaz. El cajón
+  lo disimula porque `Show-LogPanel` lo rehace entero cada vez que se abre, pero la
+  ventana suelta se queda delante mientras se navega y se lee el registro, y sin el
+  aviso enseña para siempre lo que había al sacarla. Quien lea el sistema es quien
+  avisa —hoy `Show-CategoryDetailView`, junto a `Reset-SearchIndex`—, porque `core/` no
+  sabe que existe ni un cajón ni una ventana.
 
 **`Update-UiNow` (ProgressStrip) es un `DoEvents`.** Cede el hilo para que la barra de progreso se pinte durante una lectura síncrona, y en esa pausa WPF entrega eventos de ratón. Quien la use debe dejar la ventana sorda mientras dura (`$Window.Content.IsHitTestVisible = $false`), o un clic a mitad de carga navega a otro sitio dejando la lectura a medias. Si algún día la lectura se va a un hilo aparte, esa función sobra.
 

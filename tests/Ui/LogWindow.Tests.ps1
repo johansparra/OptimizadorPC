@@ -147,3 +147,51 @@ Describe 'ui/Components/Shell/LogWindow.ps1 - la ventana' {
         Assert-Null  (Get-LogWindow)
     }
 }
+
+Describe 'ui/Components/Shell/LogWindow.ps1 - se entera de lo que se apunta' {
+
+    It 'entrar en Regedit con el log fuera lo pone al día' {
+        # El recorrido entero con el log en su ventana: la vista lee
+        # el registro, core/ lo apunta y la ventana suelta lo enseña
+        # SIN volver a acoplarla.
+        #
+        # Es el fallo que había: el cajón se rehace cada vez que se
+        # abre y disimulaba que nadie avisa a la interfaz, pero la
+        # ventana suelta se queda delante y se quedaba con lo que
+        # hubiera al sacarla -vaciarla y refrescar la sección no
+        # pintaba nada hasta acoplarla-.
+        $ventana = New-AppWindow -Language 'en'
+        $suelta = New-LogWindow $ventana
+        Set-LogWindowState $suelta
+
+        try {
+            Clear-AppLog
+            Update-LogList $suelta
+            Assert-Match 'Nothing logged yet' (Get-VisualText $suelta.Content) 'debería empezar vacía'
+
+            Show-View -Name 'Show-CategoryDetailView' -Arguments @{ Category = (Get-CategoryById 'regedit') }
+
+            $texto = Get-VisualText $suelta.Content
+            Assert-Match 'Regedit' $texto 'la lectura no ha llegado a la ventana suelta'
+            Assert-Match 'NetworkThrottlingIndex' $texto 'ni sus claves'
+
+            # cabecera + una por clave + resumen, igual que en el cajón
+            $claves = Get-CategoryRegistryKeyCount (Get-CategoryById 'regedit')
+            Assert-Equal ($claves + 2) $suelta.FindName('LogList').Children.Count
+        }
+        finally {
+            Clear-LogWindowState
+        }
+    }
+
+    It 'con el log escondido no hay nada que poner al día' {
+        # Ni cajón abierto ni ventana suelta: tiene que salir sin
+        # tocar nada. El contenido del cajón ni siquiera está
+        # construido todavía.
+        New-AppWindow | Out-Null
+        Clear-LogWindowState
+
+        Assert-False (Get-LogPanelOpen)
+        Assert-NoThrow { Sync-LogView }
+    }
+}

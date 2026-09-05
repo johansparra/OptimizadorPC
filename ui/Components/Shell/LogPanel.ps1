@@ -356,12 +356,21 @@ function New-LogToolbar {
     $save.Height = 32
     $save.Add_Click({
         param($s, $e)
-        $window = [System.Windows.Window]::GetWindow($s)
-        $path = Export-AppLog
-        if ($path) { Set-LogFooterText $window ((T 'Saved to {0}') -f $path) 'Success' }
-        else       { Set-LogFooterText $window (T 'The log file could not be written') 'Danger' }
+        # El diálogo se abre sobre la ventana donde está el botón:
+        # el cajón vive en la principal y la cabecera suelta en la
+        # suya (regla 4: lo que hace falta sale del emisor).
+        Save-AppLogAs ([System.Windows.Window]::GetWindow($s))
     })
+
+    # Con nombre porque Update-LogList tiene que poder encenderlo y
+    # apagarlo sin arrastrarlo en un closure (regla 4).
+    Register-LogName $Window 'LogBtnSave' $save
     $buttons.Children.Add($save) | Out-Null
+
+    # Nace ya encendido o apagado según lo que haya: la barra se
+    # construye también sin pasar por Update-LogList (al sacar el
+    # log a su ventana, por ejemplo).
+    Update-LogSaveButton $Window
 
     Add-ToColumn $grid $buttons 0
 
@@ -418,10 +427,187 @@ function New-LogFooter {
 function Set-LogFooterText {
     param($Window, [string]$Text, [string]$Fg = 'TextFaint')
 
+    # Sin ventana no hay pie donde escribir, y quedarse callado es
+    # mejor que lanzar: esto se llama desde manejadores de clic,
+    # donde una excepción se lleva por delante la ventana entera.
+    if (-not $Window) { return }
+
     $label = $Window.FindName('LogFooterText')
     if (-not $label) { return }
     $label.Text = $Text
     Set-TextFg $label $Fg
+}
+
+# ---- Guardar en archivo -------------------------------------
+#
+# El botón abre el "Guardar como" de Windows y el usuario elige
+# dónde: el archivo es suyo -se pega en un informe, se manda a
+# alguien-, así que no tiene por qué acabar en una carpeta oculta
+# de APPDATA que solo conoce el programa.
+#
+# Está partido en tres a propósito, y no por gusto: un diálogo
+# modal no se puede probar -las pruebas se quedarían esperando a
+# que alguien pulse-, así que ARMARLO (New-LogSaveDialog), LEER SU
+# RESPUESTA (Read-LogSaveResult) y ESCRIBIR (Save-AppLogTo) se
+# prueban por separado, y lo único que queda sin cubrir es la
+# línea que lo enseña. Es el mismo motivo por el que
+# Close-LogOverlay está fuera del manejador de la animación.
+
+<#
+    Dónde se abre el diálogo.
+
+    La primera vez, el Escritorio: es donde la gente deja lo que
+    va a mandar a alguien. A partir de ahí, la última carpeta en
+    la que se guardó de verdad, y se recuerda ENTRE SESIONES por
+    el mismo sitio que el resto de preferencias (regla 18), no en
+    una variable que se pierde al cerrar.
+
+    Si la carpeta guardada ya no está -un USB que se fue, una
+    carpeta renombrada- se vuelve al Escritorio en vez de dejarle
+    al diálogo una ruta muerta.
+
+    Se pregunta a Windows por el Escritorio en vez de componerlo
+    con el perfil del usuario: con OneDrive sincronizando, el
+    Escritorio de verdad está dentro de OneDrive y una ruta
+    inventada apuntaría a una carpeta vacía.
+#>
+function Get-DesktopFolder {
+    [Environment]::GetFolderPath('DesktopDirectory')
+}
+
+function Get-LogSaveFolder {
+    $saved = [string](Get-AppSetting 'LogSaveFolder')
+    if ($saved) {
+        # Una ruta a mano en settings.json puede ser cualquier cosa:
+        # Test-Path lanza con caracteres que no valen en una ruta.
+        try {
+            if (Test-Path -LiteralPath $saved -PathType Container) { return $saved }
+        }
+        catch { }
+    }
+    Get-DesktopFolder
+}
+
+function Set-LogSaveFolder {
+    param([string]$Folder)
+    if ($Folder) { Set-AppSetting 'LogSaveFolder' $Folder }
+}
+
+<#
+    Arma el diálogo de Windows, sin enseñarlo.
+
+    Trae puesto el nombre sugerido -opt-<fecha>.log, ver
+    core/Diagnostics/Log.ps1-, así que pulsar Guardar sin tocar
+    nada ya vale.
+#>
+function New-LogSaveDialog {
+    $dialog = New-Object Microsoft.Win32.SaveFileDialog
+    $dialog.Title = T 'Save the activity log'
+    $dialog.FileName = Get-AppLogFileName
+
+    # Sin punto: la propiedad lo quita, y con él las pruebas
+    # compararían contra otra cosa de la que se guarda.
+    $dialog.DefaultExt = 'log'
+
+    # Escribiendo un nombre a secas, Windows le pone el .log.
+    $dialog.AddExtension = $true
+    $dialog.OverwritePrompt = $true
+
+    # Lo que se junta se traduce ANTES de juntarse: pasar la frase
+    # entera por T no traduciría nada y ensuciaría la lista de
+    # Get-MissingTranslations (misma regla que el buscador).
+    $dialog.Filter = '{0} (*.log)|*.log|{1} (*.*)|*.*' -f (T 'Log files'), (T 'All files')
+    $dialog.InitialDirectory = Get-LogSaveFolder
+
+    $dialog
+}
+
+<#
+    Traduce la respuesta del diálogo a una ruta, o a $null.
+
+    Cancelar -el botón, la X o Escape- devuelve $false o $null, y
+    entonces no hay nada que hacer: ni archivo ni aviso, como en
+    cualquier otro programa.
+#>
+function Read-LogSaveResult {
+    param($Answer, $Dialog)
+
+    if ($Answer -ne $true) { return $null }
+    if (-not $Dialog.FileName) { return $null }
+    $Dialog.FileName
+}
+
+# Enseña el diálogo y devuelve la ruta elegida. Con dueño, para
+# que salga centrado sobre la ventana desde la que se pulsó y no
+# se pueda dejar detrás.
+function Get-LogSavePath {
+    param($Window)
+
+    $dialog = New-LogSaveDialog
+    $answer = if ($Window) { $dialog.ShowDialog($Window) } else { $dialog.ShowDialog() }
+    Read-LogSaveResult $answer $dialog
+}
+
+# Escribe el registro donde diga la ruta y lo cuenta en el pie.
+# Si no se ha podido -carpeta protegida, unidad que no existe,
+# disco lleno- Export-AppLog devuelve $null en vez de lanzar y
+# aquí sale el aviso en rojo: el programa sigue en pie.
+function Save-AppLogTo {
+    param($Window, [string]$Path)
+
+    $written = Export-AppLog -Path $Path
+    if (-not $written) {
+        Set-LogFooterText $Window (T 'The log file could not be written') 'Danger'
+        return $null
+    }
+
+    Set-LogSaveFolder (Split-Path -Parent $written)
+    Set-LogFooterText $Window ((T 'Saved to {0}') -f $written) 'Success'
+    $written
+}
+
+<#
+    Lo que hace el botón: preguntar dónde y escribir allí.
+
+    Con el registro vacío ni siquiera se abre el diálogo: sería
+    hacerle elegir una carpeta para nada. El botón ya está
+    apagado -lo hace Update-LogList-, así que esto solo salta si
+    se llama a mano; el aviso sale en el pie, como los demás.
+#>
+function Save-AppLogAs {
+    param($Window)
+
+    if ((Get-AppLogCount) -eq 0) {
+        Set-LogFooterText $Window (T 'Nothing to save yet') 'Warn'
+        return $null
+    }
+
+    $path = Get-LogSavePath $Window
+    if (-not $path) { return $null }
+    Save-AppLogTo $Window $path
+}
+
+<#
+    Enciende o apaga el botón de guardar según haya algo apuntado.
+
+    Lo llama Update-LogList, que es justo por donde pasa cualquier
+    cambio en las filas -abrir el cajón, vaciarlo, leer una
+    sección con el log delante-, así que el botón no puede quedarse
+    encendido sobre un registro vacío.
+
+    Apagado se ve como el de refrescar de una sección sin claves:
+    deshabilitado, medio transparente y diciendo por qué.
+#>
+function Update-LogSaveButton {
+    param($Window)
+
+    $save = $Window.FindName('LogBtnSave')
+    if (-not $save) { return }
+
+    $hay = (Get-AppLogCount) -gt 0
+    $save.IsEnabled = $hay
+    $save.Opacity = if ($hay) { 1 } else { 0.45 }
+    $save.ToolTip = if ($hay) { T 'Save the log to a file' } else { T 'Nothing to save yet' }
 }
 
 # Los controles del cajón se registran con nombre, igual que los
@@ -457,6 +643,10 @@ function Update-LogList {
     $count = $Window.FindName('LogCount')
     if ($count) { $count.Text = (T '{0} entries') -f $total }
 
+    # Sin entradas no hay nada que guardar, y aquí es donde se
+    # entera: por esta función pasan todos los cambios de las filas.
+    Update-LogSaveButton $Window
+
     if ($total -eq 0) {
         $list.Children.Add((New-LogEmptyState)) | Out-Null
         Set-LogFooterText $Window (T 'Nothing has been read from your system yet')
@@ -488,6 +678,29 @@ function Update-LogList {
             $scroll = (Get-LogHostWindow).FindName('LogScroll')
             if ($scroll) { $scroll.ScrollToEnd() }
         }) | Out-Null
+}
+
+<#
+    Pone al día lo que se está viendo del registro, esté donde
+    esté. Si no se está viendo, no hace nada: lo que se haya
+    apuntado saldrá al abrirlo.
+
+    Hace falta porque LAS LÍNEAS NO SE PINTAN SOLAS. Write-AppLog
+    apunta en core/ y ahí se acaba: nadie avisa a la interfaz. El
+    cajón lo disimulaba -Show-LogPanel lo rehace entero cada vez
+    que se abre, así que siempre sale al día-, pero la ventana
+    suelta se queda delante mientras se navega y se lee el
+    registro, y sin este aviso enseñaría para siempre lo que había
+    cuando se abrió: refrescar una sección parecía no apuntar nada
+    hasta volver a acoplarla.
+
+    Quien lea el sistema es quien avisa, igual que con
+    Reset-SearchIndex, porque core/ no sabe -ni debe saber- que hay
+    un cajón ni una ventana.
+#>
+function Sync-LogView {
+    if (Get-LogDetached)  { Update-LogList (Get-LogWindow); return }
+    if (Get-LogPanelOpen) { Update-LogList (Get-AppWindow) }
 }
 
 <#
