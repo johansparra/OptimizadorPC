@@ -1,7 +1,11 @@
 # Equipo de agentes — Optimizador PC
 
-Tres roles con memoria propia y herramientas distintas. Se lanzan **solo cuando tú lo
-pides**: Claude no los invoca por su cuenta.
+Tres roles con memoria propia y herramientas distintas.
+
+**Claude los lanza por su cuenta** cuando la tarea tiene **dos o más frentes que no
+comparten archivos**, y siempre en el MISMO mensaje para que corran a la vez. Un solo
+frente lo hace él en la conversación, que sale más rápido: ver *Cuándo delegar* abajo.
+Pedirlos por su nombre sigue funcionando y manda por encima de ese criterio.
 
 | Agente | Herramientas | Para qué |
 | --- | --- | --- |
@@ -65,7 +69,7 @@ cuenta solo sale a favor cuando hay trabajo suficiente para amortizarlo.
 | --- | --- |
 | Un archivo, una capa, un cambio localizado | Hacerlo en la conversación |
 | Varios archivos y varias capas, pero un solo frente | Hacerlo en la conversación, leyendo en paralelo |
-| **Dos o más frentes que no comparten archivos** | Un agente por frente, **lanzados a la vez** |
+| **Dos o más frentes que no comparten archivos** | Un agente por frente, **lanzados a la vez** — y esto lo decide Claude solo, sin preguntar |
 | Algo largo que ensuciaría el hilo (una auditoría, un barrido) | Un agente, aunque sea uno solo |
 
 **Para que corran en paralelo hay que pedirlos en el MISMO mensaje.** Uno por mensaje
@@ -79,7 +83,10 @@ y las dos suites ya van juntas con `-BothHosts`.
 ## Skills que cargan
 
 Los agentes son **roles**; el conocimiento vive en `.claude/skills/` y lo cargan según
-lo que toquen:
+lo que toquen. **Claude también las carga en la conversación**, sin agente de por
+medio y sin que haya que nombrarlas: una skill no arranca en frío —son instrucciones
+que entran en el turno—, así que no hay coste que amortizar. Lo dice en una línea al
+empezar, para que se vea qué guía está siguiendo.
 
 | Skill | Lo carga | Cubre |
 | --- | --- | --- |

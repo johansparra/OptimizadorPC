@@ -1,12 +1,13 @@
 ---
 name: versionado
-description: Confirmar cambios en el repositorio LOCAL de Optimizador PC. Úsalo cuando pidan guardar, versionar o confirmar el trabajo - revisa qué cambió de verdad, verifica que el proyecto sigue en pie, prepara solo lo que toca y redacta el commit a partir del diff, no de la intención. No hay remoto - nunca se hace push. Trigger words - commit, confirmar, versionar, guardar cambios, git, status, add, historial, rama, branch, "sube los cambios".
+description: Confirmar y subir cambios de Optimizador PC. Úsalo cuando pidan guardar, versionar, confirmar o subir el trabajo - revisa qué cambió de verdad, verifica que el proyecto sigue en pie, prepara solo lo que toca y redacta el commit a partir del diff, no de la intención. Hay remoto público en GitHub - se confirma siempre en local y se sube solo si lo piden. Trigger words - commit, confirmar, versionar, guardar cambios, git, status, add, push, subir, remoto, historial, rama, branch, "sube los cambios".
 ---
 
-# Versionado — repositorio local
+# Versionado
 
-**Este repositorio no tiene remoto.** No existe `push`, ni `pull`, ni PRs, ni nada que
-salga de la máquina. Si algo lo sugiere, es un error: dilo y para.
+**Este repositorio tiene remoto**: `origin`, en GitHub, y es **público**. Se confirma
+en local siempre; **subir solo cuando el usuario lo pida**. Nada de `push --force` ni
+de reescribir historia que ya esté arriba: una vez subido, cualquiera pudo clonarlo.
 
 **Solo se confirma cuando el usuario lo pide.** Terminar una tarea no es motivo.
 
@@ -166,7 +167,9 @@ y el historial de cada archivo se conserva.
 
 ## Cosas que no se hacen
 
-- **Nada de `push`, `pull`, `fetch` ni remotos.** No hay ninguno.
+- **Nada de `push` por tu cuenta.** Confirmar no es subir: se sube cuando lo piden.
+- **Nada de `push --force`, `--amend` ni `rebase` sobre lo ya subido.** El repositorio
+  es público: lo que salió de aquí puede estar clonado en otra parte.
 - **Nada de `--no-verify`** ni de saltarse una comprobación porque estorba.
 - **Nada de `git reset --hard`, `git checkout -- <archivo>` ni `git clean`** sobre
   trabajo del usuario. Son irreversibles y ahí suele haber cosas sin guardar. Si hace
