@@ -56,6 +56,15 @@ function New-TechnicalDetails {
     $header.Cursor = 'Hand'
     $header.Background = [System.Windows.Media.Brushes]::Transparent
 
+    # El fondo de hover de esta fila llega de borde a borde. Con el
+    # cuerpo plegado es el último elemento de la tarjeta, pegado a su
+    # base: si no se redondean sus esquinas inferiores, el relleno
+    # rectangular del hover tapa las dos esquinas redondeadas de la
+    # tarjeta y se ven cuadradas mientras el ratón está encima. El 15
+    # son las 16 de StaticCardStyle menos 1px de borde. Al desplegar
+    # deja de estar abajo y vuelve a 0 (ver el manejador de más abajo).
+    $header.CornerRadius = New-Object System.Windows.CornerRadius 0, 0, 15, 15
+
     $grid = New-Object System.Windows.Controls.Grid
     Add-GridColumns $grid 'Auto', '*', 'Auto'
 
@@ -88,11 +97,15 @@ function New-TechnicalDetails {
             $info.Body.Visibility = 'Collapsed'
             $info.Split.Visibility = 'Collapsed'
             $info.Chevron.Text = Glyph 'ChevronDown'
+            # Vuelve a ser la última fila de la tarjeta: redondea el pie.
+            $s.CornerRadius = New-Object System.Windows.CornerRadius 0, 0, 15, 15
         }
         else {
             $info.Body.Visibility = 'Visible'
             $info.Split.Visibility = 'Visible'
             $info.Chevron.Text = Glyph 'ChevronUp'
+            # Con el cuerpo abierto esta fila queda en medio: sin radio.
+            $s.CornerRadius = New-Object System.Windows.CornerRadius 0
             Start-EnterTransition $info.Body 170 6
         }
     })

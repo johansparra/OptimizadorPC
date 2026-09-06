@@ -75,6 +75,54 @@ Describe 'ui/Components/Cards/TechnicalDetails.ps1 - el pie' {
     }
 }
 
+Describe 'ui/Components/Cards/TechnicalDetails.ps1 - la forma de la tarjeta' {
+
+    # La fila que pliega y despliega es el Border cuyo Tag lleva el
+    # cuerpo plegable (Body / Split / Chevron).
+    function Get-TechHeader {
+        param($Root)
+        (Find-Visuals $Root {
+            param($el)
+            $el -is [System.Windows.Controls.Border] -and
+            $el.Tag -and $el.Tag.PSObject.Properties['Body']
+        })[0]
+    }
+
+    # Un clic de ratón como el que dispara el plegado.
+    function Invoke-TechHeaderClick {
+        param($Header)
+        $clic = New-Object System.Windows.Input.MouseButtonEventArgs ([System.Windows.Input.Mouse]::PrimaryDevice), 0, ([System.Windows.Input.MouseButton]::Left)
+        $clic.RoutedEvent = [System.Windows.UIElement]::MouseLeftButtonUpEvent
+        $Header.RaiseEvent($clic)
+    }
+
+    It 'con el pie plegado, la fila redondea sus esquinas inferiores' {
+        # El fondo de hover llega de borde a borde y, plegada, esta fila
+        # es lo último de la tarjeta. Sin este radio el hover cuadraba
+        # las dos esquinas redondeadas de la tarjeta (16 de
+        # StaticCardStyle - 1px de borde = 15 por dentro).
+        $header = Get-TechHeader (New-TechnicalDetails $TechWindow (New-TechTestSetting))
+
+        Assert-NotNull $header 'no se ha encontrado la fila de detalles técnicos'
+        Assert-Equal 15 $header.CornerRadius.BottomLeft
+        Assert-Equal 15 $header.CornerRadius.BottomRight
+        Assert-Equal 0  $header.CornerRadius.TopLeft
+        Assert-Equal 0  $header.CornerRadius.TopRight
+    }
+
+    It 'el pie sigue la forma de la tarjeta al abrir y al volver a cerrar' {
+        $header = Get-TechHeader (New-TechnicalDetails $TechWindow (New-TechTestSetting))
+
+        Invoke-TechHeaderClick $header   # abre: la fila queda en medio
+        Assert-Equal 0 $header.CornerRadius.BottomLeft
+        Assert-Equal 0 $header.CornerRadius.BottomRight
+
+        Invoke-TechHeaderClick $header   # cierra: vuelve a ser el pie
+        Assert-Equal 15 $header.CornerRadius.BottomLeft
+        Assert-Equal 15 $header.CornerRadius.BottomRight
+    }
+}
+
 Describe 'ui/Components/Cards/TechnicalDetails.ps1 - seleccionar y copiar' {
 
     It 'la ruta y el valor son texto seleccionable' {
