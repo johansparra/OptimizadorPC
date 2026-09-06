@@ -97,7 +97,7 @@ function New-NavButton {
     # Se registra con su nombre para que $Window.FindName siga
     # encontrándolo aunque el botón ya no exista en el XAML.
     $name = Get-NavElementName $Item.Id
-    try { $Window.UnregisterName($name) } catch { }
+    try { $Window.UnregisterName($name) } catch { $null = $_ }
     $Window.RegisterName($name, $button)
 
     $button

@@ -214,9 +214,9 @@ function Invoke-SearchPopupReopen {
 # ---- Teclado -------------------------------------------------
 
 function Invoke-SearchKey {
-    param($Box, $EventArgs)
+    param($Box, $e)
 
-    switch ($EventArgs.Key) {
+    switch ($e.Key) {
         ([System.Windows.Input.Key]::Enter) {
             $texto = [string]$Box.Text
             if ([string]::IsNullOrWhiteSpace($texto)) { return }
@@ -225,14 +225,14 @@ function Invoke-SearchKey {
             if ($Box.Tag) { $Box.Tag.IsOpen = $false }
             Set-SearchQuery $texto
             Show-View -Name 'Show-SearchResultsView'
-            $EventArgs.Handled = $true
+            $e.Handled = $true
         }
         ([System.Windows.Input.Key]::Escape) {
             # Handled solo si había algo que cerrar: si no, Escape
             # tiene que seguir llegando al cajón del log.
             if ($Box.Tag -and $Box.Tag.IsOpen) {
                 $Box.Tag.IsOpen = $false
-                $EventArgs.Handled = $true
+                $e.Handled = $true
             }
         }
     }

@@ -484,13 +484,13 @@ Describe 'ui/Views/CategoryDetailView.ps1 - refrescar' {
 Describe 'ui/Engine/Router.ps1' {
 
     It 'recuerda la pantalla en la que estás' {
-        $ventana = New-AppWindow
+        $null = New-AppWindow
         Show-View -Name 'Show-SettingsView'
         Assert-Equal 'Show-SettingsView' (Get-CurrentViewName)
     }
 
     It 'repintar la pantalla actual no lanza' {
-        $ventana = New-AppWindow
+        $null = New-AppWindow
         Show-View -Name 'Show-OptimizationsListView'
         Assert-NoThrow { Show-CurrentView }
         Sync-Dispatcher
@@ -518,7 +518,7 @@ Describe 'ui/Engine/Router.ps1' {
         # del buscador -que es una ventana aparte y no se entera del
         # blindaje de la vista- entraba aquí otra vez con la pantalla
         # anterior a medio construir.
-        $ventana = New-AppWindow -Language 'en'
+        $null = New-AppWindow -Language 'en'
         Show-View -Name 'Show-OptimizationsListView'
 
         # Una vista de mentira que intenta navegar mientras la pintan.
@@ -543,7 +543,7 @@ Describe 'ui/Engine/Router.ps1' {
         # navegación congelada para el resto de la sesión.
         function Show-ViewQueLanza { param($Window) throw 'fallo de prueba' }
 
-        try { Show-View -Name 'Show-ViewQueLanza' } catch { }
+        try { Show-View -Name 'Show-ViewQueLanza' } catch { $null = $_ }
 
         Assert-False (Get-ViewBusy) 'la marca se quedó puesta'
         Assert-NoThrow { Show-View -Name 'Show-OptimizationsListView' } 'ya no se puede navegar'

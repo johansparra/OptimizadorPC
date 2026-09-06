@@ -483,7 +483,7 @@ function Get-LogSaveFolder {
         try {
             if (Test-Path -LiteralPath $saved -PathType Container) { return $saved }
         }
-        catch { }
+        catch { $null = $_ }
     }
     Get-DesktopFolder
 }
@@ -617,7 +617,7 @@ function Update-LogSaveButton {
 # hay que soltarlo antes.
 function Register-LogName {
     param($Window, [string]$Name, $Element)
-    try { $Window.UnregisterName($Name) } catch { }
+    try { $Window.UnregisterName($Name) } catch { $null = $_ }
     $Window.RegisterName($Name, $Element)
 }
 

@@ -60,7 +60,7 @@ function ConvertTo-RegistryNumber {
             return [System.BitConverter]::ToUInt64([System.BitConverter]::GetBytes($n), 0)
         }
     }
-    catch { }
+    catch { $null = $_ }
 
     $null
 }

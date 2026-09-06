@@ -53,8 +53,8 @@ Register-Category @{
             -Registry @(
                 @{ Path = 'HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile'
                    Name = 'NetworkThrottlingIndex'; Type = 'DWord'; Display = 'hex'
-                   Recommended = '0xFFFFFFFF'; Default = '0x00000000' }
+                   Recommended = '0xFFFFFFFF'; Default = '00000010' }
             )
-       
+
     )
 }

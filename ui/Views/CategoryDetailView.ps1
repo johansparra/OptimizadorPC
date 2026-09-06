@@ -176,7 +176,7 @@ function New-RefreshButton {
         $refresh.ToolTip = T 'This section does not read the registry yet'
     }
 
-    try { $Window.UnregisterName('BtnRefresh') } catch { }
+    try { $Window.UnregisterName('BtnRefresh') } catch { $null = $_ }
     $Window.RegisterName('BtnRefresh', $refresh)
 
     $refresh

@@ -42,11 +42,11 @@ function New-TestRegFixture {
 }
 
 function Remove-TestRegFixture {
-    try { [Microsoft.Win32.Registry]::CurrentUser.DeleteSubKeyTree((Get-TestRegPath), $false) } catch { }
+    try { [Microsoft.Win32.Registry]::CurrentUser.DeleteSubKeyTree((Get-TestRegPath), $false) } catch { $null = $_ }
     # Y el padre, si no queda nadie dentro: DeleteSubKey se queja
     # cuando aun tiene hijos -otro proceso a medias- y ahi no hay
     # nada que hacer.
-    try { [Microsoft.Win32.Registry]::CurrentUser.DeleteSubKey('Software\OptimizadorPC\Tests', $false) } catch { }
+    try { [Microsoft.Win32.Registry]::CurrentUser.DeleteSubKey('Software\OptimizadorPC\Tests', $false) } catch { $null = $_ }
 }
 
 # ---- Categorías de mentira ----------------------------------
