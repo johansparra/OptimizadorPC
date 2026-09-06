@@ -9,7 +9,27 @@
     Por ahora esto SOLO muestra la interfaz — sin lógica de tweaks.
 #>
 
-$ScriptRoot = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path -Parent $MyInvocation.MyCommand.Path }
+# En un .exe de ps2exe no hay ningún archivo .ps1 en disco: ni
+# $PSScriptRoot ni $MyInvocation.MyCommand.Path resuelven a nada, y
+# Split-Path -Parent $null lanza "No se puede enlazar el argumento
+# al parámetro 'Path' porque es nulo" en la primerísima línea del
+# programa. Es un error de arranque genuino -no un aviso de
+# Windows-, y ps2exe lo enseña con un cuadro de mensaje y LUEGO
+# sigue ejecutando el resto del script, así que "se ve un error
+# pero carga igual" es justo lo que pasa.
+#
+# En el .exe da igual: build.ps1 sustituye cada @@EMBED_DIR@@ por el
+# contenido de la carpeta, así que ningún consumidor de $ScriptRoot
+# sobrevive a la compilación -esta variable queda muerta-. El
+# $PWD.Path final es solo para que la asignación no lance; en modo
+# desarrollo ($PSScriptRoot sí resuelve) nunca se llega hasta ahí.
+#
+# EN UNA SOLA LÍNEA A PROPÓSITO: la sonda de tests/Ui/Wiring.Tests.ps1
+# busca el patrón '^$ScriptRoot = ' para sustituir la línea entera
+# por la ruta real del proyecto (su copia vive en otra carpeta y
+# necesita seguir encontrando ui/ y core/). Partirla en varias
+# rompería esa sustitución.
+$ScriptRoot = if ($PSScriptRoot) { $PSScriptRoot } elseif ($MyInvocation.MyCommand.Path) { Split-Path -Parent $MyInvocation.MyCommand.Path } else { $PWD.Path }
 
 Add-Type -AssemblyName PresentationFramework
 Add-Type -AssemblyName PresentationCore
