@@ -114,11 +114,18 @@ Write-Host "Script combinado generado en: $combinedPath" -ForegroundColor Cyan
 if ($CombineOnly) { return }
 
 # ---- 2. Compilar con ps2exe ----
-if (-not (Get-Module -ListAvailable -Name ps2exe)) {
-    Write-Host 'Instalando módulo ps2exe (solo usuario actual, sin admin)...' -ForegroundColor Cyan
-    Install-Module -Name ps2exe -Scope CurrentUser -Force -AllowClobber
+# Versión FIJADA a propósito. Sin -RequiredVersion, cada compilación
+# podría traer una versión distinta del compilador; sin -Repository,
+# si el equipo tiene otro repositorio de PowerShell registrado con
+# prioridad, podría ganar el suyo. Las dos cosas son cadena de
+# suministro: el .exe que se entrega lleva dentro el stub de ps2exe.
+# Para subir de versión: cambia el número aquí, recompila y prueba.
+$Ps2ExeVersion = '1.0.18'
+if (-not (Get-Module -ListAvailable -Name ps2exe | Where-Object { $_.Version -eq [version]$Ps2ExeVersion })) {
+    Write-Host "Instalando módulo ps2exe $Ps2ExeVersion (solo usuario actual, sin admin)..." -ForegroundColor Cyan
+    Install-Module -Name ps2exe -RequiredVersion $Ps2ExeVersion -Repository PSGallery -Scope CurrentUser -Force -AllowClobber
 }
-Import-Module ps2exe
+Import-Module ps2exe -RequiredVersion $Ps2ExeVersion
 
 # El .exe se deja en build/, junto al combinado que lo origina.
 $outPath = Join-Path $buildDir 'OptimizadorPC.exe'
