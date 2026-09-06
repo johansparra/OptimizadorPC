@@ -409,6 +409,136 @@ Describe 'ui/Components/Shell/SearchBar.ps1' {
         Assert-Equal '' (Get-SearchQuery)
     }
 
+    # Las tres pruebas de abajo comprueban por popup.Child, NUNCA por
+    # popup.IsOpen: como dice la cabecera del archivo, un Popup con
+    # IsOpen=$true se crea su propia ventana de Windows, y eso solo
+    # llega a pasar de verdad con una ventana ya mostrada -aquí
+    # ninguna lo está-. Update-SearchPopup rehace popup.Child ANTES
+    # de tocar IsOpen, así que es la señal que sí se puede leer sin
+    # pintar nada en la pantalla de quien lanza las pruebas.
+    #
+    # Y la apertura está APLAZADA (Request-SearchPopupReopen la manda
+    # al Dispatcher, ver la cabecera del archivo), así que tras
+    # disparar el evento hace falta bombear la cola con
+    # Sync-Dispatcher 'Input' -la misma prioridad con la que se
+    # aplazó- antes de mirar popup.Child.
+
+    It 'recuperar el foco con texto ya puesto reabre el desplegable' {
+        # El fallo de verdad: escribir "usb", perder el foco -que
+        # cierra solo por StaysOpen=$false- y volver a entrar en la
+        # caja SIN tocar el texto. Antes no pasaba nada: ni
+        # Invoke-SearchKey ni Start-SearchDebounce escuchan GotFocus.
+        $barra = New-SearchBar -Window $SearchWindow
+        $caja = (Find-Visuals $barra { param($el) $el -is [System.Windows.Controls.TextBox] })[0]
+        $caja.Text = 'usb'
+        $caja.Tag.Child = $null
+
+        # A través del evento de verdad, no llamando a la función a
+        # pelo: es lo que prueba que el manejador está enganchado.
+        $caja.RaiseEvent((New-Object System.Windows.RoutedEventArgs ([System.Windows.UIElement]::GotFocusEvent)))
+        Sync-Dispatcher 'Input'
+
+        Assert-NotNull $caja.Tag.Child 'el desplegable debería haberse rehecho'
+        Assert-Match 'usb' (Get-VisualText $caja.Tag.Child)
+    }
+
+    It 'recuperar el foco con la caja vacía no abre nada' {
+        # Así arrancó siempre: sin texto no hay nada que enseñar, y
+        # abrir un desplegable vacío no ayuda a nadie.
+        $barra = New-SearchBar -Window $SearchWindow
+        $caja = (Find-Visuals $barra { param($el) $el -is [System.Windows.Controls.TextBox] })[0]
+        $caja.Tag.Child = $null
+
+        $caja.RaiseEvent((New-Object System.Windows.RoutedEventArgs ([System.Windows.UIElement]::GotFocusEvent)))
+
+        Assert-Null $caja.Tag.Child 'sin texto no debería haber rehecho nada'
+    }
+
+    It 'un clic reabre aunque la caja nunca haya perdido el foco' {
+        # El caso real que GotFocus por sí solo no cubre: Popup con
+        # StaysOpen=$false se cierra detectando un clic FUERA de él,
+        # y eso es independiente del foco de teclado. La mayor parte
+        # de la ventana -fondos, Grid, Border decorativos- no es
+        # enfocable, así que un clic ahí no le quita el foco a la
+        # caja; si nunca lo perdió, un clic de vuelta sobre ella no
+        # dispara GotFocus -no hay transición- y sin este manejador
+        # el desplegable se quedaba cerrado para siempre.
+        $barra = New-SearchBar -Window $SearchWindow
+        $caja = (Find-Visuals $barra { param($el) $el -is [System.Windows.Controls.TextBox] })[0]
+        $caja.Text = 'usb'
+        $caja.Tag.Child = $null
+
+        # Foco puesto UNA vez, y nunca se toca GotFocus otra vez: es
+        # justo lo que pasa cuando el clic "fuera" cae en algo que no
+        # puede robar el foco.
+        $caja.RaiseEvent((New-Object System.Windows.RoutedEventArgs ([System.Windows.UIElement]::GotFocusEvent)))
+        $caja.Tag.Child = $null   # como si StaysOpen ya lo hubiera cerrado
+
+        $clic = New-Object System.Windows.Input.MouseButtonEventArgs ([System.Windows.Input.Mouse]::PrimaryDevice), 0, ([System.Windows.Input.MouseButton]::Left)
+        $clic.RoutedEvent = [System.Windows.UIElement]::PreviewMouseLeftButtonDownEvent
+        $caja.RaiseEvent($clic)
+        Sync-Dispatcher 'Input'
+
+        Assert-NotNull $caja.Tag.Child 'el clic debería reabrir el desplegable aunque el foco no cambiara'
+        Assert-Match 'usb' (Get-VisualText $caja.Tag.Child)
+    }
+
+    It 'un clic reabre sin parpadear: no dentro del mismo evento de ratón' {
+        # El bug real que dejaba el fix a medias: Update-SearchPopup
+        # enganchado directamente a PreviewMouseLeftButtonDown abría
+        # el Popup DENTRO del propio clic que lo disparaba. StaysOpen
+        # instala su gancho de "clic fuera" al abrirse, y ese mismo
+        # clic -en curso, todavía sin terminar de repartirse- se veía
+        # como si hubiera caído fuera: se cerraba solo al instante.
+        # Aquí se comprueba que la apertura NO pasa en el acto: sigue
+        # sin estar hecha justo después de RaiseEvent, y solo aparece
+        # tras bombear la cola.
+        $barra = New-SearchBar -Window $SearchWindow
+        $caja = (Find-Visuals $barra { param($el) $el -is [System.Windows.Controls.TextBox] })[0]
+        $caja.Text = 'usb'
+        $caja.Tag.Child = $null
+
+        $clic = New-Object System.Windows.Input.MouseButtonEventArgs ([System.Windows.Input.Mouse]::PrimaryDevice), 0, ([System.Windows.Input.MouseButton]::Left)
+        $clic.RoutedEvent = [System.Windows.UIElement]::PreviewMouseLeftButtonDownEvent
+        $caja.RaiseEvent($clic)
+
+        Assert-Null $caja.Tag.Child 'no debería abrirse dentro del mismo evento de ratón'
+
+        Sync-Dispatcher 'Input'
+        Assert-NotNull $caja.Tag.Child 'debería haberse abierto ya, aplazado'
+    }
+
+    It 'un clic con la caja vacía no abre nada' {
+        $barra = New-SearchBar -Window $SearchWindow
+        $caja = (Find-Visuals $barra { param($el) $el -is [System.Windows.Controls.TextBox] })[0]
+
+        $clic = New-Object System.Windows.Input.MouseButtonEventArgs ([System.Windows.Input.Mouse]::PrimaryDevice), 0, ([System.Windows.Input.MouseButton]::Left)
+        $clic.RoutedEvent = [System.Windows.UIElement]::PreviewMouseLeftButtonDownEvent
+        $caja.RaiseEvent($clic)
+        Sync-Dispatcher 'Input'
+
+        Assert-Null $caja.Tag.Child
+    }
+
+    It 'el foco que pone Set-SearchFocus no se abre a sí mismo' {
+        # Se dispara al llegar a la página de resultados -tras Enter,
+        # o tras "ver todos"-, donde la lista completa ya está
+        # pintada debajo. Sin la bandera, este mismo GotFocus abriría
+        # el mini-desplegable encima nada más entrar a la pantalla.
+        $barra = New-SearchBar -Window $SearchWindow -Text 'usb' -Focus
+        $caja = (Find-Visuals $barra { param($el) $el -is [System.Windows.Controls.TextBox] })[0]
+
+        Sync-Dispatcher 'Loaded'
+
+        Assert-Null $caja.Tag.Child 'el foco programático no debería abrir el desplegable'
+
+        # Y el siguiente GotFocus -uno de verdad- ya no está suprimido:
+        # la bandera se consume una sola vez.
+        $caja.RaiseEvent((New-Object System.Windows.RoutedEventArgs ([System.Windows.UIElement]::GotFocusEvent)))
+        Sync-Dispatcher 'Input'
+        Assert-NotNull $caja.Tag.Child 'el siguiente foco sí debería reabrir'
+    }
+
     It 'Enter lleva a la página de resultados' {
         $barra = New-SearchBar -Window $SearchWindow
         $caja = (Find-Visuals $barra { param($el) $el -is [System.Windows.Controls.TextBox] })[0]

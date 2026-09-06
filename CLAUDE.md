@@ -430,6 +430,47 @@ a la página con todas y `Escape` lo cierra —pero solo se queda la tecla si ha
 abierto, o dejaría de cerrarse el cajón del log. Hay antirrebote
 (`$SearchDebounceMs`): diez pulsaciones son una búsqueda, no diez.
 
+**Un clic con texto ya puesto también reabre el desplegable, y hacen falta DOS
+manejadores.** `StaysOpen = $false` cierra el `Popup` detectando un clic **fuera de
+él**, y eso es independiente de si la caja conserva el foco de teclado: la mayor
+parte de la ventana —fondos, `Grid`, `Border` decorativos— no es enfocable en WPF, así
+que un clic ahí no le quita el foco a la caja. Si nunca lo perdió, un clic de vuelta
+sobre ella no dispara `GotFocus` —no hay transición que disparar— y el desplegable se
+quedaba cerrado para siempre; de ahí que antes hiciera falta borrar o escribir una
+letra. Por eso `New-SearchBar` engancha **`GotFocus` y `PreviewMouseLeftButtonDown`
+a la vez**: el primero cubre Tab y los casos en los que sí hay transición real de
+foco, el segundo cubre el clic sobre una caja que nunca lo perdió. Ninguno marca el
+evento como atendido, así que el posicionamiento normal del cursor no se toca.
+
+La única trampa es que la caja también recibe foco **programático** al llegar a
+`Show-SearchResultsView` (`Set-SearchFocus`, tras `Enter` o "ver todos"), donde la
+lista completa ya está pintada debajo: reabrir ahí encima sería ruido. Se distingue
+con `$SearchFocusIsProgrammatic`, una bandera que `Set-SearchFocus` deja puesta antes
+de llamar a `.Focus()` y que el manejador de `GotFocus` consume una sola vez —el de
+clic no la necesita, un clic de ratón nunca es programático.
+
+**Abrir el `Popup` no puede pasar dentro del propio evento de ratón que lo dispara, o
+parpadea: aparece y desaparece de golpe.** `StaysOpen` instala su gancho de "clic
+fuera" al abrirse, y si eso ocurre mientras el clic que lo disparó **todavía se está
+repartiendo**, el gancho ve ese mismo clic —en curso, sin terminar— como si hubiera
+caído fuera de él, y se cierra solo al instante. `Request-SearchPopupReopen` aplaza la
+apertura con `Dispatcher.BeginInvoke` (prioridad `Input`) para que el clic termine de
+procesarse antes de que el `Popup` llegue a existir.
+
+**Y ese aplazamiento no puede cerrar sobre el parámetro.** Un scriptblock convertido a
+`[action]` —lo que exige `BeginInvoke`— **no conserva las variables locales del ámbito
+donde se definió**: dentro del `[action]`, un parámetro como `$Box` llega vacío, y
+`Update-SearchPopup` no hace nada, en silencio, sin lanzar. Es la misma familia de
+trampa que la regla 4 sobre los closures forzados y las funciones, mordiendo aquí en
+una variable. La caja viaja por `$script:SearchReopenBox`, el mismo patrón que ya usa
+`Start-SearchDebounce` con `$script:SearchPendingBox`.
+
+**Probar esto por `popup.IsOpen` no sirve.** Como dice la cabecera de
+`Search.Tests.ps1`, un `Popup` con `IsOpen = $true` se crea su propia ventana de
+Windows, y eso solo llega a pasar con una ventana ya mostrada —ninguna prueba muestra
+ninguna—: la propiedad ni siquiera se queda puesta. La señal que sí se puede leer es
+`popup.Child`, que `Update-SearchPopup` rehace ANTES de tocar `IsOpen`.
+
 Pulsar un resultado abre su sección con **el ajuste marcado** (`New-SettingCard
 -Highlight`, borde de acento) y lo trae a la vista. El desplazamiento va aplazado al
 `Dispatcher` a propósito: `Show-View` manda el scroll arriba DESPUÉS de que la vista
