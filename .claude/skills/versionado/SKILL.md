@@ -60,12 +60,10 @@ pasaste hace dos minutos tampoco vale nada. La pregunta es una sola:
 | Solo has tocado `.md`, `.claude/` o documentación | **Nada.** No hay código que romper |
 | Vienes de una sesión anterior o el árbol traía cambios ajenos | Las dos suites, y lee el diff entero |
 
-Y una sola vez más: si tocaste **fuentes que entran al `.exe`**, regenera el paquete
-antes de confirmar, o `build/_combined.ps1` se queda desfasado:
-
-```bash
-powershell -ExecutionPolicy Bypass -File ./build.ps1 -CombineOnly
-```
+`build/_combined.ps1` y `build/OptimizadorPC.exe` ya **no** hay que tocarlos antes de
+confirmar: el combinado no se versiona (lo regenera cada `build.ps1` y la suite de
+`tests/Source/` ya lo rearma y comprueba que parsea), y el `.exe` solo se recompila
+cuando el usuario lo pida.
 
 El BOM ya no hay que comprobarlo a mano: lo deja puesto el hook
 `.claude/hooks/Normalize-PsEncoding.ps1` al escribir, y hay una prueba que lo vigila.
@@ -99,11 +97,9 @@ git add ui/Data/Categories/Regedit.ps1        # archivos concretos
 | `*.bak`, `*.tmp`, copias de seguridad | Ruido; suelen ser la versión **rota** de algo |
 | Archivos del scratchpad o de `%TEMP%` | No son del proyecto |
 | Credenciales, tokens, rutas con datos personales | Nunca, aunque el repo sea local |
-| `OptimizadorPC.exe` recién compilado | Solo si el usuario lo pide |
+| `build/OptimizadorPC.exe` recién compilado | Solo si el usuario lo pide |
+| `build/_combined.ps1` | Nunca: está en `.gitignore`, es un intermedio generado |
 | Un archivo que sabes que está roto | Déjalo fuera y **dilo en el mensaje** |
-
-`build/_combined.ps1` **sí** va: es generado, pero ya está versionado y dejarlo atrás
-haría que el árbol nunca estuviera limpio.
 
 ## Cuántos commits
 
