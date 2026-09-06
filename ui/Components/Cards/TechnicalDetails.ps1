@@ -1,8 +1,9 @@
 ﻿# ============================================================
 # Componente: detalle técnico de un ajuste
 #
-# La franja plegable del pie de cada tarjeta de ajuste. Enseña
-# qué claves del registro toca ese ajuste y con qué valores:
+# El CONTENIDO de la franja plegable "Detalles técnicos". El
+# mecanismo de abrir/cerrar lo pone New-DisclosureSection
+# (ui/Components/Cards/Disclosure.ps1), que comparte con "Referencia".
 #
 #   ---------------------------------------------
 #   (i) Detalles técnicos                       v
@@ -30,90 +31,8 @@
 function New-TechnicalDetails {
     param($Window, $Setting)
 
-    $section = New-Object System.Windows.Controls.StackPanel
-
-    # --- línea separadora, de borde a borde de la tarjeta ---
-    $rule = New-Object System.Windows.Controls.Border
-    $rule.Height = 1
-    Set-BoxBg $rule 'Stroke'
-    $section.Children.Add($rule) | Out-Null
-
-    # --- cuerpo plegado (se construye ya, se enseña al pulsar) ---
-    $body = New-TechnicalBody $Window $Setting
-    $body.Visibility = 'Collapsed'
-
-    # Segunda línea, entre la fila y el cuerpo: solo tiene sentido
-    # con el cuerpo abierto, así que va y viene con él.
-    $split = New-Object System.Windows.Controls.Border
-    $split.Height = 1
-    $split.Margin = New-Object System.Windows.Thickness 0, 0, 0, 14
-    $split.Visibility = 'Collapsed'
-    Set-BoxBg $split 'Stroke'
-
-    # --- fila que pliega y despliega ---
-    $header = New-Object System.Windows.Controls.Border
-    $header.Padding = New-Object System.Windows.Thickness 20, 9, 18, 10
-    $header.Cursor = 'Hand'
-    $header.Background = [System.Windows.Media.Brushes]::Transparent
-
-    # El fondo de hover de esta fila llega de borde a borde. Con el
-    # cuerpo plegado es el último elemento de la tarjeta, pegado a su
-    # base: si no se redondean sus esquinas inferiores, el relleno
-    # rectangular del hover tapa las dos esquinas redondeadas de la
-    # tarjeta y se ven cuadradas mientras el ratón está encima. El 15
-    # son las 16 de StaticCardStyle menos 1px de borde. Al desplegar
-    # deja de estar abajo y vuelve a 0 (ver el manejador de más abajo).
-    $header.CornerRadius = New-Object System.Windows.CornerRadius 0, 0, 15, 15
-
-    $grid = New-Object System.Windows.Controls.Grid
-    Add-GridColumns $grid 'Auto', '*', 'Auto'
-
-    $icon = New-Icon 'Info' 13 'TextFaint'
-    $icon.Margin = New-Object System.Windows.Thickness 0, 0, 9, 0
-    Add-ToColumn $grid $icon 0
-
-    $label = New-Object System.Windows.Controls.TextBlock
-    $label.Text = T 'Technical details'
-    $label.FontSize = 11.5
-    $label.VerticalAlignment = 'Center'
-    Set-TextFg $label 'TextMuted'
-    Add-ToColumn $grid $label 1
-
-    $chevron = New-Icon 'ChevronDown' 10 'TextFaint'
-    Add-ToColumn $grid $chevron 2
-
-    $header.Child = $grid
-
-    $header.Add_MouseEnter({ param($s, $e) Set-BoxBg $s 'SurfaceHover' })
-    $header.Add_MouseLeave({ param($s, $e) $s.Background = [System.Windows.Media.Brushes]::Transparent })
-
-    # Cuerpo, línea y chevron viajan en el Tag: nada de closures
-    # (regla 4 de CLAUDE.md).
-    $header.Tag = [PSCustomObject]@{ Body = $body; Split = $split; Chevron = $chevron }
-    $header.Add_MouseLeftButtonUp({
-        param($s, $e)
-        $info = $s.Tag
-        if ($info.Body.Visibility -eq 'Visible') {
-            $info.Body.Visibility = 'Collapsed'
-            $info.Split.Visibility = 'Collapsed'
-            $info.Chevron.Text = Glyph 'ChevronDown'
-            # Vuelve a ser la última fila de la tarjeta: redondea el pie.
-            $s.CornerRadius = New-Object System.Windows.CornerRadius 0, 0, 15, 15
-        }
-        else {
-            $info.Body.Visibility = 'Visible'
-            $info.Split.Visibility = 'Visible'
-            $info.Chevron.Text = Glyph 'ChevronUp'
-            # Con el cuerpo abierto esta fila queda en medio: sin radio.
-            $s.CornerRadius = New-Object System.Windows.CornerRadius 0
-            Start-EnterTransition $info.Body 170 6
-        }
-    })
-
-    $section.Children.Add($header) | Out-Null
-    $section.Children.Add($split)  | Out-Null
-    $section.Children.Add($body)   | Out-Null
-    $section
+    New-DisclosureSection -Window $Window -Icon 'Info' -Label 'Technical details' `
+        -Body (New-TechnicalBody $Window $Setting)
 }
 
 # El bloque que se despliega: título y una fila por clave.

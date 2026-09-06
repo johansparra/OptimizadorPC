@@ -48,13 +48,17 @@ Register-Category @{
     Items = @(
         New-Setting -Name 'Network Throttling Mechanism' `
             -Description 'Limits network packet processing (NDIS) to 10 packets' `
+            -WhatItDoes 'Caps network traffic while Windows detects active audio or video (MMCSS), so the CPU goes to multimedia instead' `
+            -Values '0x0000000A (10, default) - 1 to 70 (adjustable) - 0xFFFFFFFF (disables the limit)' `
+            -GamingOptimal 'yes' `
+            -GamingNote 'Removes network throttling during matches' `
+            -Link 'https://learn.microsoft.com/en-us/windows/win32/procthread/multimedia-class-scheduler-service' `
             -Badge 'NEW' `
             -Value $true `
             -Registry @(
                 @{ Path = 'HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile'
                    Name = 'NetworkThrottlingIndex'; Type = 'DWord'; Display = 'hex'
-                   Recommended = '0xFFFFFFFF'; Default = '00000010' }
+                   Recommended = '0xFFFFFFFF'; Default = '0x0000000A' }
             )
-
     )
 }

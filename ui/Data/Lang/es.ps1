@@ -71,6 +71,23 @@ Register-Language 'es' @{
     'warn'    = 'aviso'
     'error'   = 'fallo'
 
+    # Escritura en el registro (core/Registry/Writer.ps1 / SettingApply.ps1).
+    'checked'       = 'evaluado'
+    'applying'      = 'aplicando'
+    'applied'       = 'aplicado'
+    'restored'      = 'restaurado'
+    'no change'     = 'sin cambios'
+    'snapshot'      = 'copia'
+    'write attempt' = 'intento'
+    'post write'    = 'verificación'
+    'blocked'       = 'bloqueado'
+    'disarmed'      = 'desarmado'
+    'invalid path'  = 'ruta inválida'
+    'type mismatch' = 'tipo distinto'
+    'write failed'  = 'no escrito'
+    'typefail'      = 'tipo inválido'
+    'unsupported'   = 'no soportado'
+
     # ---- Pantalla principal ----
     'Optimizations' = 'Optimizaciones'
     'Optimize your Windows system performance, privacy and power usage' = 'Ajusta el rendimiento, la privacidad y el consumo de tu sistema'
@@ -82,6 +99,8 @@ Register-Language 'es' @{
     'Show on screen'    = 'Mostrar en pantalla'
     'Technical details' = 'Detalles técnicos'
     'Show the registry keys each setting touches' = 'Enseñar las claves del registro que toca cada ajuste'
+    'Reference'         = 'Referencia'
+    'Show values, gaming fit and the reference link for each key' = 'Enseñar los valores, si conviene para gaming y el enlace de referencia de cada clave'
     'New badges'        = 'Insignias de nuevo'
     "Show the red 'NEW' tags on sections and settings" = "Enseñar las etiquetas rojas de 'nuevo' en secciones y ajustes"
     'Grid view'         = 'Cuadrícula'
@@ -147,6 +166,16 @@ Register-Language 'es' @{
     'Customised: {0} of {1}'    = 'Personalizados: {0} de {1}'
     'No recommended settings'   = 'Sin ajustes recomendados'
 
+    # ---- Franja "Referencia": bloques de consulta de la clave ----
+    'Values'            = 'Valores'
+    'Good for gaming'   = 'Óptimo para gaming'
+    'Link'              = 'Enlace'
+    'No reference link' = 'Sin enlace'
+    'Open the reference in your browser' = 'Abrir el enlace en el navegador'
+    'Yes' = 'Sí'
+    'No'  = 'No'
+    'N/A' = 'N/A'
+
     # ---- Bloqueo ----
     'Locked section' = 'Sección bloqueada'
     'Its settings are shown for reference only: they cannot be changed. To unlock it, set Locked = $false in ui/Index/CategoryIndex.ps1.' = 'Sus ajustes se muestran solo como consulta: no se pueden modificar. Para desbloquearla, pon Locked = $false en ui/Index/CategoryIndex.ps1.'
@@ -199,6 +228,9 @@ Register-Language 'es' @{
     # ---- Regedit ----
     'Network Throttling Mechanism' = 'Mecanismo de limitación de red'
     'Limits network packet processing (NDIS) to 10 packets' = 'Limita el procesamiento de paquetes de red (NDIS) a 10 paquetes'
+    'Caps network traffic while Windows detects active audio or video (MMCSS), so the CPU goes to multimedia instead' = 'Limita el tráfico de red mientras Windows detecta audio o vídeo activo (MMCSS), para que la CPU vaya al multimedia'
+    '0x0000000A (10, default) - 1 to 70 (adjustable) - 0xFFFFFFFF (disables the limit)' = '0x0000000A (10, predeterminado) - 1 a 70 (ajustable) - 0xFFFFFFFF (desactiva el límite)'
+    'Removes network throttling during matches' = 'Elimina la limitación de red durante las partidas'
 
     'User Account Control Level' = 'Nivel del Control de cuentas de usuario'
     'Controls UAC notification level and secure desktop behavior' = 'Controla el nivel de aviso del UAC y el comportamiento del escritorio seguro'

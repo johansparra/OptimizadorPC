@@ -175,3 +175,28 @@ function Update-SettingStatus {
 
     $status
 }
+
+<#
+    Deja en el registro de actividad la EVALUACIÓN de cada clave del
+    ajuste: tipo, valor leído, valor recomendado, valor de fábrica y
+    el estado en que ha quedado. Es lo que hace auditable "¿por qué
+    la tarjeta dice Optimizado?".
+
+    Se llama SIEMPRE justo después de Update-SettingStatus: al leer
+    una sección (core/Registry/CategoryState.ps1) y al aplicar un cambio
+    (core/Registry/SettingApply.ps1). El Detail es técnico y no se
+    traduce; 'checked' es la palabra de color (regla 15).
+#>
+function Write-SettingEvalLog {
+    param($Setting)
+
+    if (-not $Setting) { return }
+
+    foreach ($key in @($Setting.Registry)) {
+        $current = if ($null -ne $key.Current) { [string]$key.Current } else { "($($key.State))" }
+        $detail = 'type={0} | current={1} | recommended={2} | default={3} | status={4}' -f `
+            $key.Type, $current, $key.Recommended, $key.Default, $key.Status
+        Write-AppLog -Source 'registry' -Level 'info' -Status 'checked' `
+            -Message "$($key.Path)\$($key.Name)" -Detail $detail
+    }
+}

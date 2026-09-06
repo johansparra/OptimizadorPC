@@ -437,9 +437,9 @@ Describe 'ui/Components/Shell/LogPanel.ps1 - de la lectura a la pantalla' {
         Assert-Match 'Regedit' $texto 'debería estar la cabecera de la sección'
         Assert-Match 'NetworkThrottlingIndex' $texto 'y alguna de sus claves'
 
-        # cabecera + una por clave + resumen
+        # cabecera + un [read] y un [checked] por clave + resumen
         $claves = Get-CategoryRegistryKeyCount (Get-CategoryById 'regedit')
-        Assert-Equal ($claves + 2) $ventana.FindName('LogList').Children.Count
+        Assert-Equal ($claves * 2 + 2) $ventana.FindName('LogList').Children.Count
 
         Hide-LogPanel $ventana
     }

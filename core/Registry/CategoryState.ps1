@@ -87,6 +87,10 @@ function Update-CategoryRegistryState {
         # interfaz para que se recalcule SIEMPRE que se lee: entrar en
         # la sección y refrescar pasan los dos por este mismo sitio.
         Update-SettingStatus $setting | Out-Null
+
+        # Y la línea de evaluación en el log: tipo, leído, recomendado,
+        # de fábrica y estado. Justo después de decidirlo.
+        Write-SettingEvalLog $setting
     }
 
     $watch.Stop()

@@ -7,7 +7,7 @@
 # que su texto se ve aunque el Popup esté cerrado.
 #
 # Lo que se vigila:
-#   - sin -Hide salen las tres opciones de siempre;
+#   - sin -Hide salen todas las opciones del índice;
 #   - -Hide quita esa fila y deja intactas las demás;
 #   - ocultar la fila NO toca la preferencia global (View.grid);
 #   - el detalle de Regedit esconde "Grid view" -y solo Regedit-,
@@ -17,11 +17,12 @@
 
 Describe 'ui/Components/Shell/ViewMenu.ps1 - ocultar filas con -Hide' {
 
-    It 'sin -Hide salen las tres opciones' {
+    It 'sin -Hide salen todas las opciones del índice' {
         $ventana = New-AppWindow -Language 'en'
         $texto = Get-VisualText (New-ViewMenu $ventana)
 
         Assert-Match 'Technical details' $texto
+        Assert-Match 'Reference'         $texto
         Assert-Match 'New badges'        $texto
         Assert-Match 'Grid view'         $texto
     }

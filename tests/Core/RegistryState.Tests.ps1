@@ -113,17 +113,21 @@ Describe 'core/Registry/CategoryState.ps1 - rastro de la sección' {
         Update-CategoryRegistryState -Category $cat | Out-Null
 
         $todo = @(Get-AppLog)
-        # cabecera + una por clave + resumen
-        Assert-Equal 4 $todo.Count
+        # cabecera + un [read] y un [checked] por clave + resumen
+        Assert-Equal 6 $todo.Count
 
         Assert-Equal 'reading' $todo[0].Status
         Assert-Equal 'Prueba'  $todo[0].Message
         Assert-Match '2 keys'  $todo[0].Detail
 
-        Assert-Equal 'done'   $todo[3].Status
-        Assert-Equal 'Prueba' $todo[3].Message
-        Assert-Match '2 read' $todo[3].Detail
-        Assert-Match 'ms'     $todo[3].Detail
+        # Las dos líneas de evaluación, entre las lecturas y el cierre.
+        Assert-Equal 'checked' $todo[3].Status
+        Assert-Match 'status=' $todo[3].Detail
+
+        Assert-Equal 'done'   $todo[5].Status
+        Assert-Equal 'Prueba' $todo[5].Message
+        Assert-Match '2 read' $todo[5].Detail
+        Assert-Match 'ms'     $todo[5].Detail
     }
 
     It 'el resumen cuenta cada clase de resultado' {

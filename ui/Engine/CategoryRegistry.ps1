@@ -197,6 +197,25 @@ function Get-CategoryStatusCounts {
       - con -Options  -> desplegable
       - sin -Options  -> interruptor (el -Value debe ser $true / $false)
 
+    La "Descripción" de la tarjeta se pinta en cuatro bloques SOLO
+    cuando el ajuste declara -Registry (ver New-SettingFactSheet en
+    ui/Components/Cards/SettingCard.ps1). Los cuatro campos son
+    opcionales y cada uno tiene su plan B:
+
+        -WhatItDoes     Bloque "Qué hace". Si falta, se usa -Description.
+        -Values         Bloque "Valores" (rango, recomendado...). Si
+                        falta, el bloque no sale.
+        -GamingOptimal  'yes' | 'no' | 'na'. Sale como una etiqueta
+                        Sí / No / N/A con los colores de New-Tag.
+                        Por defecto 'na'.
+        -GamingNote     Una línea breve junto a esa etiqueta. Opcional.
+        -Link           URL de referencia. Se abre en el navegador
+                        (core/Shell/ExternalLink.ps1). Si falta, el
+                        bloque dice "Sin enlace".
+
+    Un ajuste SIN -Registry ignora estos campos y enseña -Description
+    en una línea, como siempre.
+
     -Registry declara las claves que toca el ajuste. Son las que
     enseña el pie "Detalles técnicos" de la tarjeta (ver
     ui/Components/Cards/TechnicalDetails.ps1). Cada clave es una tabla:
@@ -237,7 +256,14 @@ function New-Setting {
         [string[]]$Options,
         [Parameter(Mandatory)]$Value,
         [string]$Badge,
-        [hashtable[]]$Registry = @()
+        [hashtable[]]$Registry = @(),
+
+        # Bloques de la "Descripción" ampliada (solo si hay -Registry).
+        [string]$WhatItDoes,
+        [string]$Values,
+        [ValidateSet('yes', 'no', 'na')][string]$GamingOptimal = 'na',
+        [string]$GamingNote,
+        [string]$Link
     )
 
     if ($Options) { $type = 'Dropdown' } else { $type = 'Toggle' }
@@ -251,6 +277,14 @@ function New-Setting {
         Value       = $Value
         Badge       = $Badge
         Registry    = $Registry
+
+        # Bloques de la "Descripción" ampliada. Opcionales; los pinta
+        # New-SettingFactSheet cuando el ajuste tiene claves.
+        WhatItDoes    = $WhatItDoes
+        Values        = $Values
+        GamingOptimal = $GamingOptimal
+        GamingNote    = $GamingNote
+        Link          = $Link
 
         # NO se declara: lo rellena core/Registry/SettingStatus.ps1 al leer
         # el equipo, igual que el Current de cada clave. Se reserva

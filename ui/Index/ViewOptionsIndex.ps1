@@ -39,6 +39,10 @@ $ViewOptionsIndex = @(
        Hint = 'Show the registry keys each setting touches'
        Default = $true;  Visible = $true }
 
+    @{ Id = 'reference'; Icon = 'OpenIn'; Label = 'Reference'
+       Hint = 'Show values, gaming fit and the reference link for each key'
+       Default = $false; Visible = $true }
+
     @{ Id = 'badges';    Icon = 'Bulb'; Label = 'New badges'
        Hint = "Show the red 'NEW' tags on sections and settings"
        Default = $true;  Visible = $true }

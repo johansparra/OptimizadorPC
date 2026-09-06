@@ -468,8 +468,8 @@ Describe 'ui/Views/CategoryDetailView.ps1 - refrescar' {
         # idioma: sin bombear la cola no ha pasado nada todavía.
         Sync-Dispatcher 'Background'
 
-        # Una línea por clave, más la cabecera del bloque y su resumen.
-        $esperadas = (Get-CategoryRegistryKeyCount $cat) + 2
+        # Un [read] y un [checked] por clave, más la cabecera del bloque y su resumen.
+        $esperadas = (Get-CategoryRegistryKeyCount $cat) * 2 + 2
         Assert-Equal $esperadas (Get-AppLogCount) 'la segunda lectura no ha leído todas las claves'
 
         $texto = Get-VisualText $ventana.FindName('HeaderActionsArea')

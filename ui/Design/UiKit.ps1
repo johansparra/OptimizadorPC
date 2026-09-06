@@ -303,8 +303,12 @@ function New-Badge {
 # ---- Interruptor animado ------------------------------------
 # El estado vive en el Tag del propio control, nunca en un
 # closure (ver la regla 4 de CLAUDE.md).
+#
+# -Payload viaja en ese mismo Tag para que un segundo manejador
+# -el que aplica el cambio real en SettingCard.ps1- saque del
+# emisor lo que necesita sin cerrar sobre nada.
 function New-ToggleSwitch {
-    param($Window, [bool]$InitialState, $Label)
+    param($Window, [bool]$InitialState, $Label, $Payload)
 
     $w = 40.0; $h = 22.0; $k = 16.0; $pad = 3.0
     $travel = $w - $k - ($pad * 2)
@@ -339,7 +343,7 @@ function New-ToggleSwitch {
 
     $track.Tag = [PSCustomObject]@{
         State = $InitialState; On = $onColor; Off = $offColor
-        Travel = $travel; Label = $Label
+        Travel = $travel; Label = $Label; Payload = $Payload
     }
 
     $track.Add_MouseLeftButtonUp({

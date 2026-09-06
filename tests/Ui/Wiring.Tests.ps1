@@ -35,7 +35,7 @@ function Get-WiringProbe {
         '$claves = Get-CategoryRegistryKeyCount (Get-CategoryById ''regedit'')'
         ''
         'Push-Boton $Window.FindName(''BtnLog'')'
-        'Write-Host ("LOG-ABIERTO={0} FILAS={1} ESPERADAS={2}" -f (Get-LogPanelOpen), $Window.FindName(''LogList'').Children.Count, ($claves + 2))'
+        'Write-Host ("LOG-ABIERTO={0} FILAS={1} ESPERADAS={2}" -f (Get-LogPanelOpen), $Window.FindName(''LogList'').Children.Count, ($claves * 2 + 2))'
         ''
         'Push-Boton $Window.FindName(''BtnLog'')'
         'Write-Host ("LOG-SEGUNDO-CLIC={0}" -f (Get-LogPanelOpen))'
@@ -64,7 +64,7 @@ function Get-WiringProbe {
         '# de mensajes todavía, así que hay que bombear la cola.'
         'Update-UiNow $Window'
         '$acciones = $Window.FindName(''HeaderActionsArea'')'
-        'Write-Host ("REFRESCO-LINEAS={0} ESPERADAS={1} AVISO={2}" -f (Get-AppLogCount), ($claves + 2), ($acciones.Children[0] -is [System.Windows.Controls.Border]))'
+        'Write-Host ("REFRESCO-LINEAS={0} ESPERADAS={1} AVISO={2}" -f (Get-AppLogCount), ($claves * 2 + 2), ($acciones.Children[0] -is [System.Windows.Controls.Border]))'
         ''
         '# Sacar el log a su ventana y volver a acoplarlo. Es lo unico'
         '# que caza un closure en estos manejadores: fallan AL PULSAR.'
@@ -82,7 +82,7 @@ function Get-WiringProbe {
         'Update-LogList $vlog'
         'Push-Boton $Window.FindName(''BtnRefresh'')'
         'Update-UiNow $Window'
-        'Write-Host ("FUERA-REFRESCO={0} ESPERADAS={1}" -f $vlog.FindName(''LogList'').Children.Count, ($claves + 2))'
+        'Write-Host ("FUERA-REFRESCO={0} ESPERADAS={1}" -f $vlog.FindName(''LogList'').Children.Count, ($claves * 2 + 2))'
         ''
         'Push-Boton $vlog.FindName(''LogBtnDock'')'
         'Write-Host ("LOG-DENTRO={0} CAJON-OTRA-VEZ={1}" -f (Get-LogDetached), (Get-LogPanelOpen))'
@@ -187,7 +187,7 @@ Describe 'main.ps1 - los botones responden' {
     It 'el botón de log abre el cajón con lo que se acaba de leer' {
         Assert-Match 'LOG-ABIERTO=True' $WiringOutput
 
-        # Una fila por clave, más la cabecera y el resumen.
+        # Un [read] y un [checked] por clave, más la cabecera y el resumen.
         if ($WiringOutput -match 'FILAS=(\d+) ESPERADAS=(\d+)') {
             Assert-Equal $Matches[2] $Matches[1] 'filas pintadas'
         }

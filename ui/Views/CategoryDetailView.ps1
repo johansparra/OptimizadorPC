@@ -207,3 +207,83 @@ function Invoke-CategoryRefresh {
             Show-PageToast -Window (Get-AppWindow) -Text 'Registry values updated'
         }) | Out-Null
 }
+
+<#
+    Aplicar (ON) o deshacer (OFF) un ajuste al pulsar su toggle.
+
+    Escribe SÍNCRONAMENTE por core/Registry/SettingApply.ps1 -que valida
+    ruta/clave/tipo/permisos, guarda copia de seguridad y confirma
+    por relectura- y deja $Setting.Status y los Current de SUS claves
+    al día. Luego actualiza SOLO esta tarjeta.
+
+    NO se repinta la sección: nada de Invoke-CategoryRefresh aquí.
+    Ver Update-SettingCard.
+#>
+function Invoke-SettingToggle {
+    param($Setting, [bool]$Enabled, $Toggle)
+
+    if (-not $Setting -or @($Setting.Registry).Count -eq 0) { return }
+
+    Set-SettingOptimization -Setting $Setting -Enabled $Enabled | Out-Null
+
+    # El buscador indexa Current/Status y el log tiene líneas nuevas:
+    # los dos han cambiado para ESTE ajuste. Se avisa desde aquí y no
+    # desde core/, que no sabe que existen.
+    Reset-SearchIndex
+    Sync-LogView
+
+    Update-SettingCard -Toggle $Toggle -Setting $Setting
+}
+
+<#
+    Reemplaza EN EL SITIO la tarjeta de un ajuste tras tocar su
+    toggle, sin repintar la sección.
+
+    Por qué así:
+      - NO se toca MainContent.Content -> el ScrollViewer conserva
+        su posición, sin saltos ni "vuelta arriba".
+      - NO se relee el registro de los demás ajustes -> O(1): da
+        igual que la sección tenga 5, 50 o 500 tarjetas (FASE 5).
+      - Solo el resumen de la cabecera se recuenta (3 píldoras).
+      - Se conservan las franjas plegables que estuvieran abiertas.
+
+    Si no encuentra la tarjeta en su lista (no debería), cae al
+    refresco de sección de siempre: mejor un repintado feo que
+    quedarse sin actualizar.
+#>
+function Update-SettingCard {
+    param($Toggle, $Setting)
+
+    # Sube por el árbol lógico hasta la tarjeta: el Border cuyo padre
+    # es la StackPanel de la lista y cuyo abuelo es el ContentControl
+    # 'MainContent'.
+    $card = $Toggle
+    $list = $null
+    while ($card) {
+        $parent = $card.Parent
+        if ($card -is [System.Windows.Controls.Border] -and
+            $parent -is [System.Windows.Controls.StackPanel] -and
+            $parent.Parent -is [System.Windows.Controls.ContentControl]) {
+            $list = $parent
+            break
+        }
+        $card = $parent
+    }
+
+    $idx = -1
+    if ($list) { $idx = $list.Children.IndexOf($card) }
+    if ($idx -lt 0) { Invoke-CategoryRefresh; return }
+
+    $window = [System.Windows.Window]::GetWindow($card)
+    $fresh = New-SettingCard -Window $window -Setting $Setting
+    Copy-DisclosureState -From $card -To $fresh
+
+    # Quitar y volver a insertar: el indexador de UIElementCollection
+    # no reemplaza en el sitio ("el índice ya está en uso").
+    $list.Children.RemoveAt($idx)
+    $list.Children.Insert($idx, $fresh)
+    Start-EnterTransition $fresh 140 4
+
+    Update-CategorySummary
+    Show-PageToast -Window $window -Text 'Registry values updated'
+}

@@ -76,6 +76,11 @@ Describe 'ui/Lang - no falta ninguna traducción' {
         # demás pruebas, empezando por las de esta misma página.
         Reset-TranslationAudit
 
+        # La franja "Referencia" está oculta por defecto: se enciende
+        # aquí para que sus etiquetas pasen por el diccionario (se
+        # apaga antes de acabar).
+        Set-ViewOption 'reference' $true
+
         Update-TitleBarTexts $ventana
         Build-Sidebar -Window $ventana
 
@@ -130,6 +135,7 @@ Describe 'ui/Lang - no falta ninguna traducción' {
         Hide-LogPanel $ventana
 
         $faltan = @(Get-MissingTranslations 'es')
+        Set-ViewOption 'reference' $false
         Set-AppLanguage 'en'
 
         Assert-Equal 0 $faltan.Count ('sin traducir: ' + ($faltan -join ' | '))
@@ -141,7 +147,12 @@ Describe 'ui/Lang - no falta ninguna traducción' {
         # y encima no aparece como pendiente de traducir.
         foreach ($cat in Get-OptimizationCategories) {
             foreach ($ajuste in @($cat.Items)) {
-                foreach ($texto in @($ajuste.Name, $ajuste.Description)) {
+                # Link es una URL y GamingOptimal una palabra clave: no
+                # son texto de pantalla, no se traducen.
+                $textos = @($ajuste.Name, $ajuste.Description,
+                            $ajuste.WhatItDoes, $ajuste.Values, $ajuste.GamingNote) |
+                          Where-Object { $_ }
+                foreach ($texto in $textos) {
                     Assert-True ($texto -notmatch '[áéíóúñ¿¡]') `
                         ("parece español en '$($cat.Id)': $texto")
                 }

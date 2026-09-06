@@ -77,6 +77,22 @@ if (Test-Path $AppSettingsPath) { Remove-Item $AppSettingsPath -Force }
 function Get-TestSettingsPath { $AppSettingsPath }
 
 <#
+    LAS PRUEBAS NO ESCRIBEN EN EL REGISTRO DE VERDAD.
+
+    core/Registry/Writer.ps1 arranca ARMADO en la aplicación. Aquí se
+    desarma: cualquier prueba que dispare un ON/OFF de un ajuste
+    -y las hay- intentaría escribir en HKLM, y si la suite corre
+    elevada lo conseguiría. Con la escritura desarmada,
+    Write-RegistryValue devuelve 'disarmed' sin tocar nada.
+
+    Una prueba que SÍ quiera probar la escritura (contra la rama
+    HKCU\Software\OptimizadorPC\Tests\<PID>) la rearma con
+    Set-RegistryWriteArmed $true y la vuelve a desarmar en su
+    finally. Es el mismo patrón que la redirección de arriba.
+#>
+Set-RegistryWriteArmed $false
+
+<#
     Una ventana de verdad, con su XAML cargado y su tema puesto,
     pero SIN enseñar: no hace falta pintar nada para comprobar
     que el árbol de controles es el que debe ser.

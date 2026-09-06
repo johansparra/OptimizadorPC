@@ -175,9 +175,9 @@ Describe 'ui/Components/Shell/LogWindow.ps1 - se entera de lo que se apunta' {
             Assert-Match 'Regedit' $texto 'la lectura no ha llegado a la ventana suelta'
             Assert-Match 'NetworkThrottlingIndex' $texto 'ni sus claves'
 
-            # cabecera + una por clave + resumen, igual que en el cajón
+            # cabecera + un [read] y un [checked] por clave + resumen
             $claves = Get-CategoryRegistryKeyCount (Get-CategoryById 'regedit')
-            Assert-Equal ($claves + 2) $suelta.FindName('LogList').Children.Count
+            Assert-Equal ($claves * 2 + 2) $suelta.FindName('LogList').Children.Count
         }
         finally {
             Clear-LogWindowState
