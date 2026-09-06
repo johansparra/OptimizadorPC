@@ -2,10 +2,14 @@
     build.ps1
     ---------
     1) Empaqueta main.ps1 + todo ui/ + todo core/ + ui/MainWindow.xaml
-       en un solo script (_combined.ps1), porque ps2exe solo admite un
-       archivo de entrada y el .exe final debe ser portable (un solo
-       archivo, sin depender de las carpetas al lado).
-    2) Compila ese script combinado a OptimizadorPC.exe con ps2exe.
+       en un solo script (build/_combined.ps1), porque ps2exe solo
+       admite un archivo de entrada y el .exe final debe ser portable
+       (un solo archivo, sin depender de las carpetas al lado).
+    2) Compila ese script combinado a build/OptimizadorPC.exe con ps2exe.
+
+    Todo lo que build.ps1 produce vive en build/: el script combinado
+    intermedio (generado, NO se versiona) y el .exe (ese sí). El .exe
+    sigue siendo portable: cópialo fuera de build/ y funciona igual.
 
     Uso:
         powershell -ExecutionPolicy Bypass -File .\build.ps1
@@ -116,7 +120,8 @@ if (-not (Get-Module -ListAvailable -Name ps2exe)) {
 }
 Import-Module ps2exe
 
-$outPath = Join-Path $root 'OptimizadorPC.exe'
+# El .exe se deja en build/, junto al combinado que lo origina.
+$outPath = Join-Path $buildDir 'OptimizadorPC.exe'
 
 Invoke-ps2exe `
     -inputFile $combinedPath `

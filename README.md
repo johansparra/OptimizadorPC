@@ -15,7 +15,6 @@ solo deberías tener que abrir un archivo.
 OptimizadorPC/
 ├── main.ps1                 Arranque: carga todo, aplica preferencias, conecta la ventana
 ├── build.ps1                Empaquetador (inline) + compilador a .exe
-├── OptimizadorPC.exe        Binario portable generado
 │
 ├── core/                    EL SISTEMA. Habla con Windows, no con la pantalla.
 │   ├── Registry/            Todo lo del registro de Windows
@@ -97,8 +96,9 @@ OptimizadorPC/
 │   ├── Source/              Pruebas del código fuente, sin ejecutarlo
 │   └── README.md            Cómo lanzarlas y qué cubren
 │
-└── build/
-    └── _combined.ps1        GENERADO: todo el proyecto en un solo script
+└── build/                   Todo lo que produce build.ps1
+    ├── OptimizadorPC.exe    Binario portable (versionado, es el entregable)
+    └── _combined.ps1        GENERADO e ignorado: todo el proyecto en un solo script
 ```
 
 ### Las capas y su orden
@@ -398,7 +398,7 @@ siguen enseñando sus `-Tags` escritas a mano.
 graph TD
     subgraph BUILD["empaquetado"]
         BLD["build.ps1"] -->|inline| COMB["build/_combined.ps1"]
-        COMB -.->|ps2exe| EXE["OptimizadorPC.exe"]
+        COMB -.->|ps2exe| EXE["build/OptimizadorPC.exe"]
     end
 
     MAIN["main.ps1<br/><i>arranque · decide el ORDEN de las capas</i>"]
@@ -605,7 +605,7 @@ sequenceDiagram
         end
     end
     B->>P: Invoke-ps2exe -noConsole -requireAdmin
-    P-->>B: OptimizadorPC.exe (portable)
+    P-->>B: build/OptimizadorPC.exe (portable)
 ```
 
 ### Comandos
@@ -614,14 +614,14 @@ sequenceDiagram
 # Desarrollo: ejecutar directo, sin compilar (mucho más rápido)
 powershell -ExecutionPolicy Bypass -File .\main.ps1
 
-# Compilar el ejecutable portable
+# Compilar el ejecutable portable  ->  build/OptimizadorPC.exe
 powershell -ExecutionPolicy Bypass -File .\build.ps1
 
 # Solo empaquetar, sin llamar a ps2exe (rápido, para comprobar que todo entra)
 powershell -ExecutionPolicy Bypass -File .\build.ps1 -CombineOnly
 ```
 
-`build.ps1` instala el módulo `ps2exe` automáticamente en `CurrentUser` si falta (no requiere admin para instalarlo). El `.exe` resultante se compila con `-requireAdmin`, así que **pedirá elevación al abrirse**.
+`build.ps1` deja todo en `build/`: el `.exe` (`build/OptimizadorPC.exe`, versionado) y el script combinado intermedio (`build/_combined.ps1`, generado y fuera de git). Instala el módulo `ps2exe` automáticamente en `CurrentUser` si falta (no requiere admin para instalarlo). El `.exe` resultante se compila con `-requireAdmin`, así que **pedirá elevación al abrirse**.
 
 ---
 

@@ -117,7 +117,7 @@ existen con la ventana pintada y un ratón de verdad. Por ejemplo:
 - una prueba de humo sobre el `.exe` compilado, que es el artefacto que se entrega.
 
 Ese último caso es el que más valdría la pena, y se haría con
-`System.Windows.Automation` sobre `OptimizadorPC.exe` — sin instalar nada. Queda
+`System.Windows.Automation` sobre `build/OptimizadorPC.exe` — sin instalar nada. Queda
 pendiente a propósito: cuesta bastante más de mantener y todavía no hay lógica que
 escriba en el sistema, que es cuando de verdad importará.
 
