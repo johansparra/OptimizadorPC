@@ -20,10 +20,16 @@
 #   Hint       Línea gris debajo del texto.
 #   Icon       Nombre de glifo del catálogo de ui/Design/Theme.ps1.
 #   Default    Valor con el que arranca la primera vez.
-#   Visible    $false -> se oculta la fila (no se pierde nada)
+#   Visible    $false -> se oculta la fila EN TODAS PARTES (no se
+#              pierde nada)
 #
 # Añadir una opción es añadir su línea aquí y consultarla con
 # Get-ViewOption '<Id>' donde toque. El menú se dibuja solo.
+#
+# Para esconder una fila SOLO en la pantalla de detalle de una
+# sección concreta -sin quitarla del resto-, esa sección declara
+# HideViewOptions = @('<Id>') en su archivo de ui/Data/Categories/;
+# ui/Views/CategoryDetailView.ps1 se lo pasa a New-ViewMenu -Hide.
 # ============================================================
 
 $ViewOptionsIndex = @(

@@ -87,7 +87,12 @@ function Show-CategoryDetailView {
 
     # El mismo menú que la pantalla principal: sus opciones son
     # globales y se guardan, así que da igual desde dónde se toquen.
-    Add-PageAction $Window (New-ViewMenu $Window)
+    # Una sección puede pedir que se le oculte alguna con
+    # HideViewOptions: Regedit esconde "Grid view", que en el detalle
+    # no hace nada.
+    $hiddenViewOptions = @()
+    if ($Category.HideViewOptions) { $hiddenViewOptions = @($Category.HideViewOptions) }
+    Add-PageAction $Window (New-ViewMenu $Window -Hide $hiddenViewOptions)
 
     # Fila centrada con el recuento por etiqueta.
     Set-PageSummary -Window $Window -Category $Category

@@ -12,10 +12,17 @@
 # Cada fila cambia una opción de vista y repinta la pantalla
 # actual, porque las insignias y los detalles técnicos se deciden
 # al construir cada tarjeta.
+#
+# Con -Hide <ids> se omiten filas concretas. El componente no
+# decide cuáles: se lo dice quien lo crea. Hoy lo usa el detalle
+# de Regedit para esconder "Grid view", que ahí dentro no hace
+# nada (solo reordena la LISTA de secciones). La opción sigue
+# viva y guardada; lo único que cambia es que esa pantalla no la
+# ofrece.
 # ============================================================
 
 function New-ViewMenu {
-    param($Window, [string]$Label = 'View')
+    param($Window, [string]$Label = 'View', [string[]]$Hide = @())
 
     $shell = New-Object System.Windows.Controls.Grid
     $shell.VerticalAlignment = 'Center'
@@ -30,7 +37,7 @@ function New-ViewMenu {
     $popup.StaysOpen = $false
     $popup.AllowsTransparency = $true
     $popup.PopupAnimation = 'Fade'
-    $popup.Child = (New-ViewMenuCard $Window $popup)
+    $popup.Child = (New-ViewMenuCard $Window $popup $Hide)
     $shell.Children.Add($popup) | Out-Null
 
     # El popup viaja en el Tag del botón: nada de closures
@@ -55,7 +62,7 @@ $ViewMenuWidth = 300.0
 
 # La tarjeta flotante: marco + una fila por opción.
 function New-ViewMenuCard {
-    param($Window, $Popup)
+    param($Window, $Popup, [string[]]$Hide = @())
 
     # AllowsTransparency recorta lo que se salga del Popup, así que
     # la sombra necesita este margen para caber.
@@ -87,6 +94,9 @@ function New-ViewMenuCard {
     $rows.Children.Add($title) | Out-Null
 
     foreach ($option in Get-ViewOptions) {
+        # Una pantalla puede pedir que no se ofrezca alguna opción
+        # (ver -Hide en la cabecera): la fila no se crea siquiera.
+        if ($Hide -contains $option.Id) { continue }
         $rows.Children.Add((New-ViewMenuRow $Window $option $Popup)) | Out-Null
     }
 

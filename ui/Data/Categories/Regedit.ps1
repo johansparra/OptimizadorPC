@@ -34,6 +34,12 @@ Register-Category @{
     # que llevan -Badge 'NEW'. Marcar uno más sube el número solo.
     Description = 'Windows registry keys'
 
+    # El menú "Vista" es común a toda la aplicación, pero "Grid view"
+    # solo reordena la LISTA de secciones: dentro de una sección no
+    # cambia nada. Se oculta aquí para no dejar un interruptor muerto
+    # en el detalle de Regedit. La preferencia global no se toca.
+    HideViewOptions = @('grid')
+
     Recommended = 29
     Default     = 59
     Custom      = 0
