@@ -13,7 +13,8 @@ energía, servicios, juego, privacidad, registro).
 
 ## Antes de escribir una línea
 
-1. Lee `CLAUDE.md`. Sus 20 reglas mandan sobre cualquier costumbre tuya.
+1. Lee `CLAUDE.md`. Sus reglas mandan sobre cualquier costumbre tuya. Si escribes en
+   el sistema, lee también `SECURITY.md`.
 2. Carga el skill que corresponda:
    - **`powershell-engineer`** → siempre. Trampas del lenguaje y los dos hosts.
    - **`windows-desktop-architect`** → si tocas `ui/`.
@@ -73,11 +74,15 @@ la capa que le toque, no una carpeta nueva al lado.
 - Un `DWord` llega como `Int32` **con signo**: `0xFFFFFFFF` se lee como `-1`.
   Reinterprétalo sin signo o los valores altos salen negativos.
 - Se abre siempre `RegistryView::Registry64`.
-- **Escribir en el registro todavía no existe.** Si el trabajo lo incluye: cada
-  cambio reversible, con el valor de restauración capturado antes de tocar,
-  envuelto en `ShouldProcess`, y distinguiendo "no existía" (revertir = borrar) de
-  "valía otra cosa". Si un ajuste baja la seguridad del equipo, dilo en su
-  descripción y no lo llames "Recomendado" sin más.
+- **Escribir en el registro ya existe** (`core/Registry/Writer.ps1`,
+  `SettingApply.ps1`), por lista blanca de rutas, con el tipo declarado, snapshot del
+  valor previo y verificación por relectura, envuelto en `SupportsShouldProcess`. Al
+  añadir un ajuste con `-Registry` o ampliar `$RegistryWriteAllowlist`: lee
+  `SECURITY.md`, mantén el `Default` como valor de restauración real, y si el ajuste
+  baja la seguridad del equipo, dilo en su descripción, no lo llames "Recommended" a
+  secas y marca `AllowsSecurityTradeoff = $true` (lo exige `Security.Tests.ps1`).
+  Servicios, energía y red **todavía no se escriben**: cada uno es una subcarpeta nueva
+  de `core/`.
 
 ## Antes de decir que has terminado
 

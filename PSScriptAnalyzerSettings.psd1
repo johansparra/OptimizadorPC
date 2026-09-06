@@ -34,11 +34,18 @@
         # alguien pasa -WhatIf, la función no construye el control y
         # devuelve $null -> la interfaz se rompe.
         #
-        # PENDIENTE: cuando core/Registry/ gane escritura real (hoy
-        # solo LEE), esas funciones concretas -y solo esas- deben
-        # adoptar ShouldProcess a propósito. En ese momento conviene
-        # revisar esta exclusión o pasar un análisis aparte, más
-        # estricto, contra core/.
+        # ESTADO: core/Registry/ ya escribe. Write-RegistryValue y
+        # Set-SettingOptimization YA adoptaron
+        # [CmdletBinding(SupportsShouldProcess)] + ShouldProcess a
+        # propósito (soportan -WhatIf, lo prueban RegistryWriter y
+        # SettingApply). La regla sigue excluida GLOBALMENTE por las
+        # 130+ funciones de ui/ que no mutan nada; el hueco residual
+        # es que una función NUEVA de core/ que cambie estado
+        # tampoco se marcaría. Mitigación parcial:
+        # tests/Source/Security.Tests.ps1 vigila las escrituras al
+        # registro por otra vía. Si core/ crece mucho, toca un
+        # análisis aparte más estricto SOLO sobre core/ sin esta
+        # exclusión.
         'PSUseShouldProcessForStateChangingFunctions'
 
         # --------------------------------------------------------

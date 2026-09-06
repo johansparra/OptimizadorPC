@@ -27,9 +27,13 @@ De ahí salen los tres riesgos reales, por orden de gravedad:
    entrada externa (una ruta, un valor, un archivo, una descarga) que acabe
    ejecutándose.
 
-**El estado hoy:** `core/` solo **lee** el registro. Escribir todavía no existe. Esa
-es la línea roja: el primer `SetValue` de este proyecto merece una revisión completa,
-no un vistazo.
+**El estado hoy:** `core/` **lee y escribe** el registro. La escritura vive en
+`core/Registry/Writer.ps1` (una clave) y `core/Registry/SettingApply.ps1` (el toggle
+ON/OFF de un ajuste). Solo hay **un** ajuste con `-Registry` — `NetworkThrottlingIndex`
+en *Regedit*, benigno y reversible. La revisión completa que pedía "el primer
+`SetValue`" ya se hizo; ahora el objeto de revisión es **cada ampliación de la lista
+blanca de rutas y cada ajuste nuevo con `-Registry`**. `SECURITY.md` en la raíz del
+repo tiene el contrato entero.
 
 ## 2. Ejecución de código — prohibiciones duras
 
@@ -52,53 +56,67 @@ grep -rniE "invoke-expression|\biex\b|downloadstring|downloadfile|start-process"
 
 ## 3. Escribir en el registro — las condiciones
 
-Cuando llegue la escritura, cada cambio necesita **las cinco**:
+Cada cambio necesita **las cinco**. `core/Registry/Writer.ps1` ya las cumple; al
+revisar un ajuste nuevo o una rama nueva de la lista blanca, comprueba que se siguen
+cumpliendo:
 
 1. **Valor de restauración documentado.** El `Default` declarado en
-   `ui/Data/Categories/*.ps1` es ese contrato. Un ajuste sin `Default` real no se puede
-   revertir: no se aplica.
-2. **Distinguir "no existía" de "valía otra cosa".** Revertir un valor que Windows no
-   tenía creado significa **borrarlo**, no ponerlo a 0. `core/Registry/Reader.ps1` ya
-   distingue `missing` de `read` precisamente para esto — úsalo.
-3. **Ruta validada contra la lista de raíces conocidas**, nunca concatenada con
-   entrada libre. Abrir siempre `RegistryView::Registry64` (si el `.exe` se compilara
-   a 32 bits, `HKLM\SOFTWARE` se redirigiría a `Wow6432Node` en silencio).
-4. **Escribir el tipo declarado.** Un `DWord` escrito como `String` deja la clave
-   inservible y Windows la ignora sin avisar.
-5. **Nada de tocar ACLs ni propietarios.** Si una clave está protegida, el ajuste se
-   marca `denied` y se enseña; no se fuerza. Cambiar el propietario de una clave del
-   sistema para poder escribirla es un agujero permanente que sobrevive al programa.
+   `ui/Data/Categories/*.ps1` es ese contrato: `OFF` escribe ese valor. Un ajuste sin
+   `Default` real no se puede revertir: no se aplica. `Writer.ps1` guarda además el
+   valor previo en `$RegistrySnapshots` (**solo en memoria** — pendiente persistirlo).
+2. **Distinguir "no existía" de "valía otra cosa".** `Writer.ps1` lo hace vía
+   `Get-RegistryStoredValue` (`missing` vs `read`) y lo apunta en el snapshot
+   (`Existed`). *Pendiente:* revertir un valor que no existía debería **borrarlo**, no
+   escribir el `Default` — hoy escribe el `Default`.
+3. **Ruta validada contra `$RegistryWriteAllowlist`** (`Test-RegistryWriteAllowed`),
+   nunca concatenada con entrada libre. Se abre siempre `RegistryView::Registry64`.
+   Fuera de la lista → estado `blocked`, no se escribe. **Ampliar esa lista es una
+   decisión de seguridad**: `HKLM\SOFTWARE\Policies\Microsoft` (ya dentro) alcanza las
+   claves GPO de Defender, Update y SmartScreen.
+4. **Escribir el tipo declarado.** `ConvertTo-RegistryData` respeta el `Type`; un tipo
+   real distinto al pedido → estado `typemismatch`, no se pisa. `MultiString` no se
+   sabe escribir todavía (`unsupported`).
+5. **Nada de tocar ACLs ni propietarios.** Clave protegida → `denied`, se enseña, no
+   se fuerza. Cambiar el propietario de una clave del sistema es un agujero permanente.
 
 **Preferir `HKCU` a `HKLM` siempre que exista la variante.** Afecta solo al usuario,
 no necesita privilegios y el daño potencial es mucho menor.
 
-**Antes del primer `SetValue` del proyecto**, recomienda al usuario dos redes de
-seguridad: exportar la rama afectada (`reg export`) y un punto de restauración.
+**Pendiente (no implementado):** antes de la primera escritura elevada de una sesión,
+recomendar al usuario dos redes de seguridad — exportar la rama afectada
+(`reg export`) y un punto de restauración — y exponer un "deshacer" en la UI.
 
 ## 4. Ajustes que degradan la seguridad del equipo
 
-**Esta es la revisión que más importa aquí**, porque el catálogo ya tiene casos. Un
-ajuste que baja la postura de seguridad no está prohibido, pero:
+**Esta es la revisión que más importa aquí.** Un ajuste que baja la postura de
+seguridad no está prohibido, pero:
 
-- **no puede llamarse "Recomendado"** sin más,
+- **no puede llamarse "Recommended"** sin más,
 - su descripción tiene que decir **qué protección se pierde**,
 - y no puede estar activo por defecto.
 
 Revisa `ui/Data/Categories/*.ps1` contra esta lista. Todo lo que toque:
 
 `ConsentPromptBehaviorAdmin` · `PromptOnSecureDesktop` · `EnableLUA` ·
-Windows Defender / `DisableAntiSpyware` / exclusiones · SmartScreen ·
-`PreventDeviceEncryption` / BitLocker · firewall · Windows Update /
-`NoAutoUpdate` · `LocalAccountTokenFilterPolicy` · ejecución de macros ·
-directivas de contraseña · UAC remoto
+`LocalAccountTokenFilterPolicy` · Windows Defender / `DisableAntiSpyware` /
+`DisableRealtimeMonitoring` / exclusiones · SmartScreen (`SmartScreenEnabled`,
+`EnableSmartScreen`) · `PreventDeviceEncryption` / BitLocker · firewall ·
+Windows Update / `NoAutoUpdate` · ejecución de macros · directivas de contraseña ·
+UAC remoto
 
-**Casos vivos en este repositorio** (verificados leyendo `ui/Data/Categories/Regedit.ps1`):
+**Estado vivo en este repositorio** (verificado leyendo `ui/Data/Categories/Regedit.ps1`):
 
-| Ajuste | Qué hace de verdad | Cómo está declarado |
+| Ajuste | Qué hace | Riesgo |
 | --- | --- | --- |
-| *User Account Control Level* | `ConsentPromptBehaviorAdmin = 0` es **elevar sin preguntar** y `PromptOnSecureDesktop = 0` apaga el escritorio seguro. Juntos, UAC deja de proteger. | Marcado `Recommended`, y el `Value` visible dice *"Notify when apps try to make changes"* — **no cuadra con el valor recomendado**. Revisar. |
-| *BitLocker Auto Encryption* | `PreventDeviceEncryption = 1` impide que Windows cifre el disco solo. | Marcado `Recommended`. Se pierde el cifrado en reposo: la descripción debería decirlo. |
-| *Automatic Maintenance* | `MaintenanceDisabled`: `Recommended` y `Default` valen **los dos `'0'`**. El "recomendado" no cambia nada. | Dato incoherente, no riesgo. Arreglar el valor o quitar la etiqueta. |
+| *Network Throttling Mechanism* (`NetworkThrottlingIndex = 0xFFFFFFFF`) | Quita el límite de 10 paquetes/ciclo que Windows impone mientras hay audio/vídeo activo. | Ninguno de seguridad. Reversible (`Default = 0x0000000A`). Rama permitida: `…\Multimedia\SystemProfile`. |
+
+Los ajustes de UAC, BitLocker y Automatic Maintenance que antes vivían aquí **fueron
+retirados**. Hoy no hay ningún ajuste que degrade la seguridad.
+
+**Control automático:** `tests/Source/Security.Tests.ps1` recorre todos los `-Registry`
+de `ui/Data/Categories/*` y **falla la suite** si alguno apunta a un nombre de valor de
+la denylist de arriba sin llevar `AllowsSecurityTradeoff = $true` en el ajuste. Esa
+marca obliga a una decisión explícita y revisable; no la pongas para "callar el test".
 
 Al revisar un tweak nuevo, comprueba siempre **el valor numérico**, no el nombre del
 ajuste. El nombre lo escribimos nosotros; el número es lo que ejecuta Windows.
@@ -109,27 +127,34 @@ ajuste. El nombre lo escribimos nosotros; el número es lo que ejecuta Windows.
   que puede estar en una carpeta sin permisos).
 - **No debe guardar nada sensible.** Preferencias de interfaz, nada más. Ni rutas de
   otros usuarios, ni credenciales, ni identificadores de máquina.
-- El **registro de actividad** (`core/Diagnostics/Log.ps1`) guarda rutas y valores del registro
-  del equipo. Si algún día se puede exportar o enviar, eso es **exfiltración de
-  configuración del sistema**: revisa qué sale antes de permitirlo.
-- Sin telemetría. Si aparece, es una decisión de producto con consentimiento
-  explícito, no un añadido silencioso.
+- El **registro de actividad** (`core/Diagnostics/Log.ps1`) guarda rutas y valores del
+  registro del equipo (y ahora también las escrituras: valor viejo → valor nuevo). Ya
+  se puede **exportar a un archivo** que elige el usuario ("Save to file" del cajón del
+  log). Es divulgación de configuración del sistema **por acción propia del usuario** —
+  aceptable, pero: no debe salir a la red por sí solo, y si algún día hay "enviar
+  informe", revisa qué se manda. Hoy solo son claves de optimización, nada sensible.
+- Sin telemetría, sin red saliente. Si aparece cualquiera de las dos, es una decisión
+  de producto con consentimiento explícito, no un añadido silencioso.
 
 ## 6. Cadena de suministro
 
-`build.ps1` instala su compilador desde internet:
+`build.ps1` instala su compilador desde internet. Desde 2026-09 va **fijado**:
 
 ```powershell
-Install-Module -Name ps2exe -Scope CurrentUser -Force -AllowClobber
+$Ps2ExeVersion = '1.0.18'
+Install-Module -Name ps2exe -RequiredVersion $Ps2ExeVersion -Repository PSGallery -Scope CurrentUser -Force -AllowClobber
+Import-Module ps2exe -RequiredVersion $Ps2ExeVersion
 ```
 
-Riesgos a señalar: **sin `-Repository PSGallery`** (si el equipo tiene otro repositorio
-registrado, puede ganar él) y **sin versión fijada** (`-RequiredVersion`), así que cada
-compilación puede traer código distinto. `-Force -AllowClobber` además sobrescribe sin
-preguntar. Es aceptable para una compilación local y consciente; menciónalo si el
-proyecto se acerca a distribuir el `.exe` a terceros, y ahí toca también **firmar el
-binario**: un `.exe` sin firma que pide UAC es exactamente lo que Windows enseña a la
-gente a no ejecutar.
+Al revisar: que `-RequiredVersion` y `-Repository PSGallery` sigan ahí (sin ellos, cada
+compilación podría traer código distinto o ganar otro repositorio registrado), y que
+subir de versión sea un cambio consciente con recompilación y prueba. `-Force
+-AllowClobber` sobrescribe sin preguntar: aceptable para un build local.
+
+**Sin resolver:** el `.exe` **no está firmado** (Authenticode). Un binario sin firma
+que pide UAC es justo lo que Windows enseña a no ejecutar. Bloquea distribuir a
+terceros hasta que haya firma. El contenedor `semgrep/semgrep` y `actions/checkout` de
+la CI van sin fijar por digest — mismo tipo de riesgo, menor impacto.
 
 ## 7. Cómo revisar y cómo reportar
 
@@ -143,13 +168,15 @@ Revisión de un diff, en este orden:
    cierra sin explicación.
 5. ¿Se guarda algo nuevo en disco? → §5.
 
-Reporta cada hallazgo así, y **ordénalos por gravedad real**:
+Reporta cada hallazgo así, y **ordénalos por gravedad real** (ejemplo ilustrativo, no
+es un caso vivo):
 
 ```
-[Alta] ui/Data/Categories/Regedit.ps1:53 — ConsentPromptBehaviorAdmin Recommended = 0
+[Alta] ui/Data/Categories/Ejemplo.ps1:53 — ConsentPromptBehaviorAdmin Recommended = 0
 Qué pasa: al aplicar el ajuste, cualquier proceso que pida elevación la obtiene sin
 que el usuario vea el aviso. UAC deja de ser una barrera.
-Arreglo: usar 5 (por defecto) o 2 como recomendado, y describir la pérdida.
+Arreglo: usar 5 (por defecto) o 2 como recomendado, describir la pérdida, y marcar
+AllowsSecurityTradeoff = $true para que pase Security.Tests.ps1 de forma explícita.
 ```
 
 Sé concreto y sin dramatismo: un escenario de fallo con valores reales convence; una

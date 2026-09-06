@@ -18,6 +18,13 @@ mueven juntas. Sirve para **preguntarle al repositorio en vez de leerlo entero**
 | Comunidades | **52**, etiquetadas a mano ("Buscador global", "Lectura real del registro"...) |
 | Construido sobre | el commit `1292968` |
 
+> **DESFASADO (2026-09-06).** El grafo se construyó sobre `1292968`, que a día de hoy
+> está **17 commits por detrás de `master`**. No conoce la escritura real al registro
+> (`core/Registry/Writer.ps1`, `SettingApply.ps1`), la CI de Semgrep, el `.gitignore`,
+> `SECURITY.md` ni `tests/Source/Security.Tests.ps1`, y su informe cita ajustes de UAC
+> y BitLocker que ya se retiraron de `Regedit.ps1`. Para ponerlo al día:
+> `/graphify . --update` (incremental, usa `manifest.json`).
+
 ## Lo que se queda
 
 | Archivo | Tamaño | Qué es |
@@ -59,9 +66,11 @@ Las relaciones más frecuentes: `calls` (594), `contains` (347), `references` (2
 
 ## Lo que debería haber desaparecido
 
-Archivos de trabajo de una sola pasada. **El borrado final fue denegado por permisos, así
-que siguen aquí**; se pueden borrar a mano sin perder nada — se regeneran solos en la
-siguiente ejecución.
+Archivos de trabajo de una sola pasada. Se regeneran solos en la siguiente ejecución.
+**Borrados el 2026-09-06** (`.graphify_detect.json`, `.graphify_ast.json`,
+`.graphify_chunk_01..03.json`, `.graphify_uncached.txt`, `.graphify_semantic.json`,
+`.graphify_semantic_new.json`, `.graphify_extract.json`, `.graphify_analysis.json`).
+Si `/graphify` los vuelve a dejar, se pueden borrar a mano sin perder nada.
 
 | Archivo | Para qué sirvió |
 | ------- | --------------- |
@@ -94,8 +103,8 @@ siguiente ejecución.
 - **El informe trae un aviso de salud del grafo**: 1 arista colgante y 2 colapsadas. Son
   dos nodos unidos a la vez por `references` y `semantically_similar_to` —una duplicación
   real entre dos skills—, no una corrupción.
-- **Esta carpeta no está en `.gitignore`**; de hecho el proyecto no tiene `.gitignore`.
-  Tal cual, `git status` la enseña entera —los 87 archivos de `cache/` incluidos— y es
-  fácil confirmarla sin querer. Es contenido generado: su sitio natural es ignorarla.
-- **OneDrive sincroniza esta ruta.** Son ~2,5 MB en muchos archivos pequeños. Ignorarla en
-  git no la saca de la sincronización.
+- **Esta carpeta está versionada a propósito.** El proyecto ya tiene `.gitignore`
+  (desde el commit `6e5df0f`) y la regla `graphify-out/` está ahí **comentada**: se
+  quiere el grafo en el repo. Se regenera con `/graphify . --update` tras tocar código.
+- **OneDrive sincroniza esta ruta.** Son ~2,5 MB en muchos archivos pequeños (`cache/`
+  incluido). Ignorarla en git no la saca de la sincronización.

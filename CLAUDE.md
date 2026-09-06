@@ -6,7 +6,13 @@ Contexto para trabajar en **Optimizador PC**. Ver `README.md` para la estructura
 
 App de escritorio **WPF construida en PowerShell 5.1**, compilada a un `.exe` portable con **ps2exe**. Muestra categorías de optimizaciones de Windows 11 con toggles y dropdowns.
 
-**Estado actual: solo UI.** Ningún control aplica cambios reales al sistema todavía — los archivos de `ui/Data/Categories/` son datos estáticos y los toggles solo cambian de color.
+**Estado actual: interfaz completa + escritura de registro acotada.** `core/` **lee y
+escribe** el registro de Windows. Al pulsar el toggle de un ajuste con `-Registry` (hoy
+solo 1, en *Regedit*), `core/Registry/SettingApply.ps1` escribe cada clave por una
+**lista blanca de rutas** (`core/Registry/Writer.ps1`), respetando el tipo, guardando
+copia del valor previo en memoria y verificando por relectura. El resto de secciones
+siguen con datos estáticos en `ui/Data/Categories/` y sus `-Tags` a mano. **El `.exe`
+corre elevado.** Modelo de amenaza y contrato completos en `SECURITY.md`.
 
 ## Arquitectura (dónde va cada cosa)
 
@@ -305,17 +311,25 @@ quedaría clavada en cero — que es lo que verían las pruebas.
 
 ## Al implementar tweaks reales
 
-Ya hay lógica real: `core/` **lee** el registro. Escribir sigue sin hacerse.
+`core/` ya **lee y escribe** el registro. La escritura (`core/Registry/Writer.ps1`) es
+por **lista blanca de rutas** (`$RegistryWriteAllowlist`), respeta el tipo declarado,
+guarda copia del valor previo (`$RegistrySnapshots`, **solo en memoria** hoy), verifica
+por relectura y soporta `-WhatIf` (`SupportsShouldProcess`). El toggle la dispara vía
+`core/Registry/SettingApply.ps1`: `ON`→`Recommended`, `OFF`→`Default`. **Antes de tocar
+esto lee `SECURITY.md`** — la app corre elevada y ampliar la lista blanca es una
+decisión de seguridad, no un detalle. Servicios, energía y red **todavía no se
+escriben**: cada uno es una subcarpeta nueva de `core/` con su propio contrato.
 
 - La lógica de sistema vive en `core/`, nunca dentro de las vistas ni de los componentes.
-- **`core/` está dividido por lo que toca de Windows**, no por tamaño: `core/Registry/` (leer y, algún día, escribir el registro), `core/Interop/` (llamadas a la API de Windows: hoy solo Mica y Acrílico) y `core/Diagnostics/` (el registro de actividad). Un mecanismo nuevo — red, servicios, energía — es una subcarpeta nueva ahí dentro, y entra al `.exe` sola.
+- **`core/` está dividido por lo que toca de Windows**, no por tamaño: `core/Registry/` (leer y escribir el registro), `core/Interop/` (llamadas a la API de Windows: hoy solo Mica y Acrílico), `core/Shell/` (abrir enlaces por el shell, solo `http`/`https`) y `core/Diagnostics/` (el registro de actividad). Un mecanismo nuevo — red, servicios, energía — es una subcarpeta nueva ahí dentro, y entra al `.exe` sola.
 - **Nada de `core/` lanza hacia arriba.** Una clave inexistente o sin permisos es una respuesta, no un error: se devuelve un estado (`read` / `missing` / `denied` / `badpath`) y la interfaz lo pinta. Una excepción escapando de aquí tumbaría la ventana.
 - **Un DWord llega como `Int32` con signo.** `0xFFFFFFFF` se lee como `-1`. Hay que reinterpretarlo sin signo (`Format-RegistryValue`) o los valores altos salen negativos y no cuadran con lo declarado.
 - **Se abre siempre `RegistryView::Registry64`.** Si el `.exe` se compilara a 32 bits, `HKLM\SOFTWARE` se redirigiría a `Wow6432Node` en silencio.
 - El estado real se lee al entrar en la sección y se vuelca en las claves de `-Registry`; el `Current` **no se declara** en `ui/Data/Categories/`.
 - **La etiqueta de un ajuste que lee el registro se calcula, no se declara.** `core/Registry/SettingStatus.ps1` compara lo leído con el `Recommended` y el `Default` de cada clave y deja un `Status`: `optimized`, `factory`, `custom` o `unknown`. Un ajuste con `-Registry` **no lleva `-Tags`** — serían la versión inventada de lo mismo. Se compara por valor y no por escritura (`0x0000000A` = `10` = `0XA`, y `-1` = `0xFFFFFFFF`), un valor ausente es `factory` (Windows usa el suyo), y sin nada declarado con lo que comparar es `unknown`, nunca `custom`.
 - **El estado se calcula donde se lee, no donde se pinta.** Cuelga de `Update-CategoryRegistryState`, así que entrar en la sección y pulsar *Refrescar* lo dejan al día por el mismo camino. La interfaz solo lee `$Setting.Status` y `$Key.Status`; los colores y los nombres salen todos de `Get-StatusStyle` (`ui/Design/UiKit.ps1`), que es el único sitio donde se escriben.
-- Todo cambio de registro/servicio debe ser reversible y tener su valor de restauración documentado.
+- Todo cambio de registro/servicio debe ser reversible y tener su valor de restauración documentado. Para el registro, ese contrato es el `Default` de cada clave (a dónde vuelve `OFF`) más el snapshot en memoria de `Writer.ps1` (el valor que había, aunque fuera personalizado). **Pendiente**: persistir ese snapshot y exponer "deshacer" en la UI; hoy se pierde al cerrar.
+- **Un ajuste que baja la postura de seguridad del equipo** (UAC, Defender, SmartScreen, Windows Update, BitLocker…) no puede llamarse "Recommended" sin más, su descripción tiene que decir qué protección se pierde, y no puede venir activo por defecto. `tests/Source/Security.Tests.ps1` vigila que ningún `-Registry` toque esos nombres de valor sin declararlo. Ver `SECURITY.md` §4.
 
 ## El registro de actividad (el botón "log")
 

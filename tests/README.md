@@ -38,21 +38,30 @@ tests/
 
 | Archivo | Cubre |
 | ------- | ----- |
-| `Run-Tests.ps1` | El lanzador. Comprueba STA, carga todo y resume. |
+| `Run-Tests.ps1` | El lanzador. Comprueba STA, carga todo y resume. `-BothHosts` lanza 5.1 y 7 en paralelo. |
 | `Harness/TestKit.ps1` | `Describe` / `It`, `Assert-*`, `Skip-Test`. |
-| `Harness/AppHost.ps1` | Carga la aplicación sin abrir la ventana. `New-AppWindow`, `Find-Visuals`, `Get-VisualText`. |
-| `Harness/Fixtures.ps1` | Claves de prueba en `HKCU`, secciones de mentira, entradas de log. |
+| `Harness/AppHost.ps1` | Carga la aplicación sin abrir la ventana. `New-AppWindow`, `Find-Visuals`, `Get-VisualText`. Redirige `settings.json` a un temporal y **desarma la escritura al registro** (regla 28). |
+| `Harness/Fixtures.ps1` | Claves de prueba en `HKCU\Software\OptimizadorPC\Tests\<PID>`, secciones de mentira, entradas de log. |
 | `Core/Log.Tests.ps1` | El registro de actividad: apuntar, filtrar, el tope del buffer, el volcado a archivo. |
 | `Core/Registry.Tests.ps1` | Leer el registro **de verdad**: los cuatro estados, el DWord con signo, que nunca lance. |
+| `Core/RegistryWriter.Tests.ps1` | **Escribir** el registro contra la rama `HKCU` de pruebas: lista blanca, texto→valor tipado (DWord/QWord/Binary/String/ExpandString, `MultiString` no soportado), snapshot previo, verificación por relectura, `type mismatch`, `nochange`, `-WhatIf`, diagnóstico del fallo, y que nunca lance. |
+| `Core/SettingApply.Tests.ps1` | El toggle: `ON`→`Recommended`, `OFF`→`Default` de todas las claves del ajuste, recálculo del `Status`, `-WhatIf`, ruta fuera de lista blanca sin romper, y el rastro `applying`/`applied`/`checked`/`done` en el log. |
 | `Core/RegistryState.Tests.ps1` | El volcado a los datos de `ui/Data/Categories/` y el aviso de avance. |
 | `Core/SettingStatus.Tests.ps1` | En qué estado queda cada ajuste al comparar lo leído con lo declarado. |
+| `Core/ExternalLink.Tests.ps1` | Que solo se abran URLs `http`/`https` absolutas y que un esquema no permitido ni llegue al shell. |
 | `Ui/Window.Tests.ps1` | La ventana, los temas, la barra de título, el menú lateral, las vistas. |
 | `Ui/LogPanel.Tests.ps1` | El cajón del log: abrir, cerrar, las filas, el idioma. |
 | `Ui/LogWindow.Tests.ps1` | El log sacado a su propia ventana y devuelto al cajón. |
 | `Ui/TechnicalDetails.Tests.ps1` | El pie de la tarjeta: que la ruta y el valor se puedan seleccionar y copiar. |
+| `Ui/SettingCard.Tests.ps1` | La fila del detalle: el control que sale según el `Type`, el estado inicial del toggle desde el registro, el bloqueo. |
+| `Ui/SettingReference.Tests.ps1` | El bloque de referencia de un ajuste (qué hace, valores, enlace). |
+| `Ui/Search.Tests.ps1` | El buscador global: índice, coincidencia parcial, desplegable, página de resultados, foco. |
+| `Ui/ViewMenu.Tests.ps1` | El chip "Vista" y su desplegable de opciones. |
+| `Ui/Visuals.Tests.ps1` | Entrada en cascada, `Get-EnterTarget`, indicadores deslizantes, `Start-CountUp` sin ventana. |
 | `Ui/Language.Tests.ps1` | Que no quede ni un texto sin traducir en toda la interfaz. |
 | `Ui/Wiring.Tests.ps1` | Que los botones de `main.ps1` respondan al pulsarlos. |
 | `Source/Rules.Tests.ps1` | Las reglas de `CLAUDE.md` que se ven leyendo el código, el orden de carga de las capas y que el paquete de `build.ps1` parsee. |
+| `Source/Security.Tests.ps1` | Invariantes de seguridad: rutas de `-Registry` dentro de la lista blanca, sin ejecución dinámica ni red en `ui/`/`core/`, sin nombres de valor que degraden la seguridad sin declararlo, `ExternalLink` solo `http`/`https`. Ver `SECURITY.md`. |
 
 **`Harness/` es la única carpeta que no contiene pruebas.** Sus tres archivos se
 cargan con punto desde `Run-Tests.ps1` antes que nada, para que todo lo demás vea sus
@@ -117,9 +126,11 @@ existen con la ventana pintada y un ratón de verdad. Por ejemplo:
 - una prueba de humo sobre el `.exe` compilado, que es el artefacto que se entrega.
 
 Ese último caso es el que más valdría la pena, y se haría con
-`System.Windows.Automation` sobre `build/OptimizadorPC.exe` — sin instalar nada. Queda
-pendiente a propósito: cuesta bastante más de mantener y todavía no hay lógica que
-escriba en el sistema, que es cuando de verdad importará.
+`System.Windows.Automation` sobre `build/OptimizadorPC.exe` — sin instalar nada. Ahora
+que un clic **escribe en `HKLM` con privilegios de administrador**, una prueba de humo
+del binario entregado importa más que antes; sigue pendiente porque cuesta bastante más
+de mantener y la escritura ya está cubierta a nivel de `core/` contra una rama de
+pruebas en `HKCU` (`Core/RegistryWriter.Tests.ps1`, `Core/SettingApply.Tests.ps1`).
 
 ## Lo que estas pruebas NO cubren
 
@@ -129,4 +140,9 @@ escriba en el sistema, que es cuando de verdad importará.
 - **El `.exe` funcionando.** Se comprueba que el paquete que arma `build.ps1` parsea
   y lleva todo dentro, pero no se ejecuta el binario.
 - **El ratón de verdad.** Se disparan los eventos, no se mueve un cursor.
-- **Escribir en el registro.** Todavía no existe.
+- **La escritura al registro EN EL EQUIPO REAL.** El arnés la desarma
+  (`Set-RegistryWriteArmed $false` en `AppHost.ps1`); las pruebas de `core/` la rearman
+  solo contra `HKCU\Software\OptimizadorPC\Tests\<PID>`. Que el ajuste real de *Regedit*
+  escriba de verdad en `HKLM` al pulsarlo en la aplicación compilada no se prueba: eso
+  necesitaría el `.exe` elevado y la prueba de humo con UI Automation de arriba.
+- **El `.exe` elevado.** Las pruebas corren en tu sesión normal; el binario pide UAC.

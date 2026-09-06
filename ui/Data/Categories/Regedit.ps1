@@ -11,8 +11,16 @@
 #   Display = 'hex'      enseñarlo como 0xFFFFFFFF y no en decimal
 #
 # NO se declara Current: lo rellena core/Registry/CategoryState.ps1 leyendo
-# el equipo cada vez que se entra en la sección. Escribir en el
-# registro sigue sin estar implementado.
+# el equipo cada vez que se entra en la sección.
+#
+# La ESCRITURA ya existe. Al pulsar el toggle de un ajuste con
+# -Registry, core/Registry/SettingApply.ps1 escribe cada clave:
+# ON  -> su Recommended,  OFF -> su Default. Corre elevado y va por
+# la lista blanca de rutas de core/Registry/Writer.ps1. Por eso
+# Recommended y Default son también el contrato de reversión: OFF
+# vuelve al Default declarado, y si el valor estaba personalizado,
+# core/Registry/Writer.ps1 guarda copia del anterior en memoria.
+# Ver SECURITY.md para el modelo de amenaza completo.
 #
 # TAMPOCO se declaran -Tags. El estado que sale en la tarjeta
 # -Optimizado / Recomendado de fábrica / Personalizado- se calcula
@@ -21,7 +29,7 @@
 # core/Registry/SettingStatus.ps1.
 #
 # De ahí que Recommended y Default sean el dato importante de cada
-# clave: si están mal, el estado sale mal.
+# clave: si están mal, el estado -y la reversión- salen mal.
 # ------------------------------------------------------------
 
 Register-Category @{

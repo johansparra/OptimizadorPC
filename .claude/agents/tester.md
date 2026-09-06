@@ -87,7 +87,10 @@ Dilo siempre en el informe, para que nadie confunda "verde" con "correcto":
 - **El ratón de verdad.** Se disparan eventos; no se mueve un cursor. El hit-testing
   real y `IsHitTestVisible` quedan fuera.
 - **Las animaciones**, que no avanzan sin una ventana pintándose.
-- **Escribir en el registro**, que todavía no existe.
+- **La escritura al registro EN EL EQUIPO REAL.** El arnés la desarma; `core/` la
+  prueba solo contra `HKCU\Software\OptimizadorPC\Tests\<PID>`. Que el toggle de
+  *Regedit* escriba de verdad en `HKLM` al pulsarlo en el `.exe` elevado no se prueba
+  (haría falta la prueba de humo con UI Automation).
 
 Si un cambio afecta a algo de esta lista, tu veredicto tiene que decir explícitamente
 que hace falta comprobación manual, y **qué mirar**.

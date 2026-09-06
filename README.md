@@ -2,7 +2,17 @@
 
 Aplicación de escritorio para optimizar Windows 11 Pro. Interfaz **WPF** escrita íntegramente en **PowerShell 5.1** y empaquetada como un **`.exe` portable de un solo archivo** con [ps2exe](https://github.com/MScholtes/PS2EXE).
 
-> **Estado: maqueta de interfaz.** La navegación, las tarjetas, los toggles y los dropdowns funcionan visualmente, pero **ningún control aplica cambios reales al sistema todavía**. Los datos de `ui/Data/Categories/` son estáticos.
+> **Estado: interfaz completa + escritura de registro acotada, en expansión.**
+> La navegación, las tarjetas, los toggles, los dropdowns, el buscador y el registro
+> de actividad funcionan. `core/` **lee y escribe** el registro de Windows: al pulsar
+> el toggle de un ajuste con `-Registry` (hoy, 1 en *Regedit*) se escribe cada clave
+> por una **lista blanca de rutas** (`core/Registry/Writer.ps1`), respetando el tipo,
+> con copia del valor previo y verificación por relectura. **El `.exe` corre elevado.**
+> Ver [`SECURITY.md`](SECURITY.md) para el modelo de amenaza y el contrato de escritura.
+>
+> **Pendiente:** persistir el rollback entre sesiones y exponer "deshacer" en la UI,
+> aviso de punto de restauración antes de escribir, y llevar `-Registry` al resto de
+> secciones (hoy solo declaran datos estáticos y sus `-Tags` escritas a mano).
 
 ---
 
@@ -18,12 +28,17 @@ OptimizadorPC/
 │
 ├── core/                    EL SISTEMA. Habla con Windows, no con la pantalla.
 │   ├── Registry/            Todo lo del registro de Windows
-│   │   ├── Reader.ps1           Lectura del registro (hoy, solo lectura)
+│   │   ├── Reader.ps1           Lectura del registro (los 4 estados, DWord con signo)
+│   │   ├── Writer.ps1           Escritura: lista blanca de rutas, tipo, snapshot, relectura
+│   │   ├── SettingApply.ps1     Toggle ON/OFF -> escribe Recommended/Default de cada clave
+│   │   ├── SettingStatus.ps1    optimized / factory / custom / unknown por comparación
 │   │   └── CategoryState.ps1    Vuelca en los ajustes lo que hay en el equipo
 │   ├── Interop/
 │   │   └── SystemBackdrop.ps1   Mica y Acrílico de Windows 11 (dwmapi)
+│   ├── Shell/
+│   │   └── ExternalLink.ps1     Abrir un enlace en el navegador (solo http/https)
 │   └── Diagnostics/
-│       └── Log.ps1              Registro de actividad: qué se leyó y cuándo
+│       └── Log.ps1              Registro de actividad: qué se leyó/escribió y cuándo
 │
 ├── ui/                      UNA CARPETA POR CAPA. Ver "Las capas" más abajo.
 │   ├── MainWindow.xaml      ESQUELETO + ESTILOS: barra de título, contenedores
@@ -134,8 +149,10 @@ de esas carpetas — no habría forma de meterlo en el ejecutable.
 | Cambiar colores, tipografías o iconos globales | `ui/Design/Theme.ps1` |
 | Cambiar bordes, sombras o plantillas de controles | `ui/MainWindow.xaml` |
 | Añadir una pantalla nueva | Crear un archivo en `ui/Views/` y apuntarla desde `ui/Index/NavigationIndex.ps1` |
-| Tocar cómo se lee el registro | `core/Registry/Reader.ps1` — nada de WPF aquí dentro |
-| Cambiar qué claves consulta un ajuste | El `-Registry` de ese ajuste en `ui/Data/Categories/` |
+| Tocar cómo se **lee** el registro | `core/Registry/Reader.ps1` — nada de WPF aquí dentro |
+| Tocar cómo se **escribe** el registro | `core/Registry/Writer.ps1` (una clave) / `SettingApply.ps1` (el toggle) — ver `SECURITY.md` |
+| Ampliar la lista blanca de rutas de escritura | `$RegistryWriteAllowlist` en `core/Registry/Writer.ps1` — cada rama nueva es una decisión de seguridad |
+| Cambiar qué claves consulta o escribe un ajuste | El `-Registry` de ese ajuste en `ui/Data/Categories/` |
 
 **Las siete carpetas de capa se cargan enteras, subcarpetas incluidas.** Un `.ps1`
 nuevo dentro de cualquiera entra solo — no hay que registrarlo en `main.ps1` ni en
@@ -634,12 +651,13 @@ pwsh       -ExecutionPolicy Bypass -File .\tests\Run-Tests.ps1   # PowerShell 7
 
 Sin dependencias: no usan Pester ni hay nada que instalar. Pásalas en **los dos hosts**, por el mismo motivo de la convención 6.
 
-Cubren cuatro cosas:
+Cubren cinco cosas:
 
-- **`core/`** contra el registro de Windows de verdad — los cuatro estados de lectura, el DWord con signo, y que nada suba una excepción hacia la ventana.
+- **`core/`** contra el registro de Windows de verdad — los cuatro estados de lectura, el DWord con signo, la **escritura** (lista blanca, tipado, snapshot, relectura, `-WhatIf`) contra una rama de pruebas en `HKCU`, y que nada suba una excepción hacia la ventana.
 - **La interfaz**, construyendo controles de WPF reales pero sin enseñar la ventana: que estén los nombres que busca `FindName`, que cada vista se pinte, que el cambio de tema repinte los pinceles y que no quede ni un texto sin traducir.
 - **El cableado de `main.ps1`**: levantan la ventana y pulsan los botones. Es la única forma de cazar la convención 4, porque un manejador con closure falla *al hacer clic* y solo ejecutando `main.ps1`.
 - **Las reglas del proyecto** que se comprueban leyendo el código: el BOM, los `.GetNewClosure()`, los glifos inventados, y que ningún archivo se quede fuera del `.exe`.
+- **Invariantes de seguridad** (`tests/Source/Security.Tests.ps1`): que toda ruta de `-Registry` está en la lista blanca, que no hay ejecución dinámica de código ni llamadas de red en `ui/`/`core/`, que ningún ajuste toca un nombre de valor que degrada la seguridad del equipo sin declararlo, y que `ExternalLink` solo abre `http`/`https`. Ver `SECURITY.md`.
 
 Detalles en [`tests/README.md`](tests/README.md), que además explica **por qué Playwright no sirve aquí** (automatiza navegadores; esto es WPF) y qué haría falta para llegar a pruebas de extremo a extremo con UI Automation.
 
@@ -656,15 +674,33 @@ Detalles en [`tests/README.md`](tests/README.md), que además explica **por qué
 
 ---
 
+## Hecho recientemente
+
+- [x] **Leer y escribir** el registro: `core/Registry/` lee los cuatro estados y
+  escribe por lista blanca de rutas, con tipo, snapshot en memoria y verificación por
+  relectura. Cableado al toggle de *Regedit* (`core/Registry/SettingApply.ps1`)
+- [x] Etiqueta de estado real de cada ajuste con `-Registry` (`optimized` / `factory` /
+  `custom` / `unknown`), recalculada en cada lectura
+- [x] Buscador global (índice plano, coincidencia parcial, desplegable + página de
+  resultados) y sus pruebas
+- [x] Recordar el tema y el idioma entre sesiones (`%APPDATA%\OptimizadorPC\settings.json`)
+
 ## Pendiente
 
-- [ ] **Escribir** en el registro: hoy solo se lee. Falta aplicar y revertir cada tweak
-- [ ] Lógica real del resto de mecanismos (servicios, planes de energía) en módulos separados de `ui/`
-- [ ] Que el control de la tarjeta —interruptor o desplegable— refleje el valor leído, y no el `Value` estático del archivo de la sección. La etiqueta de estado ya es real; el control todavía no
-- [ ] Llevar `-Registry` al resto de secciones: sin claves declaradas no hay estado que calcular
-- [ ] Restauración / rollback por tweak
-- [ ] Pantalla propia para Software, Customize, Advanced y More (hoy están en el menú pero no navegan)
-- [ ] Funcionalidad de búsqueda, "Quick Actions", "View" y "Reset" (hoy son decorativos)
-- [ ] Recordar el tema elegido entre sesiones
+- [ ] **Rollback persistente y "deshacer" en la UI.** Hoy `core/Registry/Writer.ps1`
+  guarda el valor previo solo en memoria (`$RegistrySnapshots`): se pierde al cerrar
+- [ ] **Aviso de punto de restauración** (o `reg export` de la rama) antes de la primera
+  escritura elevada
+- [ ] Llevar `-Registry` al resto de secciones: sin claves declaradas siguen mostrando
+  sus `-Tags` escritas a mano y no hay estado que calcular
+- [ ] Lógica real del resto de mecanismos (servicios, planes de energía) como subcarpetas
+  nuevas de `core/`
+- [ ] Que el control de la tarjeta de un ajuste **sin** `-Registry` refleje un valor real
+  y no el `Value` estático del archivo de la sección
+- [ ] Pantalla propia para Software, Customize, Advanced y More (hoy están en el menú
+  pero no navegan)
+- [ ] "Quick Actions" y "Reset" de la lista (hoy decorativos; el "Refrescar" del detalle
+  sí funciona)
 - [ ] Contadores de las píldoras de la lista calculados en vez de fijos
-- [ ] Prueba de humo sobre el `.exe` compilado con `System.Windows.Automation` (ver `tests/README.md`)
+- [ ] Prueba de humo sobre el `.exe` compilado con `System.Windows.Automation` (ver
+  `tests/README.md`)
