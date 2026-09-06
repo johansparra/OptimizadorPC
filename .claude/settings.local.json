@@ -51,9 +51,7 @@
     "deny": [
       "PowerShell(Remove-Item:*)",
       "PowerShell(reg delete:*)",
-      "Bash(rm -rf:*)",
-      "Bash(git push:*)",
-      "PowerShell(git push:*)"
+      "Bash(rm -rf:*)"
     ]
   },
   "hooks": {
