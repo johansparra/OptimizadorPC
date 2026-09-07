@@ -232,6 +232,36 @@ Register-Language 'es' @{
     '0x0000000A (10, default) - 1 to 70 (adjustable) - 0xFFFFFFFF (disables the limit)' = '0x0000000A (10, predeterminado) - 1 a 70 (ajustable) - 0xFFFFFFFF (desactiva el límite)'
     'Removes network throttling during matches' = 'Elimina la limitación de red durante las partidas'
 
+    'System Responsiveness' = 'Capacidad de respuesta del sistema'
+    'Reserve less CPU for background tasks while MMCSS is active' = 'Reserva menos CPU para tareas en segundo plano mientras MMCSS está activo'
+    'Sets the percentage of CPU that Windows holds back for non-multimedia work when a multimedia app (audio, video, games) gets priority through MMCSS. Lower value means more CPU for the foreground app' = 'Fija el porcentaje de CPU que Windows aparta para el trabajo no multimedia cuando una aplicación multimedia (audio, vídeo, juegos) recibe prioridad mediante MMCSS. Un valor más bajo deja más CPU para la aplicación en primer plano'
+    '0x00000014 (20, default) - lower frees more CPU - 0x00000000 (reserve nothing)' = '0x00000014 (20, predeterminado) - más bajo libera más CPU - 0x00000000 (no reservar nada)'
+    'Frees the CPU slice held back for background tasks during matches' = 'Libera la porción de CPU apartada para tareas en segundo plano durante las partidas'
+
+    'GPU Priority for Games' = 'Prioridad de GPU para juegos'
+    "Give the game's GPU work priority over background tasks" = 'Da prioridad al trabajo de GPU del juego frente a las tareas en segundo plano'
+    'Sets the GPU scheduling priority MMCSS gives to threads a game registers under the "Games" task. 8 is the ceiling for this task class' = 'Fija la prioridad de planificación de GPU que MMCSS da a los hilos que un juego registra en la tarea "Games". 8 es el máximo de esta clase de tarea'
+    '0x00000002 (2) - 0x00000008 (8, maximum). Windows 10/11 usually ships the "Games" task at 8 already' = '0x00000002 (2) - 0x00000008 (8, máximo). Windows 10/11 suele traer la tarea "Games" ya en 8'
+    'Moves game rendering ahead of background GPU work' = 'Adelanta el renderizado del juego al trabajo de GPU en segundo plano'
+
+    'CPU Priority for Games' = 'Prioridad de CPU para juegos'
+    'Raise the CPU thread priority of the "Games" MMCSS task' = 'Sube la prioridad de CPU de los hilos de la tarea MMCSS "Games"'
+    'Sets the CPU priority Windows gives to threads a game registers with MMCSS. The range is 1 to 8; this raises the "Games" task to 6' = 'Fija la prioridad de CPU que Windows da a los hilos que un juego registra con MMCSS. El rango es de 1 a 8; esto sube la tarea "Games" a 6'
+    '0x00000002 (2, default) - 1 to 8 (higher is more) - 0x00000006 (used here)' = '0x00000002 (2, predeterminado) - 1 a 8 (más alto es más) - 0x00000006 (el que se usa aquí)'
+    'Keeps the game scheduled ahead of normal background threads' = 'Mantiene el juego planificado por delante de los hilos normales en segundo plano'
+
+    'Scheduling Category for Games' = 'Categoría de planificación para juegos'
+    'Put the "Games" MMCSS task in the High scheduling class' = 'Pone la tarea MMCSS "Games" en la clase de planificación High'
+    'Sets the scheduling category of the MMCSS "Games" task, which controls the kernel priority boost its threads get. Windows ships it at Medium' = 'Fija la categoría de planificación de la tarea MMCSS "Games", que controla el impulso de prioridad del kernel que reciben sus hilos. Windows la trae en Medium'
+    'Medium (default) - High - Low' = 'Medium (predeterminado) - High - Low'
+    'High gives smoother frame pacing under load' = 'High da un ritmo de fotogramas más estable bajo carga'
+
+    'Disk I/O Priority for Games' = 'Prioridad de E/S de disco para juegos'
+    'Raise the disk I/O priority of the "Games" MMCSS task' = 'Sube la prioridad de E/S de disco de la tarea MMCSS "Games"'
+    'Sets the storage I/O priority Windows gives to threads of the MMCSS "Games" task. Windows ships it at Normal' = 'Fija la prioridad de E/S de almacenamiento que Windows da a los hilos de la tarea MMCSS "Games". Windows la trae en Normal'
+    'Normal (default) - High - Low' = 'Normal (predeterminado) - High - Low'
+    'Cuts I/O waits while a match streams assets' = 'Reduce las esperas de E/S mientras una partida carga recursos'
+
     'User Account Control Level' = 'Nivel del Control de cuentas de usuario'
     'Controls UAC notification level and secure desktop behavior' = 'Controla el nivel de aviso del UAC y el comportamiento del escritorio seguro'
     'Always notify' = 'Notificar siempre'

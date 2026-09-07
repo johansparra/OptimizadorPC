@@ -100,7 +100,17 @@ function New-CategoryCard {
     $slot
 }
 
-# Las tres píldoras de la derecha: Recommended / Default / Custom.
+# Las píldoras de la derecha. Se cuentan de dos maneras, igual que la
+# fila del detalle (ui/Components/Layout/CategorySummary.ps1) y por el
+# mismo motivo: fila, tarjeta y etiquetas de cada ajuste no pueden
+# acabar contando cosas distintas.
+#
+#   - Si la sección lee el registro, sus ajustes traen un estado REAL
+#     (Get-CategoryStatusCounts): optimizado / de fábrica / a medida,
+#     lo que core/Registry/SettingStatus.ps1 acaba de sacar del equipo.
+#     La lista lo pide leído en su paso 0 (ver Show-OptimizationsListView).
+#   - Si no, por las etiquetas declaradas a mano en el archivo de la
+#     sección (Get-CategoryCounts). Es lo que había siempre.
 function New-CategoryStats {
     param($Category)
 
@@ -108,23 +118,51 @@ function New-CategoryStats {
     $stats.Orientation = 'Horizontal'
     $stats.VerticalAlignment = 'Center'
 
+    $counts = Get-CategoryStatusCounts $Category
+    if ($counts) { Add-CategoryStatusPills $stats $counts }
+    else         { Add-CategoryTagPills   $stats $Category }
+
+    $stats
+}
+
+# Una píldora por estado real, con los iconos y colores de
+# Get-StatusStyle: los mismos que la etiqueta de cada tarjeta de
+# ajuste y que la fila del resumen. La de 'desconocido' solo si hay
+# alguno -en cuanto se lee todo bien, sobra-.
+function Add-CategoryStatusPills {
+    param($Stats, $Counts)
+
+    foreach ($status in Get-SettingStatusNames) {
+        $n = [int]$Counts.$status
+        if ($status -eq 'unknown' -and $n -eq 0) { continue }
+
+        $style = Get-StatusStyle $status
+        $tip = (T $style.Count) -f $n, $Counts.Total
+        $Stats.Children.Add((New-Pill $style.Icon "$n/$($Counts.Total)" $style.Fg $style.Bg $tip)) | Out-Null
+    }
+}
+
+# Las tres píldoras de siempre: Recommended / Default / Custom, con
+# los números escritos a mano en el archivo de la sección. Es lo que
+# siguen enseñando las secciones que aún no leen el registro.
+function Add-CategoryTagPills {
+    param($Stats, $Category)
+
     $total = $Category.Total
 
     if ($Category.Recommended -gt 0) {
-        $stats.Children.Add((New-Pill 'StarFill' "$($Category.Recommended)/$total" 'Success' 'SuccessSoft' `
+        $Stats.Children.Add((New-Pill 'StarFill' "$($Category.Recommended)/$total" 'Success' 'SuccessSoft' `
             ((T 'Recommended: {0} of {1}') -f $Category.Recommended, $total))) | Out-Null
     } else {
-        $stats.Children.Add((New-Pill 'Star' "0/$total" 'TextFaint' 'SurfaceSunken' `
+        $Stats.Children.Add((New-Pill 'Star' "0/$total" 'TextFaint' 'SurfaceSunken' `
             (T 'No recommended settings'))) | Out-Null
     }
 
-    $stats.Children.Add((New-Pill 'Grid' "$($Category.Default)/$total" 'TextMuted' 'SurfaceSunken' `
+    $Stats.Children.Add((New-Pill 'Grid' "$($Category.Default)/$total" 'TextMuted' 'SurfaceSunken' `
         ((T 'Factory defaults: {0} of {1}') -f $Category.Default, $total))) | Out-Null
 
     if ($Category.Custom -gt 0) {
-        $stats.Children.Add((New-Pill 'Sliders' "$($Category.Custom)/$total" 'Warn' 'WarnSoft' `
+        $Stats.Children.Add((New-Pill 'Sliders' "$($Category.Custom)/$total" 'Warn' 'WarnSoft' `
             ((T 'Customised: {0} of {1}') -f $Category.Custom, $total))) | Out-Null
     }
-
-    $stats
 }

@@ -363,25 +363,29 @@ Describe 'ui/Views - las pantallas se pintan' {
         # Lo que el usuario acaba leyendo: "Optimizado", "Recomendado
         # de fábrica" o "Personalizado" según lo que haya AHORA en el
         # registro de este equipo. Como el resultado depende de la
-        # máquina, se comprueba contra lo que ha decidido core/, y que
-        # no salga ninguno de los otros dos.
+        # máquina, se comprueba contra lo que ha decidido core/: cada
+        # estado que tenga algún ajuste sale, y ningún otro. La sección
+        # tiene varios ajustes y pueden estar en estados distintos, así
+        # que se mira el CONJUNTO, no ajuste por ajuste.
         $ventana = New-AppWindow
         $cat = Get-CategoryById 'regedit'
         Show-View -Name 'Show-CategoryDetailView' -Arguments @{ Category = $cat }
 
         $texto = Get-VisualText $ventana.FindName('MainContent').Content
 
+        $presentes = @{}
         foreach ($ajuste in @($cat.Items)) {
             Assert-NotNull $ajuste.Status "el ajuste '$($ajuste.Name)' tendría que traer estado"
+            $presentes[$ajuste.Status] = $true
+        }
 
-            foreach ($estado in Get-SettingStatusNames) {
-                $etiqueta = [regex]::Escape((T (Get-StatusStyle $estado).Label))
-                if ($estado -eq $ajuste.Status) {
-                    Assert-Match $etiqueta $texto "falta la etiqueta de '$estado'"
-                }
-                else {
-                    Assert-False ($texto -match $etiqueta) "no debería salir la etiqueta de '$estado'"
-                }
+        foreach ($estado in Get-SettingStatusNames) {
+            $etiqueta = [regex]::Escape((T (Get-StatusStyle $estado).Label))
+            if ($presentes.ContainsKey($estado)) {
+                Assert-Match $etiqueta $texto "falta la etiqueta de '$estado'"
+            }
+            else {
+                Assert-False ($texto -match $etiqueta) "no debería salir la etiqueta de '$estado'"
             }
         }
     }

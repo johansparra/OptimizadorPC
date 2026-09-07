@@ -99,8 +99,9 @@ Describe 'ui/Components/Cards/SettingCard.ps1 - el toggle refleja el estado real
     It 'pulsar el toggle actualiza SOLO su tarjeta, sin repintar la sección' {
         # La escritura la tiene desarmada el arnés: Set-SettingOptimization
         # no toca el registro, pero Update-SettingCard sí reemplaza la
-        # tarjeta en el sitio. Regedit tiene un solo ajuste, así que se
-        # comprueba con Toast y con que la LISTA no se recrea.
+        # tarjeta en el sitio. Se pulsa la primera tarjeta y se comprueba
+        # con Toast y con que la LISTA no se recrea (mismo Count, mismo
+        # objeto Content).
         $ventana = New-AppWindow
         Show-View -Name 'Show-CategoryDetailView' -Arguments @{ Category = (Get-CategoryById 'regedit') }
 

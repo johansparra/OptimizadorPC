@@ -24,16 +24,27 @@ function Show-OptimizationsListView {
     Add-PageAction $Window (New-ChipButton $Window 'Quick Actions' 'Bolt' -Chevron)
     Add-PageAction $Window (New-ViewMenu $Window)
 
-    # ---- 2. Cuerpo: una tarjeta por categoría ----
+    $categories = @(Get-OptimizationCategories)
+
+    # ---- 2. Leer el registro de las secciones que lo declaran ----
+    # Para que las píldoras de cada tarjeta cuenten por el ESTADO
+    # REAL del equipo -optimizado / de fábrica / a medida- y no por
+    # números escritos a mano en el archivo de la sección. Es el
+    # mismo paso -y la misma barra- que hace el detalle al entrar;
+    # aquí, para todas a la vez y solo la primera vez de la sesión
+    # (sin -Force): al volver de una sección los Status ya están.
+    Invoke-CategoryRegistryRead -Window $Window -Categories $categories
+
+    # ---- 3. Cuerpo: una tarjeta por categoría ----
     # Dos formas de enseñar lo mismo, y la elige el usuario desde el
     # botón "Vista": filas anchas (lo de siempre) o baldosas en
     # cuadrícula. Las categorías salen del registro en los dos casos.
     $list = New-CategoryPanel
-    foreach ($category in Get-OptimizationCategories) {
+    foreach ($category in $categories) {
         $list.Children.Add((New-CategoryItem -Window $Window -Category $category)) | Out-Null
     }
 
-    # ---- 3. Pintar con entrada en cascada ----
+    # ---- 4. Pintar con entrada en cascada ----
     # Una tras otra, no todas de golpe: el ojo sigue el recorrido y
     # la pantalla parece montarse en vez de aparecer.
     $Window.FindName('MainContent').Content = $list

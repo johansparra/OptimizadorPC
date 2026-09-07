@@ -29,45 +29,11 @@ function Show-CategoryDetailView {
     $keys = Get-CategoryRegistryKeyCount $Category
 
     # ---- 0. Preguntar al equipo qué hay en el registro ----
-    # Se hace ANTES de construir nada, para que las tarjetas ya
-    # nazcan con el valor real. Las secciones cuyos ajustes no
-    # declaren claves -hoy, todas menos Regedit- no leen nada y no
-    # enseñan la barra.
-    #
-    # Este mismo paso es el que repite el botón de refrescar: no
-    # tiene camino propio, vuelve a entrar por aquí.
-    if ($keys -gt 0) {
-        # Update-UiNow cede el hilo para repintar la barra, y en esa
-        # pausa WPF puede entregar clics de la pantalla anterior.
-        # Sordo al ratón mientras dura: no se ve, y no hay forma de
-        # navegar a otro sitio a mitad de la lectura.
-        $Window.Content.IsHitTestVisible = $false
-        Show-ProgressStrip $Window 'Reading the registry...'
-        try {
-            Update-CategoryRegistryState -Category $Category -OnProgress {
-                param($Done, $Total)
-                Set-ProgressStrip (Get-AppWindow) $Done $Total
-            } | Out-Null
-            $script:CategoryReadAt[[string]$Category.Id] = Get-Date
-
-            # Acaban de aparecer Current y Status donde antes no había
-            # nada, y el buscador indexa los dos. El índice guardado se
-            # ha quedado viejo: se tira y se rehará al siguiente
-            # tecleo. Se avisa desde aquí y no desde core/, que no sabe
-            # -ni debe saber- que existe un buscador.
-            Reset-SearchIndex
-
-            # Y por el mismo motivo, el registro de actividad: la
-            # lectura acaba de apuntar sus líneas y nadie las pinta
-            # sola. Si el log está sacado a su ventana, ahí sigue
-            # delante mientras se lee.
-            Sync-LogView
-        }
-        finally {
-            Hide-ProgressStrip $Window
-            $Window.Content.IsHitTestVisible = $true
-        }
-    }
+    # ANTES de construir nada, para que las tarjetas ya nazcan con el
+    # valor real. -Force: entrar en una sección -o pulsar refrescar,
+    # que vuelve a entrar por aquí- trae siempre el dato fresco,
+    # aunque la lista ya lo hubiera leído en esta sesión.
+    Invoke-CategoryRegistryRead -Window $Window -Categories @($Category) -Force
 
     # ---- 1. Cabecera ----
     Clear-PageHeader $Window
@@ -147,6 +113,69 @@ function Show-HighlightedSetting {
             $script:CategoryHighlightCard = $null
             if ($card) { $card.BringIntoView() }
         }) | Out-Null
+}
+
+<#
+    El "paso 0" que comparten la lista y el detalle: leer del equipo
+    el registro de las secciones que declaran claves, con la barra de
+    progreso puesta y la ventana sorda al ratón mientras dura.
+
+    Aquí vive la coreografía -barra, hit-test, aviso al buscador y al
+    log-. La lectura de verdad la hace core/Registry/CategoryState.ps1,
+    que no sabe nada de esto.
+
+      -Categories  las secciones candidatas. Se filtran solas las que
+                   no declaran ninguna clave: se puede pasar la lista
+                   entera.
+      -Force       releer aunque ya se hubiera leído en esta sesión.
+                   El detalle entra con -Force -entrar en una sección
+                   siempre trae el dato fresco-; la lista, sin él: al
+                   volver de una sección los Status siguen en su sitio
+                   -incluido lo que haya cambiado un toggle- y releer
+                   sería trabajo tirado.
+
+    Update-UiNow (dentro de la barra) cede el hilo y en esa pausa WPF
+    puede entregar clics de la pantalla anterior: por eso la ventana
+    se queda sorda al ratón hasta el finally.
+#>
+function Invoke-CategoryRegistryRead {
+    param(
+        [Parameter(Mandatory)]$Window,
+        [Parameter(Mandatory)][object[]]$Categories,
+        [switch]$Force
+    )
+
+    $targets = @($Categories | Where-Object {
+        (Get-CategoryRegistryKeyCount $_) -gt 0 -and
+        ($Force -or -not $script:CategoryReadAt.ContainsKey([string]$_.Id))
+    })
+    if ($targets.Count -eq 0) { return }
+
+    $Window.Content.IsHitTestVisible = $false
+    Show-ProgressStrip $Window 'Reading the registry...'
+    try {
+        foreach ($category in $targets) {
+            Update-CategoryRegistryState -Category $category -OnProgress {
+                param($Done, $Total)
+                Set-ProgressStrip (Get-AppWindow) $Done $Total
+            } | Out-Null
+            $script:CategoryReadAt[[string]$category.Id] = Get-Date
+        }
+
+        # Acaban de aparecer Current y Status donde antes no había
+        # nada, y el buscador indexa los dos: el índice guardado se
+        # queda viejo y se rehará al siguiente tecleo. Y el registro
+        # de actividad tiene líneas nuevas que nadie pinta solo -si
+        # está sacado a su ventana, ahí sigue delante-. Se avisa
+        # desde aquí y no desde core/, que no sabe -ni debe saber-
+        # que existen un buscador ni un cajón de log.
+        Reset-SearchIndex
+        Sync-LogView
+    }
+    finally {
+        Hide-ProgressStrip $Window
+        $Window.Content.IsHitTestVisible = $true
+    }
 }
 
 <#
