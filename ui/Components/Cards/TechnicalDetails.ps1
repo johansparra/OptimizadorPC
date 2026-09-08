@@ -31,7 +31,7 @@
 function New-TechnicalDetails {
     param($Window, $Setting)
 
-    New-DisclosureSection -Window $Window -Icon 'Info' -Label 'Technical details' `
+    New-DisclosureSection -Window $Window -Icon 'Info' -Label 'Technical details' -Kind 'technical' `
         -Body (New-TechnicalBody $Window $Setting)
 }
 

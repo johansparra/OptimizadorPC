@@ -27,7 +27,7 @@
 function New-SettingReference {
     param($Window, $Setting, [bool]$Flush = $true)
 
-    New-DisclosureSection -Window $Window -Icon 'OpenIn' -Label 'Reference' -Flush $Flush `
+    New-DisclosureSection -Window $Window -Icon 'OpenIn' -Label 'Reference' -Flush $Flush -Kind 'reference' `
         -Body (New-ReferenceBody $Window $Setting)
 }
 

@@ -45,11 +45,23 @@ function Show-CategoryDetailView {
     # pantalla es de ahora mismo o de hace un rato.
     $readAt = $script:CategoryReadAt[[string]$Category.Id]
     if ($readAt) {
-        $stamp = (T 'Updated {0}') -f $readAt.ToString('HH:mm:ss')
+        $stamp = (T 'Updated {0}') -f (Format-AppTime $readAt)
         Add-PageActionLabel $Window $stamp
     }
 
     Add-PageAction $Window (New-RefreshButton -Window $Window -Keys $keys)
+
+    # Los dos menús para abrir/cerrar las franjas plegables por
+    # sección (Referencia / Detalles técnicos / Todo). Misma
+    # condición que "Refrescar" -que haya claves que consultar, hoy
+    # solo Regedit- y además solo si alguna de esas franjas está
+    # activada en el menú Vista: sin ninguna encendida no habría nada
+    # que plegar.
+    if ($keys -gt 0 -and ((Get-ViewOption 'technical') -or (Get-ViewOption 'reference'))) {
+        $bulk = New-DisclosureBulkButtons -Window $Window
+        Add-PageAction $Window $bulk.Expand
+        Add-PageAction $Window $bulk.Collapse
+    }
 
     # El mismo menú que la pantalla principal: sus opciones son
     # globales y se guardan, así que da igual desde dónde se toquen.
@@ -209,6 +221,96 @@ function New-RefreshButton {
     $Window.RegisterName('BtnRefresh', $refresh)
 
     $refresh
+}
+
+<#
+    Los dos menús de la cabecera que abren ("Expandir") o cierran
+    ("Contraer") las franjas plegables de la sección. Cada uno es un
+    chip con chevron (New-ChipMenu) que despliega tres órdenes:
+
+        Referencia         ->  solo las franjas "Referencia"
+        Detalles técnicos  ->  solo las franjas "Detalles técnicos"
+        Todo               ->  las dos (el comportamiento de siempre)
+
+    El destino se pasa a Set-CategoryDisclosures por su -Kind, que es
+    el identificador estable que New-DisclosureSection deja en el Tag
+    de cada fila plegable. Nada de comparar etiquetas: están
+    traducidas y se romperían al cambiar de idioma.
+
+    Si una de las dos franjas está oculta por el menú Vista, su fila
+    aquí no encuentra nada que plegar y se queda en un no-op limpio;
+    el chevron del chip -abajo para "expandir", arriba para
+    "contraer"- recuerda de qué menú se trata.
+
+    Cada OnClick es un scriptblock de literales, sin variables
+    capturadas, que solo llama a Set-CategoryDisclosures (regla 4).
+#>
+function New-DisclosureBulkButtons {
+    param($Window)
+
+    $expandItems = @(
+        [PSCustomObject]@{ Label = 'Reference';        Icon = 'OpenIn'
+                           OnClick = { Set-CategoryDisclosures -Open $true -Kind 'reference' } }
+        [PSCustomObject]@{ Label = 'Technical details'; Icon = 'Info'
+                           OnClick = { Set-CategoryDisclosures -Open $true -Kind 'technical' } }
+        [PSCustomObject]@{ Label = 'All';              Icon = 'Apps'
+                           OnClick = { Set-CategoryDisclosures -Open $true } }
+    )
+    $collapseItems = @(
+        [PSCustomObject]@{ Label = 'Reference';        Icon = 'OpenIn'
+                           OnClick = { Set-CategoryDisclosures -Open $false -Kind 'reference' } }
+        [PSCustomObject]@{ Label = 'Technical details'; Icon = 'Info'
+                           OnClick = { Set-CategoryDisclosures -Open $false -Kind 'technical' } }
+        [PSCustomObject]@{ Label = 'All';              Icon = 'Apps'
+                           OnClick = { Set-CategoryDisclosures -Open $false } }
+    )
+
+    [PSCustomObject]@{
+        Expand   = New-ChipMenu $Window 'Expand'   'ChevronDown' $expandItems
+        Collapse = New-ChipMenu $Window 'Collapse' 'ChevronUp'   $collapseItems
+    }
+}
+
+<#
+    Abre (-Open $true) o cierra (-Open $false) franjas plegables de
+    TODAS las tarjetas que hay AHORA MISMO en la pantalla de detalle.
+
+      -Kind  'reference'  ->  solo las franjas "Referencia"
+             'technical'  ->  solo las franjas "Detalles técnicos"
+             (omitido)    ->  las dos (el "Todo" de siempre)
+
+    El filtro va por el Kind que New-DisclosureSection deja en el Tag
+    de cada fila, no por su etiqueta traducida.
+
+    Trabaja sobre los controles ya construidos: ni relee el registro
+    ni toca MainContent.Content, así que el ScrollViewer se queda
+    donde estaba y no hay parpadeo. Si aún no hay lista de tarjetas,
+    no hace nada.
+
+    Cada franja se abre/cierra con las mismas funciones que usa el
+    reemplazo de una tarjeta en el sitio (Open-/Close-DisclosureSection),
+    sin la animación de entrada. Son idempotentes: repetir la misma
+    orden -o encadenar varias- no descuadra ningún estado.
+#>
+function Set-CategoryDisclosures {
+    param(
+        [bool]$Open,
+        [ValidateSet('reference', 'technical')][string]$Kind
+    )
+
+    $window = Get-AppWindow
+    if (-not $window) { return }
+
+    $list = $window.FindName('MainContent').Content
+    if ($list -isnot [System.Windows.Controls.Panel]) { return }
+
+    foreach ($card in $list.Children) {
+        foreach ($header in (Get-CardDisclosureHeaders $card)) {
+            if ($Kind -and [string]$header.Tag.Kind -ne $Kind) { continue }
+            if ($Open) { Open-DisclosureSection  $header }
+            else       { Close-DisclosureSection $header }
+        }
+    }
 }
 
 <#

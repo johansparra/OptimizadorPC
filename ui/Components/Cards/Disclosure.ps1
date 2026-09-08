@@ -21,7 +21,12 @@
 # ============================================================
 
 function New-DisclosureSection {
-    param($Window, [string]$Icon, [string]$Label, $Body, [bool]$Flush = $true)
+    # -Kind es un identificador ESTABLE de qué franja es esta
+    # ('reference' / 'technical'), para poder apuntar a una sola
+    # desde fuera sin comparar por su etiqueta, que está traducida
+    # (ver Set-CategoryDisclosures). Opcional: sin él, la franja
+    # sigue funcionando igual, solo que nadie la distingue del resto.
+    param($Window, [string]$Icon, [string]$Label, $Body, [bool]$Flush = $true, [string]$Kind)
 
     $section = New-Object System.Windows.Controls.StackPanel
 
@@ -75,7 +80,7 @@ function New-DisclosureSection {
 
     # Cuerpo, línea, chevron y si redondea viajan en el Tag: nada de
     # closures (regla 4 de CLAUDE.md).
-    $header.Tag = [PSCustomObject]@{ Body = $Body; Split = $split; Chevron = $chevron; Flush = $Flush }
+    $header.Tag = [PSCustomObject]@{ Body = $Body; Split = $split; Chevron = $chevron; Flush = $Flush; Kind = $Kind }
     $header.Add_MouseLeftButtonUp({
         param($s, $e)
         $info = $s.Tag
@@ -126,4 +131,31 @@ function Open-DisclosureSection {
     $info.Split.Visibility = 'Visible'
     $info.Chevron.Text     = Glyph 'ChevronUp'
     $Header.CornerRadius    = New-Object System.Windows.CornerRadius 0
+}
+
+<#
+    Cierra una franja YA construida, sin animación.
+
+    El reverso de Open-DisclosureSection: el mismo cambio de estado
+    que la rama "if visible" del manejador de New-DisclosureSection.
+    Lo usa el menú "Contraer" de la cabecera del detalle (ver
+    Set-CategoryDisclosures), que apaga varias a la vez y no quiere
+    una docena de transiciones peleándose.
+
+    Idempotente: llamarla sobre una franja ya plegada no hace nada.
+#>
+function Close-DisclosureSection {
+    param($Header)
+
+    $info = $Header.Tag
+    if (-not $info -or -not $info.PSObject.Properties['Body']) { return }
+    if ($info.Body.Visibility -ne 'Visible') { return }
+
+    $info.Body.Visibility  = 'Collapsed'
+    $info.Split.Visibility = 'Collapsed'
+    $info.Chevron.Text     = Glyph 'ChevronDown'
+    # Si es la última franja, vuelve a redondear el pie de la tarjeta.
+    if ($info.Flush) {
+        $Header.CornerRadius = New-Object System.Windows.CornerRadius 0, 0, 15, 15
+    }
 }

@@ -131,6 +131,9 @@ Register-Language 'es' @{
     '{0} settings' = '{0} ajustes'
     'Refresh'      = 'Refrescar'
     'Read the registry keys again' = 'Volver a leer las claves del registro'
+    'Expand'   = 'Expandir'
+    'Collapse' = 'Contraer'
+    'All'      = 'Todo'
     'This section does not read the registry yet' = 'Esta sección todavía no lee el registro'
     'Updated {0}'  = 'Actualizado {0}'
     'Registry values updated' = 'Valores del registro actualizados'
@@ -198,6 +201,10 @@ Register-Language 'es' @{
     'Solid'      = 'Opaco'
     'Mica'       = 'Mica'
     'Acrylic'    = 'Acrílico'
+    'Time format' = 'Formato de hora'
+    'Clock style for the times shown in the Regedit panel' = 'Estilo de reloj para las horas que se muestran en el panel Regedit'
+    '24-hour (18:45:03)'   = '24 horas (18:45:03)'
+    '12-hour (6:45:03 PM)' = '12 horas (6:45:03 PM)'
 
     # ============================================================
     # CONTENIDO: nombres y descripciones de las secciones
