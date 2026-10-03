@@ -1,229 +1,224 @@
-# Graph Report - OptimizadorPC  (2026-09-05)
+# Graph Report - OptimizadorPC  (2026-10-03)
 
 ## Corpus Check
-- 87 files · ~87,829 words
+- 119 files · ~131,472 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 673 nodes · 1355 edges · 52 communities (29 shown, 1 thin omitted)
-- Extraction: 64% EXTRACTED · 35% INFERRED · 0% AMBIGUOUS · INFERRED: 480 edges (avg confidence: 0.85)
-- Token cost: 235,269 input · 0 output
+- 747 nodes · 1405 edges · 73 communities (28 shown, 9 thin omitted)
+- Extraction: 72% EXTRACTED · 28% INFERRED · 0% AMBIGUOUS · INFERRED: 396 edges (avg confidence: 0.85)
+- Token cost: 111,134 input · 0 output
 
 ## Community Hubs (Navigation)
-- Kit visual y tarjetas
-- Registro de actividad
-- Agentes y arnes de pruebas
+- Tarjetas y piezas de interfaz
+- Skills de exploracion y buenas practicas
 - XAML de la ventana
-- Tema, menu lateral y fondo
-- Arnes y pruebas de interfaz
-- Vistas y cabecera de pagina
+- Arnes y fixtures de pruebas
+- Fondo vivo y menu lateral
+- Escritura y estado del registro
+- Cajon del log
+- Estado de categoria y desplegables
 - Buscador global
-- Skills de exploracion y versionado
-- Resumen de categorias
+- Acerca de e info del sistema
+- Cabecera de pagina y avisos
+- Maximizar y ventana del log
+- Reglas de core y seguridad (doc)
+- Resumen de categorias y busqueda
+- Arquitectura y equipo de agentes
+- Auditoria y CI de seguridad
+- Log de actividad (core)
+- Material de ventana
 - Aserciones del TestKit
-- Estado del registro documentado
-- Capa visual: color y movimiento
-- Arquitectura de siete capas
-- Ajustes y material de ventana
-- Lectura real del registro
-- Skill de interfaz WPF
-- Traduccion y preferencias
-- Trampas de PowerShell documentadas
-- Skill de PowerShell
-- Skill de seguridad
-- Buenas practicas de PowerShell
-- Dos hosts y flujos de salida
-- Donde va cada cosa
-- Navegacion y menu lateral
-- Buscador y log documentados
-- Empaquetado y arranque
-- Como se trabaja aqui
-- Pruebas del registro de actividad
-- Opciones de vista
+- Riesgos y contrato de escritura
+- Versionado, tester y build (doc)
+- Tema, traduccion y capas (doc)
+- Navegacion, idioma y ajustes (doc)
+- Agente dev y trampas (doc)
+- Enlaces externos y referencia
+- Indice de navegacion
+- Barra de progreso
+- Guardia de errores de UI
+- Animaciones y fondo (doc)
+- Contrato de ajustes con registro
+- Sonda de cableado
+- Skill powershell-engineer
+- Regla de las dos suites
+- Hook de codificacion (doc)
+- Skill powershell-best-practices
+- Skill refactoring-agent
+- Skill versionado
 
 ## God Nodes (most connected - your core abstractions)
-1. `T()` - 61 edges
-2. `Set-TextFg()` - 47 edges
-3. `Window` - 42 edges
-4. `Set-BoxBg()` - 24 edges
-5. `New-Icon()` - 21 edges
-6. `Show-CategoryDetailView()` - 21 edges
-7. `Update-LogList()` - 16 edges
-8. `Get-AppWindow()` - 15 edges
+1. `Set-TextFg()` - 52 edges
+2. `Window` - 37 edges
+3. `Set-BoxBg()` - 26 edges
+4. `SECURITY.md security reference` - 24 edges
+5. `New-Icon()` - 22 edges
+6. `CLAUDE.md project guide` - 22 edges
+7. `T()` - 19 edges
+8. `Write-RegistryValue()` - 18 edges
 9. `Skill: windows-desktop-architect` - 15 edges
-10. `New-CategoryCard()` - 13 edges
+10. `Add-GridColumns()` - 14 edges
 
 ## Surprising Connections (you probably didn't know these)
-- `Marcadores @@EMBED_DIR@@ / @@EMBED_XAML@@` --semantically_similar_to--> `build.ps1 (empaquetado + ps2exe)`  [INFERRED] [semantically similar]
+- `@@EMBED_DIR@@ / @@EMBED_XAML@@ build markers` --semantically_similar_to--> `Build pipeline (build.ps1 -> _combined.ps1 -> ps2exe)`  [INFERRED] [semantically similar]
   CLAUDE.md → README.md
-- `Menu lateral construido por codigo` --semantically_similar_to--> `ui/Index/NavigationIndex.ps1`  [INFERRED] [semantically similar]
+- `Why Snyk does not fit` --semantically_similar_to--> `Why Playwright does not fit`  [INFERRED] [semantically similar]
+  SECURITY.md → tests/README.md
+- `Computed registry status (optimized/factory/custom/unknown)` --semantically_similar_to--> `Setting status states (optimized/factory/custom/unknown)`  [INFERRED] [semantically similar]
   CLAUDE.md → README.md
-- `Las vistas se muestran con Show-View` --semantically_similar_to--> `ui/Engine/Router.ps1`  [INFERRED] [semantically similar]
-  CLAUDE.md → README.md
-- `Indicadores deslizantes sin medidas` --semantically_similar_to--> `Efectos y transiciones`  [INFERRED] [semantically similar]
-  CLAUDE.md → README.md
-- `Registro de actividad (cajon del log)` --semantically_similar_to--> `core/Diagnostics/Log.ps1`  [INFERRED] [semantically similar]
-  CLAUDE.md → README.md
+- `Mica and Acrylic preference` --semantically_similar_to--> `Mica and custom gradient are mutually exclusive`  [INFERRED] [semantically similar]
+  README.md → CLAUDE.md
+- `actions/checkout pinned by SHA` --semantically_similar_to--> `ps2exe pinned to 1.0.18 from PSGallery`  [INFERRED] [semantically similar]
+  .github/workflows/semgrep.yml → SECURITY.md
 
 ## Import Cycles
 - None detected.
 
 ## Hyperedges (group relationships)
-- **Circuito de entregas: cada rol produce un documento de formato fijo que el siguiente lee** — _claude_agents_arquitecto_arquitecto, _claude_agents_dev_dev, _claude_agents_tester_tester, _claude_agents_arquitecto_plan_de_cambio, _claude_agents_dev_parte_de_trabajo, _claude_agents_tester_informe_de_verificacion [EXTRACTED 1.00]
-- **El arnes de pruebas: lanzador y tres archivos de Harness que no prueban nada** — tests_readme_run_tests, tests_readme_testkit, tests_readme_apphost, tests_readme_fixtures, tests_readme_sin_pester [EXTRACTED 1.00]
-- **Reglas de CLAUDE.md que se vigilan leyendo el codigo o ejecutando main.ps1** — _claude_agents_dev_utf8_con_bom, _claude_agents_dev_prohibicion_getnewclosure, _claude_agents_dev_marcadores_embed, _claude_agents_dev_regla_traduccion_t, tests_readme_rules_tests, tests_readme_wiring_tests, _claude_agents_tester_comprobaciones_fuera_de_la_suite [INFERRED 0.85]
-- **Disciplina de los dos hosts (5.1 del .exe y pwsh 7 de main.ps1)** — _claude_skills_powershell_engineer_skill_contrato_de_los_dos_hosts, _claude_skills_powershell_engineer_skill_utf8_con_bom, _claude_skills_refactoring_agent_skill_ciclo_de_refactor, _claude_skills_versionado_skill_cuando_verificar, _claude_skills_powershell_best_practices_skill_checklist, _claude_skills_windows_desktop_architect_skill_checklist_interfaz [EXTRACTED 1.00]
-- **Contrato para escribir en el sistema elevado (el primer SetValue)** — _claude_skills_powershell_best_practices_skill_supports_should_process, _claude_skills_powershell_best_practices_skill_idempotencia, _claude_skills_powershell_best_practices_skill_reversibilidad, _claude_skills_security_reviewer_skill_condiciones_de_escritura_al_registro, _claude_skills_security_reviewer_skill_ajustes_que_degradan_la_seguridad, _claude_skills_security_reviewer_skill_modelo_de_amenaza [INFERRED 0.85]
+- **Circuito de entregas: cada rol produce un documento de formato fijo que el siguiente lee** — _claude_agents_arquitecto_arquitecto, _claude_agents_arquitecto_plan_de_cambio, _claude_agents_dev_parte_de_trabajo, _claude_agents_tester_informe_de_verificacion [EXTRACTED 1.00]
+- **Disciplina de los dos hosts (5.1 del .exe y pwsh 7 de main.ps1)** — _claude_skills_powershell_engineer_skill_contrato_de_los_dos_hosts, _claude_skills_powershell_engineer_skill_utf8_con_bom, _claude_skills_refactoring_agent_skill_ciclo_de_refactor, _claude_skills_powershell_best_practices_skill_checklist, _claude_skills_windows_desktop_architect_skill_checklist_interfaz [EXTRACTED 1.00]
+- **Registry write safety contract** — security_registry_write_allowlist, security_registry_write_allowed_values, security_tradeoff_denylist, security_registry_snapshots, security_write_states, _claude_skills_security_reviewer_skill_five_write_conditions, security_test_invariants [EXTRACTED 1.00]
 - **Trampas de WPF por recurso compartido o árbol mal colgado** — _claude_skills_windows_desktop_architect_skill_pinceles_congelados, _claude_skills_windows_desktop_architect_skill_freezable_en_setter, _claude_skills_windows_desktop_architect_skill_popup_arbol_logico, _claude_skills_windows_desktop_architect_skill_colores_por_recurso_de_tema [EXTRACTED 1.00]
-- **Las siete capas y el orden que decide main.ps1** — claude_ui_design, claude_ui_engine, claude_ui_index, claude_core, claude_ui_data, claude_ui_components, claude_ui_views, readme_main_ps1 [EXTRACTED 1.00]
-- **Contrato de empaquetado: mismo marcador y mismo orden en los tres sitios** — claude_embed_dir_marker, readme_main_ps1, readme_ps2exe_build, readme_combined_ps1, claude_test_harness, readme_mainwindow_xaml [EXTRACTED 1.00]
-- **Flujo del buscador global** — claude_global_search, claude_search_index, claude_search_box_tag_trap, claude_search_body_repaint, claude_setting_status, claude_translation_t [EXTRACTED 1.00]
+- **Agent and skill development workflow** — _claude_agents_dev_dev_agent, _claude_agents_tester_tester_agent, _claude_skills_security_reviewer_skill_security_reviewer, _claude_skills_versionado_skill_versionado [INFERRED 0.85]
+- **Supply chain hardening and static analysis** — _github_workflows_semgrep_semgrep_workflow, _github_workflows_semgrep_checkout_sha_pin, security_ps2exe_pinning, security_psscriptanalyzer, security_semgrep_analysis, security_unsigned_exe [INFERRED 0.85]
+- **Registry write safety chain (allowlists, conditions, snapshots, tests)** — security_registry_write_contract, security_registry_write_allowlist, security_registry_write_allowed_values, security_five_write_conditions, security_registry_snapshots, security_tradeoff_denylist, security_security_tests [EXTRACTED 1.00]
+- **PowerShell 5.1 vs 7 dual-host pitfalls** — claude_two_hosts_rule, claude_utf8_bom_rule, claude_no_getnewclosure_rule, claude_list_object_pitfall, claude_encoding_hook [INFERRED 0.85]
+- **Live theme repaint system** — claude_theme_resource_colors, claude_frozen_brushes, claude_gradient_tokens, readme_design_system [INFERRED 0.85]
 
-## Communities (52 total, 1 thin omitted)
+## Communities (73 total, 9 thin omitted)
 
-### Community 0 - "Kit visual y tarjetas"
-Cohesion: 0.09
-Nodes (66): New-CategoryCard(), New-CategoryStats(), New-CategoryTile(), New-PreferenceCard(), New-PreferenceControl(), Get-SearchResultTitle(), New-SearchMatchLine(), New-SearchResultCard() (+58 more)
-
-### Community 1 - "Registro de actividad"
-Cohesion: 0.07
-Nodes (59): Clear-AppLog(), Export-AppLog(), Format-AppLogLine(), Format-AppLogText(), Get-AppLog(), Get-AppLogCount(), Get-AppLogDropped(), Get-AppLogFileName() (+51 more)
-
-### Community 2 - "Agentes y arnes de pruebas"
-Cohesion: 0.05
-Nodes (59): Agente arquitecto (solo lectura), Arquitectura de siete capas (Design, Engine, Index, core, Data, Components, Views), core/Registry/CategoryState.ps1 (rellena el Current al entrar en la seccion), Declaracion New-Setting con -Registry, Recommended y Default, Optimizacion fuera del registro = mecanismo nuevo en core/, Orden de carga de capas, Plan de cambio (formato de entrega del arquitecto), Programa/OptimizadorPC.ps1 como referencia de Apply/Revert (+51 more)
-
-### Community 3 - "XAML de la ventana"
-Cohesion: 0.05
-Nodes (55): IsDropDownOpen, SelectionBoxItem, Tag, Backdrop, bd, BtnClose, BtnHelp, BtnLog (+47 more)
-
-### Community 4 - "Tema, menu lateral y fondo"
+### Community 0 - "Tarjetas y piezas de interfaz"
 Cohesion: 0.08
-Nodes (39): Set-ModeSelection(), Push-NavButton(), Build-Backdrop(), New-BlobAnim(), Set-BackdropLayout(), Start-BlobDrift(), Build-Sidebar(), Get-SidebarExpanded() (+31 more)
+Nodes (70): Add-CategoryStatusPills(), Add-CategoryTagPills(), New-CategoryCard(), New-CategoryStats(), New-CategoryTile(), New-DisclosureSection(), New-PreferenceCard(), New-PreferenceControl() (+62 more)
 
-### Community 5 - "Arnes y pruebas de interfaz"
-Cohesion: 0.07
-Nodes (21): New-FakeSetting(), Find-Visuals(), Get-AppRoot(), Get-VisualText(), New-AppWindow(), Get-TestRegFullPath(), Get-TestRegPath(), New-TestCategory() (+13 more)
+### Community 1 - "Skills de exploracion y buenas practicas"
+Cohesion: 0.06
+Nodes (58): Agrupar llamadas independientes en un turno, Recetas de búsqueda con grep, Skill: exploracion, Mapa de dónde vive cada cosa, Qué NO hace falta leer, Revisar cambios antes de confirmar, Trampas de esta máquina que cuestan turnos, Anatomía de una función PowerShell (+50 more)
 
-### Community 6 - "Vistas y cabecera de pagina"
-Cohesion: 0.10
-Nodes (24): Add-PageAction(), Add-PageActionFirst(), Add-PageActionLabel(), Clear-PageHeader(), New-SectionHeader(), Set-PageSummary(), Set-PageTitle(), Show-PageToast() (+16 more)
+### Community 2 - "XAML de la ventana"
+Cohesion: 0.06
+Nodes (50): IsDropDownOpen, SelectionBoxItem, Tag, AppVersionBadge, Backdrop, bd, BtnClose, BtnHelp (+42 more)
 
-### Community 7 - "Buscador global"
-Cohesion: 0.15
-Nodes (24): Invoke-PendingSearch(), Invoke-SearchKey(), New-SearchBar(), Set-SearchFocus(), Start-SearchDebounce(), Stop-SearchDebounce(), Update-SearchPopup(), Get-OptimizationCategories() (+16 more)
+### Community 3 - "Arnes y fixtures de pruebas"
+Cohesion: 0.06
+Nodes (28): New-FakeSetting(), Find-Visuals(), Get-AppRoot(), Get-VisualText(), New-AppWindow(), Get-TestRegFullPath(), Get-TestRegPath(), New-TestCategory() (+20 more)
 
-### Community 8 - "Skills de exploracion y versionado"
+### Community 4 - "Fondo vivo y menu lateral"
+Cohesion: 0.11
+Nodes (28): Build-Backdrop(), New-BlobAnim(), Set-BackdropLayout(), Start-BlobDrift(), Build-Sidebar(), Move-NavIndicator(), New-NavButton(), Set-NavSelection() (+20 more)
+
+### Community 5 - "Escritura y estado del registro"
+Cohesion: 0.12
+Nodes (26): Set-SettingOptimization(), ConvertTo-RegistryNumber(), Get-RegistryKeyStatus(), Get-SettingStatus(), Test-RegistryValueMatch(), Update-SettingStatus(), Write-SettingEvalLog(), Add-RegistrySnapshot() (+18 more)
+
+### Community 6 - "Cajon del log"
+Cohesion: 0.14
+Nodes (31): Add-LogHeaderButton(), Add-ToLogRow(), Close-LogOverlay(), Get-DesktopFolder(), Get-LogDrawerWidth(), Get-LogPanelOpen(), Get-LogSaveFolder(), Get-LogSavePath() (+23 more)
+
+### Community 7 - "Estado de categoria y desplegables"
+Cohesion: 0.12
+Nodes (24): Get-CategoryRegistryKeyCount(), Update-CategoryRegistryState(), Close-DisclosureSection(), Open-DisclosureSection(), Copy-DisclosureState(), Get-CardDisclosureHeaders(), Get-DisclosureLabel(), Get-AppWindow() (+16 more)
+
+### Community 8 - "Buscador global"
 Cohesion: 0.13
-Nodes (22): Agrupar llamadas independientes en un turno, Recetas de búsqueda con grep, Skill: exploracion, Qué NO hace falta leer, Revisar cambios antes de confirmar, Trampas de esta máquina que cuestan turnos, Crear un archivo nuevo desde Bash (heredoc, sin BOM, sin python), Eliminar un concepto de todo el proyecto (+14 more)
+Nodes (27): Invoke-PendingSearch(), Invoke-SearchFocusPopup(), Invoke-SearchKey(), Invoke-SearchPopupReopen(), New-SearchBar(), New-SearchPopupCard(), New-SearchSeeAllRow(), Request-SearchPopupReopen() (+19 more)
 
-### Community 9 - "Resumen de categorias"
-Cohesion: 0.15
-Nodes (15): Get-SettingStatusNames(), Get-SearchTestKey(), Get-SearchTestSetting(), Add-StatusPills(), Add-TagPills(), New-CategorySummary(), New-SummaryPill(), Update-CategorySummary() (+7 more)
+### Community 9 - "Acerca de e info del sistema"
+Cohesion: 0.16
+Nodes (17): Get-AppHostKind(), Get-AppRuntimeInfo(), Get-WindowsSummary(), Get-WindowsVersionValue(), Get-AboutElevationLabel(), Get-AboutHostLabel(), Get-AboutText(), Initialize-AboutMenu() (+9 more)
 
-### Community 10 - "Aserciones del TestKit"
+### Community 10 - "Cabecera de pagina y avisos"
+Cohesion: 0.13
+Nodes (15): Add-PageAction(), Add-PageActionFirst(), Add-PageActionLabel(), Clear-PageHeader(), New-SectionHeader(), Set-PageTitle(), Show-PageToast(), Start-EnterTransition() (+7 more)
+
+### Community 11 - "Maximizar y ventana del log"
+Cohesion: 0.13
+Nodes (10): Enable-WorkAreaMaximize(), Initialize-WorkAreaMaximize(), Add-LogWindowDrag(), Clear-LogWindowState(), New-LogWindow(), Open-LogWindow(), Set-LogWindowState(), Show-LogWindowFront() (+2 more)
+
+### Community 12 - "Reglas de core y seguridad (doc)"
+Cohesion: 0.12
+Nodes (19): Code execution prohibitions, Five registry write conditions, Diff security review order, core/ never throws upward, DWord arrives as signed Int32 (Format-RegistryValue), Mica and custom gradient are mutually exclusive, Computed registry status (optimized/factory/custom/unknown), Test suite (tests/Run-Tests.ps1 -BothHosts, no Pester) (+11 more)
+
+### Community 13 - "Resumen de categorias y busqueda"
+Cohesion: 0.16
+Nodes (14): Get-SettingStatusNames(), Get-SearchTestKey(), Get-SearchTestSetting(), Add-StatusPills(), Add-TagPills(), New-CategorySummary(), New-SummaryPill(), Update-CategorySummary() (+6 more)
+
+### Community 14 - "Arquitectura y equipo de agentes"
+Cohesion: 0.14
+Nodes (18): Agente arquitecto (solo lectura), Arquitectura de siete capas (Design, Engine, Index, core, Data, Components, Views), Optimizacion fuera del registro = mecanismo nuevo en core/, Orden de carga de capas, Plan de cambio (formato de entrega del arquitecto), Programa/OptimizadorPC.ps1 como referencia de Apply/Revert, Parte de trabajo (dev delivery format), Los agentes arrancan en frio (no ven la conversacion) (+10 more)
+
+### Community 15 - "Auditoria y CI de seguridad"
+Cohesion: 0.22
+Nodes (18): security-reviewer skill, Threat model of elevated portable exe, actions/checkout pinned by SHA, Push trigger without paths filter, Semgrep CI workflow, Security and quality audit 2026-09-07, New-ChipMenu / New-ViewMenu deliberate duplication, Audit history convention (+10 more)
+
+### Community 16 - "Log de actividad (core)"
+Cohesion: 0.17
+Nodes (12): Export-AppLog(), Format-AppLogLine(), Format-AppLogText(), Get-AppLogFileName(), Get-AppLogFolder(), Write-AppLog(), Format-LogValue(), Format-RegistryValue() (+4 more)
+
+### Community 17 - "Material de ventana"
+Cohesion: 0.16
+Nodes (12): Initialize-SystemBackdrop(), Set-WindowBackdrop(), Test-SystemBackdropSupport(), Get-WindowMaterial(), Set-MaterialSurfaces(), Set-WindowMaterialChoice(), Sync-WindowMaterial(), Get-AppTheme() (+4 more)
+
+### Community 18 - "Aserciones del TestKit"
 Cohesion: 0.22
 Nodes (12): Assert-Contains(), Assert-Equal(), Assert-False(), Assert-Match(), Assert-NotEqual(), Assert-NoThrow(), Assert-NotNull(), Assert-Null() (+4 more)
 
-### Community 11 - "Estado del registro documentado"
+### Community 19 - "Riesgos y contrato de escritura"
 Cohesion: 0.17
-Nodes (16): Registro de actividad (cajon del log), Close-LogOverlay colapsa el velo, Capa 4 Sistema (core/), DWord llega como Int32 con signo, Abrir siempre RegistryView::Registry64, core/ lee el registro y nunca lanza, Estado calculado del ajuste (optimized/factory/custom/unknown), Update-UiNow es un DoEvents (+8 more)
+Nodes (16): Audit recommendations (sign exe, persist rollback, Windows CI, narrow prefix), Always RegistryView::Registry64, DWord read as signed Int32, Pending work (persistent rollback, restore point, -Registry elsewhere), ps2exe, Accepted and pending risks table, Five conditions of each write, NetworkThrottlingIndex setting (Regedit) (+8 more)
 
-### Community 12 - "Capa visual: color y movimiento"
+### Community 20 - "Versionado, tester y build (doc)"
+Cohesion: 0.20
+Nodes (14): Tester agent, estado.ps1 status script, One commit by default policy, versionado skill, Test in both hosts (5.1 and pwsh 7), Build pipeline (build.ps1 -> _combined.ps1 -> ps2exe), Pending roadmap, AppHost harness (loads app without window) (+6 more)
+
+### Community 21 - "Tema, traduccion y capas (doc)"
 Cohesion: 0.15
-Nodes (16): Fondo vivo a 20 fps y sin BlurEffect, Nunca declarar un Freezable animable en un Setter, Dos familias de color: paleta y $GradientTokens, Envoltorio quieto de Add-HoverLift, Mica y el degradado propio son excluyentes, Entrada en cascada y Get-EnterTarget, TextBlock no se puede seleccionar ni copiar, Colores por recurso de tema (+8 more)
+Nodes (15): Frozen brushes (Set-AppTheme, Resources.Add), Get-Palette and $GradientTokens (two color families), graphify graph: uses and limits, Layered architecture (7 layer folders), Optimizador PC (CLAUDE.md), Computed setting status (optimized/factory/custom/unknown), All visible text passes through T, Colors only via theme resources (+7 more)
 
-### Community 13 - "Arquitectura de siete capas"
+### Community 22 - "Navegacion, idioma y ajustes (doc)"
 Cohesion: 0.17
-Nodes (16): Pinceles congelados (Freezable), Catalogo de glifos Segoe Fluent Icons, La cuadricula no es una vista aparte, Arquitectura de siete capas, Locked no es decorativo, Capa 6 Piezas (ui/Components), Capa 5 Datos (ui/Data), Capa 1 Base (ui/Design) (+8 more)
+Nodes (13): Activity log (log drawer and window), Set-AppSetting / settings.json in %APPDATA%, Glyph catalog (Segoe Fluent Icons), Router / Show-View, Sidebar built by code (Build-Sidebar, Set-NavSelection, Sync-NavSelection), Translation via T (source-text keyed), Languages (Register-Language, Get-MissingTranslations), Navigation flow (OptimizationsList -> CategoryDetail -> Settings) (+5 more)
 
-### Community 14 - "Ajustes y material de ventana"
-Cohesion: 0.17
-Nodes (10): Initialize-SystemBackdrop(), Set-WindowBackdrop(), Test-SystemBackdropSupport(), Get-WindowMaterial(), Set-MaterialSurfaces(), Set-WindowMaterialChoice(), Sync-WindowMaterial(), Set-PanelBg() (+2 more)
+### Community 23 - "Agente dev y trampas (doc)"
+Cohesion: 0.31
+Nodes (11): Dev agent, Agent delegation policy, @@EMBED_DIR@@ / @@EMBED_XAML@@ build markers, Normalize-PsEncoding PostToolUse hook, Global search flat index, graphify graph limitations, @() over List[object] pitfall (use .ToArray()), No .GetNewClosure() in event handlers (+3 more)
 
-### Community 15 - "Lectura real del registro"
-Cohesion: 0.23
-Nodes (13): Get-CategoryRegistryKeyCount(), Update-CategoryRegistryState(), Format-LogValue(), Format-RegistryValue(), New-RegistryResult(), Read-RegistryValue(), Read-RegistryValueRaw(), Write-RegistryLog() (+5 more)
+### Community 24 - "Enlaces externos y referencia"
+Cohesion: 0.38
+Nodes (8): Invoke-ExternalLink(), Test-ExternalLinkAllowed(), New-FactBlock(), New-GamingFactBlock(), New-GamingTag(), New-LinkFactBlock(), New-ReferenceBody(), New-SettingReference()
 
-### Community 16 - "Skill de interfaz WPF"
-Cohesion: 0.22
-Nodes (15): Qué NO refactorizar por tu cuenta (marcadores y excepciones conscientes), Datos del usuario: settings.json y el registro de actividad, Las animaciones no avanzan sin una ventana pintándose, Antes de dar la interfaz por terminada, Colores siempre por recurso de tema, Nunca un Freezable dentro de un Setter que vayas a animar, Iconos: Glyph del catálogo de Theme.ps1, nunca emoji, Todo texto visible pasa por T y hay que repintar al cambiar de idioma (+7 more)
+### Community 26 - "Barra de progreso"
+Cohesion: 0.60
+Nodes (4): Set-ProgressFill(), Set-ProgressStrip(), Show-ProgressStrip(), Update-UiNow()
 
-### Community 17 - "Traduccion y preferencias"
-Cohesion: 0.16
-Nodes (15): Repintar al cambiar de idioma, Guardado del log partido en tres, Sync-NavSelection decide la marca del menu, Preferencias via Set-AppSetting, Las vistas se muestran con Show-View, Todo texto visible pasa por T, Capa 2 Mecanismo (ui/Engine), ui/Engine/AppSettings.ps1 (+7 more)
-
-### Community 18 - "Trampas de PowerShell documentadas"
-Cohesion: 0.18
-Nodes (13): Probar siempre en los dos hosts, Hook PostToolUse Normalize-PsEncoding, La coma dentro de un metodo separa argumentos, @() sobre List[object] revienta, Prohibido .GetNewClosure() en handlers, El Tag de la caja es del desplegable, Patron Tag + GetWindow($s), Arnes de pruebas (tests/Harness) (+5 more)
-
-### Community 19 - "Skill de PowerShell"
-Cohesion: 0.24
-Nodes (10): Rendimiento y legibilidad: nada de alias, nada de +=, @() sobre List[object] creada con New-Object revienta, Comparaciones: $null a la izquierda, cadenas siempre verdaderas, DWord llega como Int32 con signo, -f dentro de los paréntesis de un método, += sobre arrays es O(n²), No usar GetNewClosure: el dato viaja por el Tag, Skill: powershell-engineer (+2 more)
-
-### Community 20 - "Skill de seguridad"
-Cohesion: 0.24
-Nodes (10): Scripts sueltos: #requires y StrictMode, Estilo del proyecto: comentarios en español, identificadores en inglés, Ajustes que degradan la seguridad del equipo, Cadena de suministro: ps2exe sin repositorio ni versión fijada, Caso vivo: BitLocker Auto Encryption (PreventDeviceEncryption = 1), Caso vivo: User Account Control Level (ConsentPromptBehaviorAdmin = 0), Cómo revisar un diff y cómo reportar hallazgos, Modelo de amenaza del .exe elevado y portable (+2 more)
-
-### Community 21 - "Buenas practicas de PowerShell"
-Cohesion: 0.33
-Nodes (9): Anatomía de una función PowerShell, Checklist de buenas prácticas, Idempotencia: leer antes de escribir, Parámetros tipados y validados en la firma, Skill: powershell-best-practices, Reversibilidad: capturar el valor previo antes de tocar, SupportsShouldProcess: -WhatIf y -Confirm gratis, Verbo aprobado y sustantivo singular (+1 more)
-
-### Community 22 - "Dos hosts y flujos de salida"
-Cohesion: 0.48
-Nodes (7): Los cinco flujos de salida de PowerShell, Devolver objetos, no texto, El contrato de los dos hosts (5.1 del .exe y pwsh 7 de main.ps1), Todo lo que no se consume se devuelve (Out-Null), UTF-8 con BOM siempre, El ciclo de refactor (verde, paso pequeño, BOM, verde), Cuándo verificar y cuándo no antes de confirmar
-
-### Community 23 - "Donde va cada cosa"
-Cohesion: 0.40
-Nodes (6): Mapa de dónde vive cada cosa, Errores: fallar pronto, no usar throw para el flujo normal, core/ nunca lanza hacia arriba: devuelve estado, Mover código entre capas, Recetas: dónde va cada cosa, Las siete capas, de datos a pantalla
-
-### Community 24 - "Navegacion y menu lateral"
-Cohesion: 0.40
-Nodes (6): Start-CountUp sin ventana viva, Menu lateral construido por codigo, Plegado: animar el ancho del Border, Indicadores deslizantes sin medidas, Flujo de navegacion, ui/Index/NavigationIndex.ps1
-
-### Community 25 - "Buscador y log documentados"
-Cohesion: 0.33
-Nodes (6): Marcadores @@EMBED_DIR@@ / @@EMBED_XAML@@, Buscador global (caja de la cabecera), LogWindow: el log en ventana aparte, Al escribir se repinta el cuerpo, nunca la cabecera, Indice plano de busqueda, Sync-LogView avisa a la interfaz
-
-### Community 26 - "Empaquetado y arranque"
-Cohesion: 0.47
-Nodes (6): Contenedores nombrados de la cabecera, main.ps1 (arranque y orden de capas), MainWindow.xaml (esqueleto y estilos), Diagrama de modulos, Optimizador PC, build.ps1 (empaquetado + ps2exe)
-
-### Community 28 - "Como se trabaja aqui"
+### Community 29 - "Animaciones y fondo (doc)"
 Cohesion: 0.67
-Nodes (3): Delegar por frentes independientes, Llamadas independientes en el mismo turno, Skills cargadas al empezar
+Nodes (4): Live backdrop at 20 fps without BlurEffect, Add-HoverLift static wrapper (RenderTransform hit-test loop), Start-StaggeredEnter / Get-EnterTarget, Effects and transitions table
 
-### Community 29 - "Pruebas del registro de actividad"
+### Community 32 - "Contrato de ajustes con registro"
 Cohesion: 0.67
-Nodes (3): tests/Core/Log.Tests.ps1, tests/Ui/LogPanel.Tests.ps1, tests/Ui/LogWindow.Tests.ps1
-
-## Ambiguous Edges - Review These
-- `Comparaciones: $null a la izquierda, cadenas siempre verdaderas` → `Caso vivo: Automatic Maintenance (Recommended y Default iguales)`  [AMBIGUOUS]
-  .claude/skills/security-reviewer/SKILL.md · relation: conceptually_related_to
-- `Estado calculado del ajuste (optimized/factory/custom/unknown)` → `Pendiente (escritura al registro y rollback)`  [AMBIGUOUS]
-  README.md · relation: conceptually_related_to
-- `Buscador global (caja de la cabecera)` → `Pendiente (escritura al registro y rollback)`  [AMBIGUOUS]
-  CLAUDE.md · relation: conceptually_related_to
+Nodes (3): core/Registry/CategoryState.ps1 (rellena el Current al entrar en la seccion), Declaracion New-Setting con -Registry, Recommended y Default, Sin valor de restauracion real no se puede aplicar un ajuste
 
 ## Knowledge Gaps
-- **34 isolated node(s):** `Track`, `Tag`, `ToggleButton`, `IsDropDownOpen`, `SelectionBoxItem` (+29 more)
-  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 101 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
-- **1 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **29 isolated node(s):** `Programa/OptimizadorPC.ps1 como referencia de Apply/Revert`, `Skill security-reviewer`, `Skill windows-desktop-architect`, `Scripts sueltos: #requires y StrictMode`, `core/Registry/CategoryState.ps1 (rellena el Current al entrar en la seccion)` (+24 more)
+  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 150 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
+- **9 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **What is the exact relationship between `Comparaciones: $null a la izquierda, cadenas siempre verdaderas` and `Caso vivo: Automatic Maintenance (Recommended y Default iguales)`?**
-  _Edge tagged AMBIGUOUS (relation: conceptually_related_to) - confidence is low._
-- **What is the exact relationship between `Estado calculado del ajuste (optimized/factory/custom/unknown)` and `Pendiente (escritura al registro y rollback)`?**
-  _Edge tagged AMBIGUOUS (relation: conceptually_related_to) - confidence is low._
-- **What is the exact relationship between `Buscador global (caja de la cabecera)` and `Pendiente (escritura al registro y rollback)`?**
-  _Edge tagged AMBIGUOUS (relation: conceptually_related_to) - confidence is low._
-- **Why does `T()` connect `Kit visual y tarjetas` to `Registro de actividad`, `Tema, menu lateral y fondo`, `Arnes y pruebas de interfaz`, `Vistas y cabecera de pagina`, `Buscador global`, `Resumen de categorias`?**
-  _High betweenness centrality (0.089) - this node is a cross-community bridge._
-- **Why does `Show-CategoryDetailView()` connect `Vistas y cabecera de pagina` to `Kit visual y tarjetas`, `Registro de actividad`, `Tema, menu lateral y fondo`, `Buscador global`, `Lectura real del registro`?**
-  _High betweenness centrality (0.031) - this node is a cross-community bridge._
-- **Why does `Set-TextFg()` connect `Kit visual y tarjetas` to `Resumen de categorias`, `Tema, menu lateral y fondo`, `Vistas y cabecera de pagina`, `Registro de actividad`?**
-  _High betweenness centrality (0.030) - this node is a cross-community bridge._
-- **Are the 60 inferred relationships involving `T()` (e.g. with `New-CategoryCard()` and `New-CategoryStats()`) actually correct?**
-  _`T()` has 60 INFERRED edges - model-reasoned connections that need verification._
+- **Why does `Set-TextFg()` connect `Tarjetas y piezas de interfaz` to `Fondo vivo y menu lateral`, `Cajon del log`, `Buscador global`, `Cabecera de pagina y avisos`, `Resumen de categorias y busqueda`, `Enlaces externos y referencia`?**
+  _High betweenness centrality (0.058) - this node is a cross-community bridge._
+- **Why does `Invoke-SettingToggle()` connect `Estado de categoria y desplegables` to `Tarjetas y piezas de interfaz`, `Escritura y estado del registro`, `Cajon del log`?**
+  _High betweenness centrality (0.027) - this node is a cross-community bridge._
+- **Why does `versionado skill` connect `Versionado, tester y build (doc)` to `Skills de exploracion y buenas practicas`?**
+  _High betweenness centrality (0.027) - this node is a cross-community bridge._
+- **Are the 51 inferred relationships involving `Set-TextFg()` (e.g. with `New-CategoryCard()` and `New-CategoryTile()`) actually correct?**
+  _`Set-TextFg()` has 51 INFERRED edges - model-reasoned connections that need verification._
+- **Are the 25 inferred relationships involving `Set-BoxBg()` (e.g. with `New-DisclosureSection()` and `New-SearchResultRow()`) actually correct?**
+  _`Set-BoxBg()` has 25 INFERRED edges - model-reasoned connections that need verification._
+- **Are the 16 inferred relationships involving `New-Icon()` (e.g. with `New-CategoryCard()` and `New-CategoryTile()`) actually correct?**
+  _`New-Icon()` has 16 INFERRED edges - model-reasoned connections that need verification._
+- **What connects `Programa/OptimizadorPC.ps1 como referencia de Apply/Revert`, `Skill security-reviewer`, `Skill windows-desktop-architect` to the rest of the system?**
+  _29 weakly-connected nodes found - possible documentation gaps or missing edges._
