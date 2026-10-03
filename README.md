@@ -38,6 +38,9 @@ OptimizadorPC/
 │   │   └── WorkArea.ps1         Maximizar sin tapar la barra de tareas (user32)
 │   ├── Shell/
 │   │   └── ExternalLink.ps1     Abrir un enlace en el navegador (solo http/https)
+│   ├── Network/
+│   │   └── CommandRunner.ps1    Ejecutar los pasos de Internet: sin shell, lista
+│   │                            blanca de ejecutables y servicios (SECURITY.md §12)
 │   └── Diagnostics/
 │       ├── Log.ps1              Registro de actividad: qué se leyó/escribió y cuándo
 │       └── SystemInfo.ps1       Sobre qué corre: Windows, PowerShell, permisos, exe/script
@@ -70,7 +73,9 @@ OptimizadorPC/
 │   │   │                        descripción y repositorio
 │   │   ├── Categories/          Un archivo por sección
 │   │   │   ├── Regedit.ps1          Power.ps1          Gaming.ps1
-│   │   │   └── Update.ps1           Notifications.ps1  Sound.ps1
+│   │   │   ├── Update.ps1           Notifications.ps1  Sound.ps1
+│   │   │   └── Internet.ps1         COMANDOS, no ajustes: los pasos de
+│   │   │                            Reiniciar_Red_v3.cmd, en orden de ejecución
 │   │   ├── Preferences/         Un archivo por opción de Settings
 │   │   │   ├── 10-Language.ps1
 │   │   │   ├── 20-Theme.ps1
@@ -95,15 +100,19 @@ OptimizadorPC/
 │   │   │   ├── CategoryTile.ps1     la misma sección, en cuadrícula
 │   │   │   ├── SettingCard.ps1      fila de la pantalla de detalle
 │   │   │   ├── PreferenceCard.ps1   fila de la pantalla de Settings
+│   │   │   ├── StepRow.ps1          fila del checklist de una sección de comandos
 │   │   │   └── TechnicalDetails.ps1 pie plegable con las claves del registro
 │   │   └── Layout/              Piezas de página
-│   │       ├── PageHeader.ps1       cabecera: título, breadcrumb, acciones
+│   │       ├── PageHeader.ps1       cabecera: título, breadcrumb, acciones, hueco fijo
 │   │       ├── Banner.ps1           avisos (p. ej. "sección bloqueada")
-│   │       └── CategorySummary.ps1  la fila de píldoras bajo el título
+│   │       ├── CategorySummary.ps1  la fila de píldoras bajo el título
+│   │       └── StepRunPanel.ps1     marco de ejecución: estado, progreso, log en
+│   │                                vivo, y la cola con su temporizador
 │   │
 │   └── Views/               7. LAS PANTALLAS. Solo ensamblan piezas.
 │       ├── OptimizationsListView.ps1
 │       ├── CategoryDetailView.ps1
+│       ├── CategoryStepsView.ps1    la de las secciones de comandos (Internet)
 │       └── SettingsView.ps1
 │
 ├── tests/                   PRUEBAS. Sin dependencias, corren en 5.1 y en 7.
@@ -686,6 +695,16 @@ Detalles en [`tests/README.md`](tests/README.md), que además explica **por qué
 - [x] Buscador global (índice plano, coincidencia parcial, desplegable + página de
   resultados) y sus pruebas
 - [x] Recordar el tema y el idioma entre sesiones (`%APPDATA%\OptimizadorPC\settings.json`)
+- [x] **Sección Internet**: los comandos de `Reiniciar_Red_v3.cmd` como checklist, uno por
+  paso, ejecutados siempre en orden, sin shell y por lista blanca
+  (`core/Network/CommandRunner.ps1`), con marco fijo de estado, barra de progreso y
+  registro en vivo
+- [x] **Insignia de administrador** en la barra de título; sin permisos, los pasos que
+  los necesitan salen desmarcados, apagados y avisando
+- [x] **Filtro por estado** en el detalle de una sección: las píldoras del resumen son
+  botones que se combinan
+- [x] Panel **Acerca de** (botón ?) y la versión en una sola fuente (`ui/Data/AppInfo.ps1`)
+- [x] Maximizar sin tapar la barra de tareas (`core/Interop/WorkArea.ps1`)
 
 ## Pendiente
 
@@ -704,3 +723,6 @@ Detalles en [`tests/README.md`](tests/README.md), que además explica **por qué
 - [ ] Contadores de las píldoras de la lista calculados en vez de fijos
 - [ ] Prueba de humo sobre el `.exe` compilado con `System.Windows.Automation` (ver
   `tests/README.md`)
+- [ ] Que el buscador encuentre también los pasos de Internet (hoy indexa solo ajustes)
+- [ ] Recordar entre sesiones qué pasos de Internet están marcados
+- [ ] Un paso "volver a DHCP" para deshacer el DNS fijo de Google

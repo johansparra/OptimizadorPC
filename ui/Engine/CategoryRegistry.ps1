@@ -50,6 +50,10 @@ function Get-NewBadgeText {
     Description  (string) Línea gris bajo el título.
     Recommended / Default / Custom / Total  (int)  Contadores de las píldoras.
     Items        (array)  Ajustes, creados con New-Setting.
+    Steps        (array)  Pasos que se EJECUTAN, creados con New-CommandStep.
+                          Una sección con Steps no enseña ajustes sino una
+                          lista para marcar y un botón para correrla (ver
+                          ui/Views/CategoryStepsView.ps1). Hoy: Internet.
 #>
 function Register-Category {
     param([Parameter(Mandatory)][hashtable]$Definition)
@@ -60,7 +64,7 @@ function Register-Category {
     $defaults = @{
         Accent = 'Accent'; AccentSoft = 'AccentSoft'
         Recommended = 0; Default = 0; Custom = 0; Total = 0
-        Items = @(); Locked = $false
+        Items = @(); Steps = @(); Locked = $false
     }
     foreach ($key in $defaults.Keys) {
         if (-not $Definition.ContainsKey($key)) { $Definition[$key] = $defaults[$key] }
@@ -127,6 +131,41 @@ function Get-UnlistedCategories {
     $listed = @{}
     foreach ($entry in $CategoryIndex) { $listed[$entry.Id] = $true }
     $CategoryList | Where-Object { -not $listed.ContainsKey($_.Id) }
+}
+
+<#
+    ¿Es una sección de COMANDOS (declara Steps)?
+
+    No vale @($Category.Steps).Count: si la categoría no tiene el campo
+    -una de mentira en las pruebas, o una que no pasó por
+    Register-Category-, Steps es $null y @($null) es un array con UN
+    elemento.
+#>
+function Test-CategoryHasSteps {
+    param($Category)
+    if (-not $Category) { return $false }
+    $steps = @($Category.Steps | Where-Object { $_ })
+    $steps.Count -gt 0
+}
+
+<#
+    ¿Se puede correr este paso AHORA? No, si pide administrador y el
+    programa no lo tiene.
+
+    Y ¿cuenta como marcado? Solo si el usuario lo marcó Y se puede
+    correr. Es la selección EFECTIVA: la que pinta la casilla, la que
+    cuentan las píldoras y la que entra en la cola. Selected guarda lo
+    que eligió el usuario; esto, lo que de verdad va a pasar.
+#>
+function Test-StepAvailable {
+    param($Step)
+    if (-not $Step) { return $false }
+    -not ($Step.RequiresAdmin -and -not (Test-AppElevated))
+}
+
+function Test-StepSelected {
+    param($Step)
+    [bool]$Step.Selected -and (Test-StepAvailable $Step)
 }
 
 # Busca una categoría concreta por su Id (esté visible o no).
@@ -296,5 +335,98 @@ function New-Setting {
         # el equipo, igual que el Current de cada clave. Se reserva
         # aquí el campo para poder asignarlo después.
         Status      = $null
+    }
+}
+
+<#
+    Crea un paso para el array Steps de una categoría: algo que se
+    EJECUTA, no un ajuste que se lee y se cambia.
+
+    Dos tipos, y se deduce solo:
+
+      -Exe + -Arguments  ejecuta un programa de Windows, sin shell.
+                         Solo los de la lista blanca de
+                         core/Network/CommandRunner.ps1, siempre desde
+                         la carpeta de sistema. Los argumentos, uno por
+                         elemento y literales: 'int','ipv4','reset'.
+      -Service           arranca ese servicio si está parado (y si ya
+                         corre, no hace nada). Lista blanca también.
+
+    El ORDEN de ejecución es el de declaración en el archivo, marque
+    el usuario lo que marque: un reset de Winsock antes de limpiar la
+    pila no es lo mismo que después. Por eso el orden lo decide el
+    archivo de la sección, no el clic.
+
+        -Id              Único dentro de la sección. Estable: no se traduce.
+        -Name            Título del paso (texto fuente en inglés, pasa por T).
+        -Description     Qué hace, en una o dos frases.
+        -Group           Fase a la que pertenece. Los pasos seguidos con el
+                         mismo Group salen bajo la misma cabecera.
+        -Checked         Si viene marcado. Por defecto $true. Lo que tenga
+                         efectos que el usuario debe decidir (borrar reglas
+                         del firewall, fijar DNS) va en $false.
+        -Warning         Aviso que sale en ámbar en la fila.
+        -RequiresRestart Al terminar, la sección pide reiniciar el equipo.
+        -RequiresAdmin   Por defecto $true: casi todo lo que cambia la red
+                         necesita administrador. Sin permisos, el paso sale
+                         desmarcado, apagado y avisando, y no entra en la
+                         cola. Solo los que de verdad funcionan sin permisos
+                         (comprobado, no supuesto: nbtstat -R falla y aun así
+                         devuelve 0) llevan $false.
+        -PauseAfter      Segundos de espera tras el paso (el "timeout /t 5"
+                         del .cmd original). La espera NO bloquea la ventana.
+        -TimeoutSeconds  Tope antes de darlo por colgado. Por defecto, el de
+                         CommandRunner (60 s).
+
+    Status y Selected NO se declaran: son estado de la sesión. Selected
+    arranca en -Checked y lo cambia el usuario; Status lo va poniendo la
+    ejecución (pending / running / succeeded / failed / ...).
+
+    Ejemplo:
+        New-CommandStep -Id 'winsock-reset' -Name 'Reset Winsock' `
+            -Description 'Restores the Windows sockets catalog' `
+            -Group 'Phase 1' -Exe 'netsh.exe' -Arguments 'winsock', 'reset' `
+            -RequiresRestart
+#>
+function New-CommandStep {
+    param(
+        [Parameter(Mandatory)][string]$Id,
+        [Parameter(Mandatory)][string]$Name,
+        [Parameter(Mandatory)][string]$Description,
+        [string]$Group,
+        [string]$Exe,
+        [string[]]$Arguments = @(),
+        [string]$Service,
+        [bool]$Checked = $true,
+        [string]$Warning,
+        [switch]$RequiresRestart,
+        [bool]$RequiresAdmin = $true,
+        [int]$PauseAfter = 0,
+        [int]$TimeoutSeconds = 0
+    )
+
+    if ($Service) { $kind = 'service' }
+    elseif ($Exe) { $kind = 'exe' }
+    else { throw "New-CommandStep '$Id': falta -Exe o -Service." }
+
+    [PSCustomObject]@{
+        Id              = $Id
+        Name            = $Name
+        Description     = $Description
+        Group           = $Group
+        Kind            = $kind
+        Exe             = $Exe
+        Arguments       = @($Arguments)
+        Service         = $Service
+        Checked         = $Checked
+        Warning         = $Warning
+        RequiresRestart = [bool]$RequiresRestart
+        RequiresAdmin   = $RequiresAdmin
+        PauseAfter      = $PauseAfter
+        TimeoutSeconds  = $TimeoutSeconds
+
+        # Estado de la sesión: no se declaran.
+        Selected        = $Checked
+        Status          = $null
     }
 }

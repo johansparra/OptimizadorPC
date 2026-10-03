@@ -45,8 +45,10 @@ Los tres riesgos reales, por gravedad:
 
 ## 2. Superficie de ataque
 
-La aplicación **no habla con la red**, no abre puertos, no carga plugins y no lee
-archivos que le pase un tercero. Las únicas entradas externas son:
+La aplicación **no habla con la red** (no descarga ni envía nada; la sección Internet
+**configura** la red local con `netsh` e `ipconfig`, ver §12), no abre puertos, no
+carga plugins y no lee archivos que le pase un tercero. Las únicas entradas externas
+son:
 
 | Entrada | Origen | Cómo se trata |
 | --- | --- | --- |
@@ -54,6 +56,8 @@ archivos que le pase un tercero. Las únicas entradas externas son:
 | El **registro de Windows** que se lee | El equipo | Se abre siempre `RegistryView::Registry64`. Un `DWord` llega como `Int32` con signo y se reinterpreta sin signo (`Format-RegistryValue`). `core/` **nunca lanza**: devuelve un estado (`read`/`missing`/`denied`/`badpath`). |
 | URLs de referencia (`-Link` de cada ajuste) | **Escritas en el propio repositorio** (`ui/Data/Categories/*.ps1`) | Antes de llegar al shell se validan: tiene que ser una URI absoluta con esquema `http` o `https` (`core/Shell/ExternalLink.ps1`). Cualquier otra cosa se rechaza sin tocar el shell. |
 | `-Recommended` / `-Default` de cada clave de registro | **Escritas en el propio repositorio** | Es el contrato de aplicación y de reversión. No proviene de entrada del usuario. |
+| Pasos de las secciones de comandos (`-Exe`, `-Arguments`, `-Service` de cada `New-CommandStep`) | **Escritos en el propio repositorio** (`ui/Data/Categories/Internet.ps1`) | Se ejecutan **sin shell**, solo ejecutables y servicios de una lista blanca, por ruta completa de la carpeta de sistema. Ver §12. El usuario solo elige **cuáles** correr, no **qué** se ejecuta. |
+| Salida de esos comandos | El equipo | Solo se **muestra** y se apunta en el log. Nunca se ejecuta ni se usa para construir otro comando. |
 
 No hay ningún punto donde una cadena controlable por un tercero se convierta en código:
 sin `Invoke-Expression`, sin `[scriptblock]::Create`, sin `Add-Type` con fuente
@@ -210,6 +214,8 @@ Corriendo como administrador, **nada de esto entra** en `ui/` ni en `core/`:
 | `Add-Type` con fuente construida en tiempo de ejecución | Lo mismo, compilado. (Los dos `Add-Type` del proyecto usan una cadena literal fija.) |
 | `Invoke-WebRequest`, `Invoke-RestMethod`, `DownloadString`, `DownloadFile`, `Start-BitsTransfer` | La aplicación no habla con la red. |
 | `Start-Process` con la ruta sin comillas | *Unquoted path* → ejecutable equivocado. |
+| Arrancar un proceso fuera de `core/Network/CommandRunner.ps1` (o un enlace fuera de `core/Shell/ExternalLink.ps1`) | Cada sitio que arranca procesos es una puerta; hay dos, con su lista blanca. Ver §12. |
+| Arrancar `cmd.exe`, `powershell.exe` o cualquier intérprete | Un intérprete convierte texto en código: tuberías, `&&`, redirecciones. |
 | Ejecutar algo desde una carpeta escribible por todos | `C:\ProgramData`, `%TEMP%`, la carpeta del `.exe` si está en Descargas. |
 | `-ExecutionPolicy Bypass` dentro del producto | Vale para desarrollo y para el `README`; no como algo que la app haga a espaldas del usuario. |
 
@@ -358,6 +364,15 @@ antes solo vivía en prosa. **Falla la suite** si:
 | Ningún `.ps1` de `ui/` o `core/` usa `Invoke-Expression`, `iex`, `[scriptblock]::Create`, `Invoke-WebRequest`, `Invoke-RestMethod`, `DownloadString`, `DownloadFile`, `Start-BitsTransfer` | Ejecución de código ajeno / llamada de red desde proceso elevado. |
 | Ningún `-Registry` apunta a un nombre de valor de la denylist del §3.4 sin `AllowsSecurityTradeoff = $true` en el ajuste | Un "tweak recomendado" que apaga Defender/UAC/Update sin declararlo. |
 | `core/Shell/ExternalLink.ps1` `$ExternalLinkSchemes` es exactamente `http`, `https` | Un proceso elevado abriendo `file:` / `ms-settings:` / un `.exe` local. |
+| Solo `core/Network/CommandRunner.ps1` usa `ProcessStartInfo` / `Process::Start`, y solo `ExternalLink.ps1` usa `Start-Process` | Una tercera puerta para arrancar procesos con privilegios. |
+| `$CommandAllowedExecutables` no tiene rutas ni intérpretes; `$CommandAllowedServices` no tiene servicios de seguridad (Defender, firewall, Update...) | Ampliar la lista hasta convertirla en una shell. |
+| Todo `New-CommandStep` de cualquier sección pasa `Test-CommandStepAllowed` | Un paso fuera de la lista acabaría en `blocked` al pulsar, en silencio. |
+| Un paso que toca `advfirewall` nunca viene marcado de serie y lleva aviso | Borrar las reglas del firewall sin que el usuario lo decida. |
+
+Cobertura de la ejecución de comandos: `tests/Core/CommandRunner.Tests.ps1` (lista
+blanca, rutas rechazadas, desarmado, `blocked`, un proceso real de solo lectura,
+decodificación de la salida) y `tests/Ui/StepsView.Tests.ps1` (solo lo marcado,
+siempre en el orden del archivo, detener, sección bloqueada).
 
 Cobertura de `core/` relacionada (ya existente):
 `tests/Core/RegistryWriter.Tests.ps1` (lista blanca, tipado, snapshot, relectura,
@@ -377,10 +392,46 @@ Cobertura de `core/` relacionada (ya existente):
 | 5 | Sin CI de PSScriptAnalyzer ni de la suite de pruebas (solo Semgrep) | Baja | **Documentado, no corregido.** Recomendación: un workflow en Windows runner que corra `tests/Run-Tests.ps1 -BothHosts` y `Invoke-ScriptAnalyzer`. Ambas herramientas ya están instaladas y se corren a mano (§9); falta el workflow. |
 | 6 | `Add-Type` en `SystemBackdrop.ps1` y `WorkArea.ps1` compila una cadena de C# | Info | **Aceptado.** Las cadenas son literales fijos y revisados; no se construyen en runtime. `WorkArea.ps1` (2026-10-03) subclasifica la ventana propia con `SetWindowLongPtr` solo para corregir `WM_GETMINMAXINFO`; no toca otras ventanas ni otros procesos. |
 | 7 | Contadores de las píldoras de la lista son fijos, no calculados | Info | Sin impacto de seguridad; cosmético. Ya documentado en `README.md`. |
+| 8 | Los pasos de Internet **no se deshacen** desde la app (reset de Winsock, TCP/IP, firewall, DNS fijo) | Media | **Aceptado (2026-10-03).** Son los comandos del `.cmd` que el usuario ya usaba. Mitigado: lo que borra configuración propia (firewall, DNS) viene desmarcado y con aviso, se ejecuta paso a paso con registro de cada uno, y los reset piden reiniciar. Pendiente si se quiere: un paso "volver a DHCP" para el DNS. |
 
 ---
 
-## 12. Cómo reportar una vulnerabilidad
+## 12. Ejecución de comandos — el contrato
+
+Las secciones de **comandos** (hoy Internet) no escriben claves: ejecutan programas
+de Windows (`netsh`, `ipconfig`, `nbtstat`, `arp`) y arrancan dos servicios. Todo
+pasa por **`core/Network/CommandRunner.ps1`**, y estas son sus reglas:
+
+1. **Sin intérprete.** `ProcessStartInfo` con `UseShellExecute = $false`: el
+   ejecutable se arranca directamente. Sin `cmd /c`, no hay tuberías, `&&`,
+   redirecciones ni comodines del shell. Un argumento es un argumento.
+2. **Lista blanca de ejecutables** (`$CommandAllowedExecutables`), solo por
+   **nombre**, y la ruta la pone siempre la app: la carpeta de sistema
+   (`[Environment]::GetFolderPath('System')`). Nunca el `PATH`: un `netsh.exe`
+   plantado en la carpeta de trabajo se ejecutaría como administrador. Una ruta en
+   el nombre (`C:\...\netsh.exe`, `.\netsh.exe`) se rechaza.
+3. **Argumentos literales** del repositorio. Se rechaza cualquiera con comillas,
+   saltos de línea o NUL. El usuario elige **qué pasos** corren, nunca su contenido.
+4. **Servicios**: solo los de `$CommandAllowedServices` (`Dhcp`, `Dnscache`), y solo
+   para **arrancarlos** si están parados. Nunca pararlos ni cambiar su inicio.
+5. **El orden lo decide el archivo**, no el clic: los pasos marcados corren de
+   arriba abajo. Muchos dependen de los anteriores (limpiar la pila antes de
+   ajustar TCP).
+6. **Nada lanza**: un paso fuera de la lista es `blocked`, uno que no arranca es
+   `error`, uno colgado se mata al pasar su tiempo (`timed out`, 60 s por defecto).
+7. **Rastro**: cada paso deja en el log su inicio (`running`) y su resultado con
+   código de salida, duración y la salida recortada.
+8. **Desarmable**: las pruebas lo desarman (`Set-CommandRunArmed $false`) y cada
+   paso acaba en `disarmed` sin arrancar nada.
+
+**Añadir un ejecutable o un servicio a la lista es una decisión de seguridad**, igual
+que una rama de la lista blanca del registro: se revisa a mano, se apunta aquí y las
+pruebas de §10 lo vigilan. Añadir un **paso** con un ejecutable ya permitido es solo
+añadir un `New-CommandStep` en el archivo de la sección.
+
+---
+
+## 13. Cómo reportar una vulnerabilidad
 
 Es un proyecto personal, repositorio público en GitHub
 (`github.com/johansparra/OptimizadorPC`). Para reportar un problema de seguridad, abre

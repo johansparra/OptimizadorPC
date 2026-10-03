@@ -24,7 +24,11 @@
 $Glyphs = @{
     # categorías
     Shield = 0xEA18; Power = 0xE7E8; Game = 0xE7FC; Sync = 0xE895
-    Bell   = 0xEA8F; Volume = 0xE767
+    Bell   = 0xEA8F; Volume = 0xE767; Globe = 0xE774
+    # ejecución de pasos (ui/Views/CategoryStepsView.ps1)
+    Play = 0xE768; Stop = 0xE71A; Clock = 0xE823; Done = 0xE930
+    Failed = 0xEA39; Warning = 0xE7BA; Restart = 0xE72C
+    CheckOn = 0xE73A; CheckOff = 0xE739
     # navegación lateral
     Package = 0xE7B8; Gauge = 0xEC4A; Palette = 0xE790
     Wrench  = 0xE90F; Gear  = 0xE713; More    = 0xE712

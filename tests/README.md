@@ -40,7 +40,7 @@ tests/
 | ------- | ----- |
 | `Run-Tests.ps1` | El lanzador. Comprueba STA, carga todo y resume. `-BothHosts` lanza 5.1 y 7 en paralelo. |
 | `Harness/TestKit.ps1` | `Describe` / `It`, `Assert-*`, `Skip-Test`. |
-| `Harness/AppHost.ps1` | Carga la aplicación sin abrir la ventana. `New-AppWindow`, `Find-Visuals`, `Get-VisualText`. Redirige `settings.json` a un temporal y **desarma la escritura al registro** (regla 28). |
+| `Harness/AppHost.ps1` | Carga la aplicación sin abrir la ventana. `New-AppWindow`, `Find-Visuals`, `Get-VisualText`. Redirige `settings.json` a un temporal, **desarma la escritura al registro** (regla 28) y **la ejecución de comandos de red** (`Set-CommandRunArmed $false`, sin pausas), y se porta como el `.exe`: elevado (`Set-AppElevationOverride $true`). |
 | `Harness/Fixtures.ps1` | Claves de prueba en `HKCU\Software\OptimizadorPC\Tests\<PID>`, secciones de mentira, entradas de log. |
 | `Core/Log.Tests.ps1` | El registro de actividad: apuntar, filtrar, el tope del buffer, el volcado a archivo. |
 | `Core/Registry.Tests.ps1` | Leer el registro **de verdad**: los cuatro estados, el DWord con signo, que nunca lance. |
@@ -49,6 +49,9 @@ tests/
 | `Core/RegistryState.Tests.ps1` | El volcado a los datos de `ui/Data/Categories/` y el aviso de avance. |
 | `Core/SettingStatus.Tests.ps1` | En qué estado queda cada ajuste al comparar lo leído con lo declarado. |
 | `Core/ExternalLink.Tests.ps1` | Que solo se abran URLs `http`/`https` absolutas y que un esquema no permitido ni llegue al shell. |
+| `Core/CommandRunner.Tests.ps1` | Ejecutar los pasos de Internet: lista blanca de ejecutables y servicios, rutas e intérpretes rechazados, desarmado, `blocked`, un proceso **real** de solo lectura (`netsh interface show interface`) y la salida con tildes en UTF-8 y en OEM. |
+| `Core/SystemInfo.Tests.ps1` | Sobre qué corre el programa: Windows (sin el "Windows 10" falso), PowerShell, exe/script, arquitectura. |
+| `Core/WorkArea.Tests.ps1` | Maximizar al área de trabajo, con una ventana Win32 invisible y `WM_GETMINMAXINFO` a mano. |
 | `Ui/Window.Tests.ps1` | La ventana, los temas, la barra de título, el menú lateral, las vistas. |
 | `Ui/LogPanel.Tests.ps1` | El cajón del log: abrir, cerrar, las filas, el idioma. |
 | `Ui/LogWindow.Tests.ps1` | El log sacado a su propia ventana y devuelto al cajón. |
@@ -59,6 +62,9 @@ tests/
 | `Ui/ViewMenu.Tests.ps1` | El chip "Vista" y su desplegable de opciones. |
 | `Ui/Visuals.Tests.ps1` | Entrada en cascada, `Get-EnterTarget`, indicadores deslizantes, `Start-CountUp` sin ventana. |
 | `Ui/Language.Tests.ps1` | Que no quede ni un texto sin traducir en toda la interfaz. |
+| `Ui/StepsView.Tests.ps1` | La sección Internet: solo lo marcado y SIEMPRE en el orden del archivo, detener, bloqueo, y el caso sin permisos de administrador (pasos apagados, fuera de la cola) y la insignia de la barra. |
+| `Ui/StatusFilter.Tests.ps1` | Las píldoras del resumen como filtro: uno, varios, quitar, "Mostrar todos", y que llegar desde la búsqueda lo quite. |
+| `Ui/AboutMenu.Tests.ps1` | El panel "Acerca de" y que la versión salga de una sola fuente. |
 | `Ui/Wiring.Tests.ps1` | Que los botones de `main.ps1` respondan al pulsarlos. |
 | `Source/Rules.Tests.ps1` | Las reglas de `CLAUDE.md` que se ven leyendo el código, el orden de carga de las capas y que el paquete de `build.ps1` parsee. |
 | `Source/Security.Tests.ps1` | Invariantes de seguridad: rutas de `-Registry` dentro de la lista blanca, sin ejecución dinámica ni red en `ui/`/`core/`, sin nombres de valor que degraden la seguridad sin declararlo, `ExternalLink` solo `http`/`https`. Ver `SECURITY.md`. |

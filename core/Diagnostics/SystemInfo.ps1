@@ -60,6 +60,29 @@ function Get-WindowsSummary {
 }
 
 <#
+    ¿Corre el programa con permisos de administrador?
+
+    Es la pregunta que hace la interfaz -la insignia de la barra de
+    título, los pasos de Internet que sin permisos fallan-. Se contesta
+    con Test-ProcessElevated (core/Registry/Writer.ps1), salvo que se
+    haya fijado una respuesta con Set-AppElevationOverride: las pruebas
+    lo hacen para probar los dos casos sin depender de cómo se lanzó
+    la suite. $null = sin fijar, se pregunta al sistema.
+#>
+$AppElevationOverride = $null
+
+function Set-AppElevationOverride {
+    param($Value)
+    if ($null -eq $Value) { $script:AppElevationOverride = $null }
+    else { $script:AppElevationOverride = [bool]$Value }
+}
+
+function Test-AppElevated {
+    if ($null -ne $script:AppElevationOverride) { return [bool]$script:AppElevationOverride }
+    [bool](Test-ProcessElevated)
+}
+
+<#
     ¿Es el .exe compilado o el script? El .exe de ps2exe es su propio
     proceso; el script corre dentro de powershell.exe o pwsh.exe.
 #>
@@ -95,7 +118,7 @@ function Get-AppRuntimeInfo {
         Windows      = Get-WindowsSummary
         PowerShell   = $ps
         HostKind     = Get-AppHostKind
-        Elevated     = [bool](Test-ProcessElevated)
+        Elevated     = Test-AppElevated
         Architecture = $arch
         DataFolder   = $data
     }

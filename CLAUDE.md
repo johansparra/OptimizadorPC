@@ -328,19 +328,78 @@ guarda copia del valor previo (`$RegistrySnapshots`, **solo en memoria** hoy), v
 por relectura y soporta `-WhatIf` (`SupportsShouldProcess`). El toggle la dispara vía
 `core/Registry/SettingApply.ps1`: `ON`→`Recommended`, `OFF`→`Default`. **Antes de tocar
 esto lee `SECURITY.md`** — la app corre elevada y ampliar la lista blanca es una
-decisión de seguridad, no un detalle. Servicios, energía y red **todavía no se
-escriben**: cada uno es una subcarpeta nueva de `core/` con su propio contrato.
+decisión de seguridad, no un detalle. La red ya tiene su mecanismo (`core/Network/`,
+ver "Las secciones de comandos" más abajo). Servicios y energía **todavía no**: cada
+uno será una subcarpeta nueva de `core/` con su propio contrato.
 
 - La lógica de sistema vive en `core/`, nunca dentro de las vistas ni de los componentes.
-- **`core/` está dividido por lo que toca de Windows**, no por tamaño: `core/Registry/` (leer y escribir el registro), `core/Interop/` (llamadas a la API de Windows: Mica y Acrílico, y maximizar al área de trabajo), `core/Shell/` (abrir enlaces por el shell, solo `http`/`https`) y `core/Diagnostics/` (el registro de actividad y `SystemInfo.ps1`, sobre qué corre el programa). Un mecanismo nuevo — red, servicios, energía — es una subcarpeta nueva ahí dentro, y entra al `.exe` sola.
+- **`core/` está dividido por lo que toca de Windows**, no por tamaño: `core/Registry/` (leer y escribir el registro), `core/Interop/` (llamadas a la API de Windows: Mica y Acrílico, y maximizar al área de trabajo), `core/Shell/` (abrir enlaces por el shell, solo `http`/`https`), `core/Network/` (ejecutar los pasos de las secciones de comandos, sin shell y por lista blanca) y `core/Diagnostics/` (el registro de actividad y `SystemInfo.ps1`, sobre qué corre el programa). Un mecanismo nuevo — red, servicios, energía — es una subcarpeta nueva ahí dentro, y entra al `.exe` sola.
 - **Nada de `core/` lanza hacia arriba.** Una clave inexistente o sin permisos es una respuesta, no un error: se devuelve un estado (`read` / `missing` / `denied` / `badpath`) y la interfaz lo pinta. Una excepción escapando de aquí tumbaría la ventana.
 - **Un DWord llega como `Int32` con signo.** `0xFFFFFFFF` se lee como `-1`. Hay que reinterpretarlo sin signo (`Format-RegistryValue`) o los valores altos salen negativos y no cuadran con lo declarado.
 - **Se abre siempre `RegistryView::Registry64`.** Si el `.exe` se compilara a 32 bits, `HKLM\SOFTWARE` se redirigiría a `Wow6432Node` en silencio.
 - El estado real se lee al entrar en la sección y se vuelca en las claves de `-Registry`; el `Current` **no se declara** en `ui/Data/Categories/`.
 - **La etiqueta de un ajuste que lee el registro se calcula, no se declara.** `core/Registry/SettingStatus.ps1` compara lo leído con el `Recommended` y el `Default` de cada clave y deja un `Status`: `optimized`, `factory`, `custom` o `unknown`. Un ajuste con `-Registry` **no lleva `-Tags`** — serían la versión inventada de lo mismo. Se compara por valor y no por escritura (`0x0000000A` = `10` = `0XA`, y `-1` = `0xFFFFFFFF`), un valor ausente es `factory` (Windows usa el suyo), y sin nada declarado con lo que comparar es `unknown`, nunca `custom`.
+- **Las píldoras del resumen de una sección son un FILTRO.** Pulsar una enseña solo los
+  ajustes en ese estado; se combinan; sin ninguna marcada se ve todo; con filtro sale
+  "Mostrar todos". Vive en `ui/Components/Layout/CategorySummary.ps1`
+  (`$CategoryStatusFilter`, por Id de sección, dura la sesión) y esconde las tarjetas
+  ya construidas mirando su `Tag` (el ajuste). Tocar un interruptor NO reaplica el
+  filtro: la tarjeta no desaparece bajo el ratón. Llegar desde la búsqueda lo quita.
 - **El estado se calcula donde se lee, no donde se pinta.** Cuelga de `Update-CategoryRegistryState`, así que entrar en la sección y pulsar *Refrescar* lo dejan al día por el mismo camino. La interfaz solo lee `$Setting.Status` y `$Key.Status`; los colores y los nombres salen todos de `Get-StatusStyle` (`ui/Design/UiKit.ps1`), que es el único sitio donde se escriben.
 - Todo cambio de registro/servicio debe ser reversible y tener su valor de restauración documentado. Para el registro, ese contrato es el `Default` de cada clave (a dónde vuelve `OFF`) más el snapshot en memoria de `Writer.ps1` (el valor que había, aunque fuera personalizado). **Pendiente**: persistir ese snapshot y exponer "deshacer" en la UI; hoy se pierde al cerrar.
 - **Un ajuste que baja la postura de seguridad del equipo** (UAC, Defender, SmartScreen, Windows Update, BitLocker…) no puede llamarse "Recommended" sin más, su descripción tiene que decir qué protección se pierde, y no puede venir activo por defecto. `tests/Source/Security.Tests.ps1` vigila que ningún `-Registry` toque esos nombres de valor sin declararlo. Ver `SECURITY.md` §4.
+
+## Las secciones de comandos (hoy Internet)
+
+Una sección que declara **`Steps`** en vez de `Items` no enseña ajustes: es una lista
+de comandos para marcar y un botón para correrlos. Sale de `Reiniciar_Red_v3.cmd`, un
+comando por paso.
+
+| Qué | Dónde |
+| --- | ----- |
+| Los pasos (qué se ejecuta, en qué orden, qué viene marcado) | `ui/Data/Categories/Internet.ps1` |
+| Cómo se declara un paso | `New-CommandStep` en `ui/Engine/CategoryRegistry.ps1` |
+| Ejecutar un paso: lista blanca, sin shell, rastro en el log | `core/Network/CommandRunner.ps1` |
+| La cola, las pausas, el temporizador y el marco de estado | `ui/Components/Layout/StepRunPanel.ps1` |
+| La fila del checklist | `ui/Components/Cards/StepRow.ps1` |
+| La pantalla | `ui/Views/CategoryStepsView.ps1` (la abre `Show-CategoryDetailView` al ver `Steps`) |
+
+- **Añadir un comando = un `New-CommandStep` en su sitio de la lista.** Si usa un
+  ejecutable o un servicio que no está en `$CommandAllowedExecutables` /
+  `$CommandAllowedServices`, hay que darlo de alta ahí: es una decisión de seguridad
+  (`SECURITY.md` §12) y `Security.Tests.ps1` falla si un paso no pasa la lista.
+- **El orden de ejecución es el del archivo**, marque el usuario lo que marque. Los
+  pasos dependen unos de otros: no se reordenan al vuelo.
+- **Nunca un intérprete**: ni `cmd /c`, ni `powershell -c`. El ejecutable se arranca
+  directo, por ruta completa de la carpeta de sistema, y cada argumento es un elemento
+  de `-Arguments`. Una tubería o un `if errorlevel` del `.cmd` se traduce a otro tipo de
+  paso (los servicios usan `-Service`, que mira `Get-Service` y arranca si hace falta).
+- **La ventana no se congela**: un `DispatcherTimer` late cada 120 ms y en cada latido
+  hace UNA cosa (cerrar el paso terminado, seguir la pausa o arrancar el siguiente).
+  Las pausas del `.cmd` (`timeout /t 5`) son `-PauseAfter`. Sin bucle de mensajes el
+  temporizador no late: las pruebas llaman a `Invoke-StepRunTick` a mano.
+- **El estado vive en `$StepRun`, no en los controles.** `Sync-StepRunPanel` pinta a
+  partir de él, así que cambiar de idioma o salir y volver a la sección en mitad de una
+  ejecución enseña lo mismo.
+- **El marco va en `ContentDock`** (`MainWindow.xaml`): un hueco fijo sobre el área
+  que se desplaza, en la columna del contenido. En la cabecera empujaba el menú lateral.
+  `Set-PageDock` lo llena y `Clear-PageHeader` lo vacía.
+- **La salida se lee como bytes** y se decodifica después: `netsh` escribe UTF-8 si lo
+  arranca una terminal en 65001 y OEM 850 desde el `.exe` sin consola.
+- **Permisos de administrador.** El programa está pensado para correr SIEMPRE elevado
+  (el `.exe` lo pide). La insignia junto a la versión (`Sync-AdminBadge`) dice si lo
+  está. Cada paso lleva `-RequiresAdmin` (por defecto `$true`); sin permisos, esos
+  pasos salen desmarcados, apagados y con el aviso, y no entran en la cola. Hoy solo
+  tres funcionan sin permisos, **comprobado, no supuesto**: `nbtstat -R` sin permisos
+  falla y aun así devuelve 0. La selección que vale es la EFECTIVA
+  (`Test-StepSelected` = marcado **y** `Test-StepAvailable`), no `Selected` a secas.
+  Quién está elevado lo dice `Test-AppElevated`; las pruebas lo fijan con
+  `Set-AppElevationOverride` (el arnés, a `$true`, como el `.exe`).
+- **`@($Category.Steps).Count` no sirve para preguntar si hay pasos**: sin el campo,
+  `@($null)` cuenta 1. Usa `Test-CategoryHasSteps`.
+- **Las pruebas no tocan la red**: el arnés desarma la ejecución (`Set-CommandRunArmed
+  $false`) y apaga las pausas. La única que arranca un proceso real usa el paso de solo
+  lectura (`netsh interface show interface`).
 
 ## El registro de actividad (el botón "log")
 

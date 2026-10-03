@@ -58,8 +58,15 @@ function New-CategorySummary {
 
 # Una píldora por estado real. La de 'desconocido' solo sale si hay
 # alguno: en cuanto se lee todo bien, sobra de la fila.
+#
+# Y son BOTONES DE FILTRO: pulsar una enseña solo los ajustes en ese
+# estado; se pueden combinar; sin ninguna marcada se ve todo. Ver
+# "El filtro por estado" más abajo.
 function Add-StatusPills {
     param($Window, $Row, $Counts)
+
+    $category = $Row.Tag
+    $filter = @(Get-CategoryStatusFilter $category)
 
     foreach ($status in Get-SettingStatusNames) {
         $n = [int]$Counts.$status
@@ -67,7 +74,119 @@ function Add-StatusPills {
 
         $style = Get-StatusStyle $status
         $tip = (T $style.Count) -f $n, $Counts.Total
-        $Row.Children.Add((New-SummaryPill $Window $style (T $style.Label) $n $Counts.Total $tip)) | Out-Null
+        if ($n -gt 0) { $tip += "`n" + (T 'Click to show only these settings. Click again to remove the filter.') }
+
+        $pill = New-SummaryPill $Window $style (T $style.Label) $n $Counts.Total $tip
+        Set-FilterPillState $pill $style ($filter -contains $status) ($filter.Count -gt 0)
+
+        # Una píldora a cero no filtra nada: no se puede pulsar.
+        if ($n -gt 0) {
+            $pill.Cursor = 'Hand'
+            $pill.Tag = [PSCustomObject]@{ Category = $category; Status = $status }
+            $pill.Add_MouseLeftButtonUp({ param($s, $e) Switch-CategoryStatusFilter -Category $s.Tag.Category -Status $s.Tag.Status })
+        }
+        $Row.Children.Add($pill) | Out-Null
+    }
+
+    if ($filter.Count -gt 0) { $Row.Children.Add((New-ClearFilterPill $category)) | Out-Null }
+}
+
+# Cómo se ve una píldora según el filtro: marcada, con borde de su
+# color y una marca; las demás, atenuadas mientras haya filtro; sin
+# filtro, todas normales.
+function Set-FilterPillState {
+    param($Pill, $Style, [bool]$Selected, [bool]$Active)
+
+    if ($Selected) {
+        $Pill.BorderThickness = New-Object System.Windows.Thickness 1.5
+        Set-BoxLine $Pill $Style.Fg
+        $check = New-Icon 'Check' 10 $Style.Fg
+        $check.Margin = New-Object System.Windows.Thickness 0, 0, 5, 0
+        $Pill.Child.Children.Insert(0, $check)
+        $Pill.Opacity = 1
+    }
+    else {
+        # El mismo grosor de borde, transparente: así marcar una no
+        # mueve a las demás de sitio.
+        $Pill.BorderThickness = New-Object System.Windows.Thickness 1.5
+        $Pill.BorderBrush = [System.Windows.Media.Brushes]::Transparent
+        $Pill.Opacity = if ($Active) { 0.5 } else { 1 }
+    }
+}
+
+# "Mostrar todos": quita el filtro. Solo sale si hay alguno puesto.
+function New-ClearFilterPill {
+    param($Category)
+
+    $pill = New-Pill 'Close' (T 'Show all') 'TextMuted' 'Surface' (T 'Remove the filter')
+    $pill.Margin = New-Object System.Windows.Thickness 8, 0, 4, 0
+    $pill.BorderThickness = New-Object System.Windows.Thickness 1
+    Set-BoxLine $pill 'Stroke'
+    $pill.Cursor = 'Hand'
+    $pill.Tag = $Category
+    $pill.Add_MouseLeftButtonUp({ param($s, $e) Clear-CategoryStatusFilter -Category $s.Tag })
+    $pill
+}
+
+# ---- El filtro por estado ------------------------------------------
+#
+# Qué estados se están enseñando en cada sección, por su Id. Vacío =
+# todo. Dura la sesión: volver a la sección la deja como estaba, y las
+# píldoras marcadas lo dicen.
+#
+# Al tocar el interruptor de un ajuste su estado cambia, pero la
+# tarjeta NO se esconde aunque deje de cumplir el filtro: desaparecer
+# bajo el ratón justo después de pulsar desconcierta. El filtro se
+# vuelve a aplicar al pulsar una píldora o al entrar en la sección.
+$CategoryStatusFilter = @{}
+
+function Get-CategoryStatusFilter {
+    param($Category)
+    if (-not $Category) { return @() }
+    $f = $CategoryStatusFilter[[string]$Category.Id]
+    if ($f) { return @($f) }
+    @()
+}
+
+function Switch-CategoryStatusFilter {
+    param($Category, [string]$Status)
+
+    $current = @(Get-CategoryStatusFilter $Category)
+    if ($current -contains $Status) { $next = @($current | Where-Object { $_ -ne $Status }) }
+    else { $next = $current + $Status }
+    $CategoryStatusFilter[[string]$Category.Id] = $next
+
+    Update-CategorySummary
+    Update-CategoryFilterView $Category
+}
+
+function Clear-CategoryStatusFilter {
+    param($Category)
+    if (-not $Category) { return }
+    $CategoryStatusFilter.Remove([string]$Category.Id)
+    Update-CategorySummary
+    Update-CategoryFilterView $Category
+}
+
+<#
+    Enseña u oculta las tarjetas de la pantalla de detalle según el
+    filtro. Trabaja sobre las tarjetas ya construidas: no relee el
+    registro ni rehace la lista, así que no parpadea.
+#>
+function Update-CategoryFilterView {
+    param($Category)
+
+    $window = Get-AppWindow
+    if (-not $window) { return }
+    $list = $window.FindName('MainContent').Content
+    if ($list -isnot [System.Windows.Controls.Panel]) { return }
+
+    $filter = @(Get-CategoryStatusFilter $Category)
+    foreach ($card in $list.Children) {
+        $setting = $card.Tag
+        if (-not $setting -or -not $setting.PSObject.Properties['Registry']) { continue }
+        $show = ($filter.Count -eq 0) -or ($filter -contains [string]$setting.Status)
+        $card.Visibility = if ($show) { 'Visible' } else { 'Collapsed' }
     }
 }
 

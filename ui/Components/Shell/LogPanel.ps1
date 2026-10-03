@@ -833,6 +833,12 @@ function New-LogPill {
         'write failed'     = @{ Fg = 'Danger';    Bg = 'DangerSoft' }
         'typefail'         = @{ Fg = 'Danger';    Bg = 'DangerSoft' }
         'unsupported'      = @{ Fg = 'Warn';      Bg = 'WarnSoft' }
+        # Ejecución de comandos (core/Network/CommandRunner.ps1).
+        'running'          = @{ Fg = 'Accent';    Bg = 'AccentSoft' }
+        'succeeded'        = @{ Fg = 'Success';   Bg = 'SuccessSoft' }
+        'failed'           = @{ Fg = 'Danger';    Bg = 'DangerSoft' }
+        'timed out'        = @{ Fg = 'Danger';    Bg = 'DangerSoft' }
+        'cancelled'        = @{ Fg = 'Warn';      Bg = 'WarnSoft' }
     }
 
     $word = $Entry.Status

@@ -93,6 +93,29 @@ function Get-TestSettingsPath { $AppSettingsPath }
 Set-RegistryWriteArmed $false
 
 <#
+    NI EJECUTAN COMANDOS DE RED DE VERDAD.
+
+    Lo mismo para core/Network/CommandRunner.ps1: una prueba que pulse
+    "Ejecutar" en la sección Internet resetearía Winsock y la pila
+    TCP/IP de la máquina. Desarmado, cada paso termina en 'disarmed'
+    sin arrancar nada. Las pruebas que quieran un proceso real lo
+    rearman con un paso de solo lectura y lo desarman en su finally.
+
+    Y sin pausas: el "esperar 5 s" del .cmd haría esperar a la suite.
+#>
+Set-CommandRunArmed $false
+Set-StepRunPauses $false
+
+<#
+    Y SE PORTAN COMO EL .EXE: elevadas. Test-AppElevated contesta $true
+    pase lo que pase, para que lo que se ve en pantalla no dependa de
+    si la suite se lanzó como administrador. Las pruebas del caso SIN
+    permisos lo cambian con Set-AppElevationOverride $false y lo
+    devuelven en su finally.
+#>
+Set-AppElevationOverride $true
+
+<#
     Una ventana de verdad, con su XAML cargado y su tema puesto,
     pero SIN enseñar: no hace falta pintar nada para comprobar
     que el árbol de controles es el que debe ser.

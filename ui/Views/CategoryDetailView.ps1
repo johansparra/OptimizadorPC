@@ -25,6 +25,16 @@ $CategoryHighlightCard = $null
 function Show-CategoryDetailView {
     param($Window, $Category, $Highlight)
 
+    # Una sección de COMANDOS (declara Steps, hoy Internet) no enseña
+    # ajustes: tiene su propia pantalla. Se desvía desde aquí, y no
+    # desde cada sitio que abre una sección, para que el enrutador siga
+    # recordando 'Show-CategoryDetailView' y repintar -cambiar de
+    # idioma, el menú Vista- funcione igual que en las demás.
+    if (Test-CategoryHasSteps $Category) {
+        Show-CategoryStepsView -Window $Window -Category $Category
+        return
+    }
+
     $locked = [bool]$Category.Locked
     $keys = Get-CategoryRegistryKeyCount $Category
 
@@ -72,7 +82,12 @@ function Show-CategoryDetailView {
     if ($Category.HideViewOptions) { $hiddenViewOptions = @($Category.HideViewOptions) }
     Add-PageAction $Window (New-ViewMenu $Window -Hide $hiddenViewOptions)
 
-    # Fila centrada con el recuento por etiqueta.
+    # Desde un resultado de búsqueda hay que VER el ajuste buscado: un
+    # filtro por estado puesto antes podría esconderlo.
+    if ($Highlight) { $CategoryStatusFilter.Remove([string]$Category.Id) }
+
+    # Fila centrada con el recuento por estado. Sus píldoras son
+    # además el filtro de la lista (ver CategorySummary.ps1).
     Set-PageSummary -Window $Window -Category $Category
 
     # ---- 2. Cuerpo ----
@@ -98,6 +113,7 @@ function Show-CategoryDetailView {
 
     # ---- 3. Pintar con entrada en cascada ----
     $Window.FindName('MainContent').Content = $list
+    Update-CategoryFilterView $Category
     Start-StaggeredEnter $list
 
     Show-HighlightedSetting $Window

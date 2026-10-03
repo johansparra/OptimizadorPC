@@ -30,6 +30,7 @@ $CategoryIndex = @(
 
     #  Id                    Visible          Bloqueada
     @{ Id = 'regedit';       Visible = $true;  Locked = $false }
+    @{ Id = 'internet';      Visible = $true;  Locked = $false }
     @{ Id = 'power';         Visible = $true;  Locked = $false }
     @{ Id = 'gaming';        Visible = $true;  Locked = $false }
     @{ Id = 'update';        Visible = $true;  Locked = $false }

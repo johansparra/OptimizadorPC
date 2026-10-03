@@ -17,6 +17,26 @@ function Clear-PageHeader {
     $Window.FindName('HeaderTitleArea').Children.Clear()
     $Window.FindName('HeaderActionsArea').Children.Clear()
     $Window.FindName('HeaderSummaryArea').Children.Clear()
+
+    # El hueco fijo sobre el contenido también es de la pantalla: la
+    # siguiente no tiene por qué querer el marco de la anterior.
+    $dock = $Window.FindName('ContentDock')
+    if ($dock) { $dock.Children.Clear() }
+}
+
+<#
+    Pone un bloque FIJO encima del contenido, en su misma columna: no
+    se desplaza con la lista, así que se ve siempre aunque sea larga.
+    Lo usa el marco de ejecución de las secciones de comandos.
+
+    Va en ContentDock (MainWindow.xaml) y no en la cabecera para no
+    empujar el menú lateral hacia abajo. Clear-PageHeader lo vacía.
+#>
+function Set-PageDock {
+    param($Window, $Element)
+    $dock = $Window.FindName('ContentDock')
+    $dock.Children.Clear()
+    $dock.Children.Add($Element) | Out-Null
 }
 
 # Título grande + subtítulo gris (pantalla principal).

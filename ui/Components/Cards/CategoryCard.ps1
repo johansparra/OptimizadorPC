@@ -118,11 +118,27 @@ function New-CategoryStats {
     $stats.Orientation = 'Horizontal'
     $stats.VerticalAlignment = 'Center'
 
+    # Una sección de comandos no tiene ajustes que contar: dice
+    # cuántos pasos tiene y cuántos hay marcados para correr.
+    if (Test-CategoryHasSteps $Category) {
+        Add-CategoryStepPills $stats $Category
+        return $stats
+    }
+
     $counts = Get-CategoryStatusCounts $Category
     if ($counts) { Add-CategoryStatusPills $stats $counts }
     else         { Add-CategoryTagPills   $stats $Category }
 
     $stats
+}
+
+function Add-CategoryStepPills {
+    param($Stats, $Category)
+
+    $steps = @($Category.Steps)
+    $picked = @($steps | Where-Object { Test-StepSelected $_ }).Count
+    $Stats.Children.Add((New-Pill 'CheckOn' "$picked/$($steps.Count)" 'Accent' 'AccentSoft' `
+        ((T '{0} of {1} commands selected') -f $picked, $steps.Count))) | Out-Null
 }
 
 # Una píldora por estado real, con los iconos y colores de

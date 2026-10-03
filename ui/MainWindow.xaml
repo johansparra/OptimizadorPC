@@ -488,6 +488,18 @@
                         <TextBlock x:Name="AppVersionBadge" Text="v1.0.0" FontSize="10" FontWeight="SemiBold"
                                    Foreground="{DynamicResource TextFaint}"/>
                     </Border>
+                    <!-- Con o sin permisos de administrador. Solo el hueco: el
+                         icono, el texto y los colores los pone Sync-AdminBadge
+                         (ui/Components/Shell/TitleBar.ps1), que es quien traduce. -->
+                    <Border x:Name="AdminBadge" CornerRadius="6" Padding="7,2,8,3" Margin="8,1,0,0"
+                            VerticalAlignment="Center">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock x:Name="AdminBadgeIcon" FontFamily="{StaticResource IconFont}" FontSize="10.5"
+                                       VerticalAlignment="Center" Margin="0,0,5,0"/>
+                            <TextBlock x:Name="AdminBadgeText" FontSize="10" FontWeight="SemiBold"
+                                       VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
 
                 <!-- acciones -->
@@ -583,12 +595,23 @@
                 <Canvas x:Name="Backdrop" Grid.Column="1" ClipToBounds="True"
                         IsHitTestVisible="False"/>
 
-                <!-- CONTENIDO PRINCIPAL -->
-                <!-- Con nombre porque ui/Engine/Router.ps1 guarda y restaura su
-                     posicion al repintar la misma pantalla. -->
-                <ScrollViewer x:Name="MainScroll" Grid.Column="1" VerticalScrollBarVisibility="Auto" Padding="30,2,22,26">
-                    <ContentControl x:Name="MainContent"/>
-                </ScrollViewer>
+                <!-- CONTENIDO PRINCIPAL
+                     Dos filas: arriba un hueco FIJO (ContentDock), que no se
+                     desplaza con la lista -lo usa el marco de ejecucion de las
+                     secciones de comandos, ver Set-PageDock-; abajo, lo que
+                     se desplaza. Vacio, el hueco no ocupa alto. -->
+                <Grid Grid.Column="1">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    <StackPanel x:Name="ContentDock" Grid.Row="0" Margin="30,2,30,0"/>
+                    <!-- Con nombre porque ui/Engine/Router.ps1 guarda y restaura su
+                         posicion al repintar la misma pantalla. -->
+                    <ScrollViewer x:Name="MainScroll" Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="30,2,22,26">
+                        <ContentControl x:Name="MainContent"/>
+                    </ScrollViewer>
+                </Grid>
             </Grid>
 
             <!-- ===== BARRA DE PROGRESO =====

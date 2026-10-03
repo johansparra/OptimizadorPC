@@ -85,6 +85,11 @@ function New-SettingCard {
     }
 
     $card.Child = $stack
+
+    # El ajuste viaja en la tarjeta: el filtro por estado de la fila de
+    # resumen (ui/Components/Layout/CategorySummary.ps1) lo mira para
+    # decidir qué tarjetas se ven.
+    $card.Tag = $Setting
     $card
 }
 

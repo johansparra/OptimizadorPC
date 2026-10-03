@@ -132,6 +132,47 @@ Describe 'ui/Lang - no falta ninguna traducción' {
         foreach ($k in 'exe', 'script', 'unknown') { Get-AboutHostLabel $k | Out-Null }
         foreach ($b in $true, $false) { Get-AboutElevationLabel $b | Out-Null }
 
+        # La sección de comandos ya se ha pintado parada (va en el bucle
+        # de secciones). Sus otros textos solo salen al ejecutar: en
+        # marcha, en pausa, detenida, pidiendo reiniciar, y cada estado
+        # de paso. Se recorren todos.
+        foreach ($k in @($StepStatusStyles.Keys)) { T (Get-StepStatusStyle $k).Word | Out-Null }
+        $net = Get-CategoryById 'internet'
+        Show-View -Name 'Show-CategoryDetailView' -Arguments @{ Category = $net }
+        Set-StepRunPauses $true
+        try {
+            Start-StepRun -Category $net | Out-Null
+            $n = 0
+            while ((Get-StepRunState).Phase -ne 'pausing' -and (Get-StepRunActive) -and $n -lt 200) { Invoke-StepRunTick; $n++ }
+            Sync-StepRunPanel
+            Stop-StepRun
+            (Get-StepRunState).Restart = $true
+            Sync-StepRunPanel
+        }
+        finally {
+            Set-StepRunPauses $false
+            (Get-StepRunState).Restart = $false
+        }
+
+        # El filtro por estado de Regedit: el "Mostrar todos" y el pie
+        # de ayuda de las píldoras solo salen con un filtro puesto.
+        $reg = Get-CategoryById 'regedit'
+        Show-View -Name 'Show-CategoryDetailView' -Arguments @{ Category = $reg }
+        Switch-CategoryStatusFilter -Category $reg -Status 'optimized'
+        Clear-CategoryStatusFilter -Category $reg
+
+        # Y sin permisos de administrador: la insignia de la barra, el
+        # aviso del marco y el de cada paso que se apaga.
+        Set-AppElevationOverride $false
+        try {
+            Update-TitleBarTexts $ventana
+            Show-View -Name 'Show-CategoryDetailView' -Arguments @{ Category = $net }
+        }
+        finally {
+            Set-AppElevationOverride $true
+            Update-TitleBarTexts $ventana
+        }
+
         # El botón de guardar dice una cosa u otra según haya algo
         # apuntado, y los dos rótulos tienen que estar traducidos.
         Clear-AppLog

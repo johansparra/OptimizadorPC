@@ -26,10 +26,11 @@ Describe 'ui/MainWindow.xaml - la carcasa' {
         # error sale muy lejos de donde está la causa.
         $nombres = @(
             'TitleBar', 'BtnMenu', 'BtnLog', 'BtnTheme', 'BtnHelp', 'AppVersionBadge'
+            'AdminBadge', 'AdminBadgeIcon', 'AdminBadgeText'
             'BtnMinimize', 'BtnMaximize', 'BtnClose'
             'HeaderTitleArea', 'HeaderActionsArea', 'HeaderSummaryArea'
             'Sidebar', 'NavTop', 'NavBottom'
-            'MainScroll', 'MainContent'
+            'MainScroll', 'MainContent', 'ContentDock'
             'ProgressStrip', 'ProgressText', 'ProgressCount', 'ProgressDone', 'ProgressLeft'
             'LogOverlay', 'LogScrim', 'LogDrawer'
         )
@@ -341,6 +342,9 @@ Describe 'ui/Views - las pantallas se pintan' {
         $ventana = New-AppWindow
 
         foreach ($cat in Get-OptimizationCategories) {
+            # Las de comandos (Internet) pintan pasos, no ajustes: las
+            # cubre tests/Ui/StepsView.Tests.ps1.
+            if (Test-CategoryHasSteps $cat) { continue }
             Show-View -Name 'Show-CategoryDetailView' -Arguments @{ Category = $cat }
 
             $lista = $ventana.FindName('MainContent').Content
@@ -431,7 +435,7 @@ Describe 'ui/Views - las pantallas se pintan' {
         # El resto del programa no se mueve: sin claves declaradas no
         # hay estado que calcular, y la fila cuenta por etiquetas.
         $ventana = New-AppWindow
-        $cat = Get-OptimizationCategories | Where-Object { (Get-CategoryRegistryKeyCount $_) -eq 0 } | Select-Object -First 1
+        $cat = Get-OptimizationCategories | Where-Object { (Get-CategoryRegistryKeyCount $_) -eq 0 -and -not (Test-CategoryHasSteps $_) } | Select-Object -First 1
         if (-not $cat) { Skip-Test 'todas las secciones leen ya el registro' }
 
         Show-View -Name 'Show-CategoryDetailView' -Arguments @{ Category = $cat }
@@ -455,6 +459,8 @@ Describe 'ui/Views/CategoryDetailView.ps1 - refrescar' {
         $ventana = New-AppWindow
 
         foreach ($cat in Get-OptimizationCategories) {
+            # Una sección de comandos no lee nada: su botón es Ejecutar.
+            if (Test-CategoryHasSteps $cat) { continue }
             Show-View -Name 'Show-CategoryDetailView' -Arguments @{ Category = $cat }
 
             $boton = $ventana.FindName('BtnRefresh')

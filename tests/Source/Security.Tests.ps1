@@ -152,6 +152,69 @@ Describe 'seguridad - ejecución de código y red' {
     }
 }
 
+Describe 'seguridad - ejecución de comandos (SECURITY.md §12)' {
+
+    It 'solo core/Network/CommandRunner.ps1 arranca procesos, y ExternalLink abre enlaces' {
+        # Arrancar un proceso desde un programa elevado es la puerta
+        # más ancha que hay. Tiene que estar en UN sitio, con su lista
+        # blanca; cualquier otro Process.Start es un agujero nuevo.
+        $permitidos = @{
+            'core/Network/CommandRunner.ps1' = 'ProcessStartInfo'
+            'core/Shell/ExternalLink.ps1'    = 'Start-Process'
+        }
+        foreach ($archivo in Get-GuardedSourceFiles) {
+            $texto = Get-Content -Path $archivo.FullName -Raw
+            $rel = Get-GuardedRelPath $archivo
+            foreach ($patron in 'ProcessStartInfo', 'Diagnostics\.Process\]::Start', 'Start-Process', '\bsaps\b', '\bstart\s+cmd') {
+                if ($texto -notmatch $patron) { continue }
+                $ok = $permitidos.ContainsKey($rel) -and ($texto -match $permitidos[$rel])
+                Assert-True $ok "arranque de procesos en $rel ($patron): solo CommandRunner.ps1 / ExternalLink.ps1"
+            }
+        }
+    }
+
+    It 'la lista blanca de ejecutables no tiene intérpretes ni rutas' {
+        foreach ($exe in $CommandAllowedExecutables) {
+            Assert-False ($exe -match '[\\/:]') "'$exe' tiene que ser solo un nombre"
+            Assert-False ($exe -match '^(cmd|powershell|pwsh|wscript|cscript|mshta|rundll32|regsvr32|bash|wsl)\.exe$') "'$exe' es un intérprete"
+        }
+    }
+
+    It 'la lista blanca de servicios no toca la seguridad del equipo' {
+        foreach ($svc in $CommandAllowedServices) {
+            Assert-False ($svc -match '^(WinDefend|mpssvc|wuauserv|SecurityHealthService|wscsvc|BFE|EventLog)$') "'$svc' no debería poder arrancarse ni tocarse desde aquí"
+        }
+    }
+
+    It 'todo paso declarado en cualquier sección pasa la lista blanca' {
+        # Igual que las claves del registro: un paso fuera de la lista
+        # acabaría en 'blocked' al pulsar, EN SILENCIO. Esto lo caza al
+        # declararlo.
+        $revisados = 0
+        foreach ($cat in $CategoryList) {
+            foreach ($step in @($cat.Steps)) {
+                Assert-True (Test-CommandStepAllowed $step) "paso fuera de la lista blanca en '$($cat.Id)': $($step.Id) ($(Format-CommandLine $step))"
+                $revisados++
+            }
+        }
+        Assert-True ($revisados -ge 1) 'no se ha encontrado ningún paso que revisar'
+    }
+
+    It 'lo que borra reglas del firewall nunca viene marcado de serie' {
+        # SECURITY.md §4: lo que baja la postura de seguridad no puede
+        # venir activo por defecto. Resetear el firewall borra las
+        # reglas propias; lo decide el usuario, paso a paso.
+        foreach ($cat in $CategoryList) {
+            foreach ($step in @($cat.Steps)) {
+                if (@($step.Arguments) -contains 'advfirewall') {
+                    Assert-False $step.Checked "'$($step.Id)' toca el firewall y viene marcado"
+                    Assert-True ([bool]$step.Warning) "'$($step.Id)' toca el firewall y no avisa"
+                }
+            }
+        }
+    }
+}
+
 Describe 'seguridad - enlaces externos' {
 
     It 'ExternalLink solo abre http y https' {
