@@ -255,31 +255,6 @@ Describe 'ui/Components/Shell/Sidebar.ps1 - el indicador que se desliza' {
     }
 }
 
-Describe 'ui/Components/Shell/TitleBar.ps1 - la pastilla del modo' {
-
-    It 'existe y arranca escondida' {
-        $ventana = New-AppWindow
-        Update-TitleBarTexts $ventana
-
-        $pastilla = $ventana.FindName('ModeIndicator')
-        Assert-NotNull $pastilla
-        Assert-Equal 0 $pastilla.Opacity
-    }
-
-    It 'moverla sin medidas no lanza' {
-        $ventana = New-AppWindow
-        Assert-NoThrow { Move-ModeIndicator -Window $ventana }
-        Assert-NoThrow { Move-ModeIndicator -Window $ventana -Animate }
-    }
-
-    It 'el modo marcado sigue siendo el del Tag' {
-        # La pastilla es adorno: quien manda es el Tag, que es lo que
-        # miran main.ps1 y Ui/Wiring.Tests.ps1.
-        $ventana = New-AppWindow
-        Assert-Equal 'sel' $ventana.FindName('BtnModeNormal').Tag
-    }
-}
-
 Describe 'ui/Design/UiKit.ps1 - números que cuentan' {
 
     It 'sin ventana viva escribe el número final' {

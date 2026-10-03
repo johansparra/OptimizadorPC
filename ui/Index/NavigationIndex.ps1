@@ -38,9 +38,10 @@
 #   Icon       Nombre de glifo del catálogo de ui/Design/Theme.ps1.
 # ============================================================
 
-# Hoy hay pantalla para tres entradas -Search, Optimize y Settings-.
-# Las otras cuatro siguen aquí a propósito: mantienen la estructura
-# del menú a la vista, y activarlas será rellenar su View.
+# Hoy las tres entradas -Search, Optimize y Settings- tienen pantalla.
+# Software, Customize, Advanced y More se quitaron a propósito: no se
+# van a implementar. Una entrada sin View sigue siendo válida (ver
+# arriba) y la prueba de Window.Tests.ps1 la cubre con una de mentira.
 #
 # 'search' va la primera porque no es una sección más: busca EN todas
 # las demás. Su vista es la misma a la que lleva la caja de la
@@ -49,13 +50,9 @@ $NavigationIndex = @(
 
     #  Id             Icono        Etiqueta       Grupo      Visible  Bloqueado   Vista
     @{ Id = 'search';    Icon = 'Search';  Label = 'Search';    Group = 'Top';    Visible = $true; Locked = $false; View = 'Show-SearchResultsView' }
-    @{ Id = 'software';  Icon = 'Apps';    Label = 'Software';  Group = 'Top';    Visible = $true; Locked = $false; View = $null }
     @{ Id = 'optimize';  Icon = 'Gauge';   Label = 'Optimize';  Group = 'Top';    Visible = $true; Locked = $false; View = 'Show-OptimizationsListView'; Default = $true }
-    @{ Id = 'customize'; Icon = 'Palette'; Label = 'Customize'; Group = 'Top';    Visible = $true; Locked = $false; View = $null }
 
-    @{ Id = 'advanced';  Icon = 'Wrench';  Label = 'Advanced';  Group = 'Bottom'; Visible = $true; Locked = $false; View = $null }
     @{ Id = 'settings';  Icon = 'Gear';    Label = 'Settings';  Group = 'Bottom'; Visible = $true; Locked = $false; View = 'Show-SettingsView' }
-    @{ Id = 'more';      Icon = 'More';    Label = 'More';      Group = 'Bottom'; Visible = $true; Locked = $false; View = $null }
 
 )
 

@@ -34,11 +34,13 @@ OptimizadorPC/
 │   │   ├── SettingStatus.ps1    optimized / factory / custom / unknown por comparación
 │   │   └── CategoryState.ps1    Vuelca en los ajustes lo que hay en el equipo
 │   ├── Interop/
-│   │   └── SystemBackdrop.ps1   Mica y Acrílico de Windows 11 (dwmapi)
+│   │   ├── SystemBackdrop.ps1   Mica y Acrílico de Windows 11 (dwmapi)
+│   │   └── WorkArea.ps1         Maximizar sin tapar la barra de tareas (user32)
 │   ├── Shell/
 │   │   └── ExternalLink.ps1     Abrir un enlace en el navegador (solo http/https)
 │   └── Diagnostics/
-│       └── Log.ps1              Registro de actividad: qué se leyó/escribió y cuándo
+│       ├── Log.ps1              Registro de actividad: qué se leyó/escribió y cuándo
+│       └── SystemInfo.ps1       Sobre qué corre: Windows, PowerShell, permisos, exe/script
 │
 ├── ui/                      UNA CARPETA POR CAPA. Ver "Las capas" más abajo.
 │   ├── MainWindow.xaml      ESQUELETO + ESTILOS: barra de título, contenedores
@@ -64,6 +66,8 @@ OptimizadorPC/
 │   │   └── ViewOptionsIndex.ps1 las casillas del botón "Vista"
 │   │
 │   ├── Data/                5. LOS DATOS. Solo declaraciones, cero UI.
+│   │   ├── AppInfo.ps1          Nombre, VERSIÓN (única fuente; la lee build.ps1),
+│   │   │                        descripción y repositorio
 │   │   ├── Categories/          Un archivo por sección
 │   │   │   ├── Regedit.ps1          Power.ps1          Gaming.ps1
 │   │   │   └── Update.ps1           Notifications.ps1  Sound.ps1
@@ -76,7 +80,9 @@ OptimizadorPC/
 │   │
 │   ├── Components/          6. LAS PIEZAS. Cómo se dibuja cada cosa.
 │   │   ├── Shell/               El marco de la ventana
-│   │   │   ├── TitleBar.ps1         textos, iconos y pastilla del selector de modo
+│   │   │   ├── TitleBar.ps1         textos, iconos e insignia de versión de la barra
+│   │   │   ├── AboutMenu.ps1        panel "Acerca de" del botón ?
+│   │   │   ├── WindowBounds.ps1     engancha el maximizado al área de trabajo
 │   │   │   ├── Sidebar.ps1          menú lateral: botones, plegado e indicador
 │   │   │   ├── Backdrop.ps1         el fondo vivo: manchas de color que se mueven
 │   │   │   ├── WindowMaterial.ps1   pone (o quita) Mica / Acrílico en la ventana
@@ -209,13 +215,10 @@ ahora son datos y los dibuja `ui/Components/Shell/Sidebar.ps1`.
 $NavigationIndex = @(
 
     #  Id             Icono        Etiqueta       Grupo      Visible  Bloqueado   Vista
-    @{ Id = 'software';  Icon = 'Apps';    Label = 'Software';  Group = 'Top';    Visible = $true; Locked = $false; View = $null }
+    @{ Id = 'search';    Icon = 'Search';  Label = 'Search';    Group = 'Top';    Visible = $true; Locked = $false; View = 'Show-SearchResultsView' }
     @{ Id = 'optimize';  Icon = 'Gauge';   Label = 'Optimize';  Group = 'Top';    Visible = $true; Locked = $false; View = 'Show-OptimizationsListView'; Default = $true }
-    @{ Id = 'customize'; Icon = 'Palette'; Label = 'Customize'; Group = 'Top';    Visible = $true; Locked = $false; View = $null }
 
-    @{ Id = 'advanced';  Icon = 'Wrench';  Label = 'Advanced';  Group = 'Bottom'; Visible = $true; Locked = $false; View = $null }
     @{ Id = 'settings';  Icon = 'Gear';    Label = 'Settings';  Group = 'Bottom'; Visible = $true; Locked = $false; View = 'Show-SettingsView' }
-    @{ Id = 'more';      Icon = 'More';    Label = 'More';      Group = 'Bottom'; Visible = $true; Locked = $false; View = $null }
 
 )
 ```
@@ -234,13 +237,16 @@ Añadir una entrada al menú es añadir una línea aquí. Aunque los botones ya 
 en el XAML, siguen registrados con su nombre, así que `$Window.FindName('NavSettings')`
 funciona igual que antes.
 
-**Hoy solo dos entradas tienen pantalla**: Optimize y Settings. Las otras cuatro
-siguen en el menú a propósito, para que se vea la estructura de navegación, y salen
-igual que las demás —ni en gris ni con candado—, pero **pulsarlas no hace nada**: no
-navegan, no repintan y ni siquiera mueven la marca del menú, así que te quedas donde
-estabas. Es cosa de `Set-NavSelection`, que se planta antes de tocar nada si la
-entrada no declara `View`; mandarlas a una vista de relleno dejaría el menú marcando
-una cosa y la pantalla enseñando otra. Activar una es escribir su vista en `View`.
+**Hoy las tres entradas —Search, Optimize y Settings— tienen pantalla.** Software,
+Customize, Advanced y More se quitaron del menú: no se van a implementar.
+
+Una entrada sin `View` sigue siendo válida: sale igual que las demás —ni en gris ni
+con candado—, pero **pulsarla no hace nada**: no navega, no repinta y ni siquiera
+mueve la marca del menú, así que te quedas donde estabas. Es cosa de
+`Set-NavSelection`, que se planta antes de tocar nada si la entrada no declara
+`View`; mandarla a una vista de relleno dejaría el menú marcando una cosa y la
+pantalla enseñando otra. Como el índice real ya no tiene ninguna, `Window.Tests.ps1`
+lo prueba con una entrada de mentira.
 
 ### Plegar el menú
 
@@ -516,7 +522,6 @@ Las vistas no tocan esas zonas directamente: pasan por `ui/Components/Layout/Pag
 | Elevación de tarjeta | `Add-HoverLift` | Sube 3px y suelta un halo **del color de la sección**, 170 ms |
 | Fondo vivo | `Backdrop.ps1` | Tres manchas radiales en vaivén, 27-41 s por ciclo, a 20 fps |
 | Indicador del menú | `Move-NavIndicator` | UNA barra que se desliza entre entradas, `QuinticEase` |
-| Pastilla de modo | `Move-ModeIndicator` | UNA pastilla que se desliza y cambia de ancho |
 | Interruptor | `New-ToggleSwitch` | `ColorAnimation` de la pista + pomo con rebote (`BackEase`) |
 | Números que cuentan | `Start-CountUp` | Las píldoras del resumen suben desde cero, 520 ms |
 | Hundirse al pulsar | Triggers del XAML | `ScaleTransform` de 0.90 a 0.96 según el botón |
@@ -564,15 +569,12 @@ flowchart LR
 
     SIDEBAR{{"Sidebar:<br/>Optimize"}} -.->|su View| LISTV
     NAVSET{{"Sidebar:<br/>Settings"}} -.->|su View| SETV["<b>Show-SettingsView</b><br/>las preferencias de<br/>ui/Data/Preferences/"]
-    MUDOS{{"Sidebar:<br/>Software · Customize<br/>Advanced · More"}} -.->|sin View| NADA["te quedas donde estabas:<br/>ni navega ni repinta<br/>ni mueve la marca"]
 
     style LISTV fill:#EAF2FF,stroke:#2D7DFB
     style DETV fill:#E8F5E9,stroke:#2E7D32
     style SETV fill:#EAF2FF,stroke:#2D7DFB
-    style NADA fill:#FFF4E5,stroke:#B26A00
     style SIDEBAR fill:#F2F2F2,stroke:#999,stroke-dasharray: 4 3
     style NAVSET fill:#F2F2F2,stroke:#999,stroke-dasharray: 4 3
-    style MUDOS fill:#F2F2F2,stroke:#999,stroke-dasharray: 4 3
 ```
 
 ### Categorías definidas
@@ -697,8 +699,6 @@ Detalles en [`tests/README.md`](tests/README.md), que además explica **por qué
   nuevas de `core/`
 - [ ] Que el control de la tarjeta de un ajuste **sin** `-Registry` refleje un valor real
   y no el `Value` estático del archivo de la sección
-- [ ] Pantalla propia para Software, Customize, Advanced y More (hoy están en el menú
-  pero no navegan)
 - [ ] "Quick Actions" y "Reset" de la lista (hoy decorativos; el "Refrescar" del detalle
   sí funciona)
 - [ ] Contadores de las píldoras de la lista calculados en vez de fijos

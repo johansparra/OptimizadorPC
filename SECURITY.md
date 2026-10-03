@@ -4,9 +4,19 @@ Documento de referencia para auditoría técnica y de seguridad. Describe el mod
 amenaza, el contrato de escritura al registro, la superficie de ataque, las invariantes
 que las pruebas vigilan y los riesgos aceptados o pendientes.
 
-Última revisión completa: **2026-09-06** (commit base `464ea1c` + trabajo de esta
-auditoría). Complementa a `README.md` (arquitectura), `CLAUDE.md` (reglas de trabajo) y
+Última revisión completa: **2026-09-06** (commit base `464ea1c`). Complementa a
+`README.md` (arquitectura), `CLAUDE.md` (reglas de trabajo) y
 `.claude/skills/security-reviewer/SKILL.md` (guía de revisión de cambios).
+
+**Repaso 2026-09-07** (commit base `bd2f12a`). Se auditaron las funcionalidades
+añadidas desde la revisión completa —menús Expandir/Contraer del panel Regedit
+(`ui/Components/Shell/ChipMenu.ps1`, `ui/Views/CategoryDetailView.ps1`) y la
+preferencia "Formato de hora" (`ui/Engine/TimeFormat.ps1`,
+`ui/Data/Preferences/40-TimeFormat.ps1`)— y **no introducen superficie nueva**: cero
+escrituras al sistema, cero ejecución dinámica, cero red, y el único dato en disco es
+la cadena `'24'`/`'12'` de la preferencia, por `Set-AppSetting` como el resto. PSSA y
+Semgrep, ya instalables en la máquina de desarrollo, se ejecutaron (resultados en §9).
+Se corrigió la CI de Semgrep (§8, §11 riesgo 4).
 
 ---
 
@@ -40,15 +50,16 @@ archivos que le pase un tercero. Las únicas entradas externas son:
 
 | Entrada | Origen | Cómo se trata |
 | --- | --- | --- |
-| `%APPDATA%\OptimizadorPC\settings.json` | Disco, escrito por la propia app | Parseo defensivo: un JSON corrupto o ausente se **ignora** y se arranca con valores por defecto (`ui/Engine/AppSettings.ps1`). Solo guarda preferencias de interfaz (tema, idioma, opciones de vista, carpeta de guardado del log). |
+| `%APPDATA%\OptimizadorPC\settings.json` | Disco, escrito por la propia app | Parseo defensivo: un JSON corrupto o ausente se **ignora** y se arranca con valores por defecto (`ui/Engine/AppSettings.ps1`). Solo guarda preferencias de interfaz (tema, idioma, opciones de vista, formato de hora, carpeta de guardado del log). Un valor desconocido en `TimeFormat` cae al de partida (`Get-AppTimeFormat`); el patrón `.ToString(...)` es un literal de `ui/Engine/TimeFormat.ps1`, nunca la cadena guardada. |
 | El **registro de Windows** que se lee | El equipo | Se abre siempre `RegistryView::Registry64`. Un `DWord` llega como `Int32` con signo y se reinterpreta sin signo (`Format-RegistryValue`). `core/` **nunca lanza**: devuelve un estado (`read`/`missing`/`denied`/`badpath`). |
 | URLs de referencia (`-Link` de cada ajuste) | **Escritas en el propio repositorio** (`ui/Data/Categories/*.ps1`) | Antes de llegar al shell se validan: tiene que ser una URI absoluta con esquema `http` o `https` (`core/Shell/ExternalLink.ps1`). Cualquier otra cosa se rechaza sin tocar el shell. |
 | `-Recommended` / `-Default` de cada clave de registro | **Escritas en el propio repositorio** | Es el contrato de aplicación y de reversión. No proviene de entrada del usuario. |
 
 No hay ningún punto donde una cadena controlable por un tercero se convierta en código:
 sin `Invoke-Expression`, sin `[scriptblock]::Create`, sin `Add-Type` con fuente
-construida en tiempo de ejecución (el único `Add-Type`, en
-`core/Interop/SystemBackdrop.ps1`, usa una cadena literal fija y revisada), sin
+construida en tiempo de ejecución (los dos `Add-Type`, en
+`core/Interop/SystemBackdrop.ps1` y `core/Interop/WorkArea.ps1`, usan una cadena
+literal fija y revisada), sin
 descargas. Lo vigila `tests/Source/Security.Tests.ps1`.
 
 ---
@@ -78,6 +89,16 @@ HKEY_CURRENT_USER\Software\OptimizadorPC          (rama de las pruebas)
 
 No hay denylist: **lo que no está en la lista, no se toca** (estado `blocked`). SAM,
 SECURITY, BCD, `...\Services` y todo lo demás quedan fuera por omisión.
+
+**Lista de valores (`$RegistryWriteAllowedValues`, 2026-10-03).** Lo que no se puede
+abrir como rama entera entra **valor a valor**: la clave tiene que ser *exactamente*
+la declarada —sus subclaves no heredan el permiso— y el nombre del valor, uno de su
+lista. Así entran el `Start` de siete servicios concretos (SysMain, DiagTrack, lfsvc,
+MapsBroker, CscService, StorSvc, SharedAccess), cuatro valores de
+`Tcpip\Parameters` (no `...\Interfaces`), seis de `LanmanServer\Parameters`,
+`DisableWpbtExecution` de `Session Manager` (sin abrir `KnownDLLs`, `BootExecute`,
+`Environment`), `EnablePrefetcher`, `HibernateEnabled` y los de privacidad del paquete
+BF6. `Test-RegistryWriteAllowed` sin `-Name` nunca acepta esta lista.
 
 > **Riesgo conocido [Media].** `HKLM\SOFTWARE\Policies\Microsoft` es un prefijo
 > **amplio**: por debajo cuelgan las claves GPO de Windows Defender
@@ -186,7 +207,7 @@ Corriendo como administrador, **nada de esto entra** en `ui/` ni en `core/`:
 | Prohibido | Por qué |
 | --- | --- |
 | `Invoke-Expression`, `iex`, `& ([scriptblock]::Create($x))` | Ejecuta cadena como código. |
-| `Add-Type` con fuente construida en tiempo de ejecución | Lo mismo, compilado. (El único `Add-Type` del proyecto usa una cadena literal fija.) |
+| `Add-Type` con fuente construida en tiempo de ejecución | Lo mismo, compilado. (Los dos `Add-Type` del proyecto usan una cadena literal fija.) |
 | `Invoke-WebRequest`, `Invoke-RestMethod`, `DownloadString`, `DownloadFile`, `Start-BitsTransfer` | La aplicación no habla con la red. |
 | `Start-Process` con la ruta sin comillas | *Unquoted path* → ejecutable equivocado. |
 | Ejecutar algo desde una carpeta escribible por todos | `C:\ProgramData`, `%TEMP%`, la carpeta del `.exe` si está en Descargas. |
@@ -243,14 +264,18 @@ ps2exe. Puntos de seguridad:
   que Windows enseña a no ejecutar. *Bloquea distribuir a terceros.* Mitigación:
   firmar con un certificado de firma de código (idealmente EV, para reputación
   inmediata en SmartScreen).
-- **CI (`.github/workflows/semgrep.yml`)**: la imagen `semgrep/semgrep` y
-  `actions/checkout` van sin fijar por digest — mismo tipo de riesgo, menor impacto.
-  Además el disparador `push` tiene un filtro `paths: [.github/workflows/semgrep.yml]`,
-  así que **un push que cambia código no ejecuta Semgrep** (solo lo hacen
-  `pull_request`, el `schedule` nocturno y `workflow_dispatch`). Como el repo commitea
-  directo a `master`, la cobertura efectiva de Semgrep es nocturna + manual. *No se ha
-  tocado la CI en esta auditoría por decisión del propietario; queda como recomendación
-  (§11).*
+- **CI (`.github/workflows/semgrep.yml`)** — corregido el 2026-09-07:
+  - `actions/checkout` **fijado por SHA** (`d23441a…` = v6.1.0). Una etiqueta la puede
+    repuntar el dueño de la acción en silencio; era el único hallazgo de Semgrep
+    (`github-actions-mutable-action-tag`).
+  - **Quitado el filtro `paths`** del disparador `push`: ahora cada push a `main`/
+    `master` ejecuta Semgrep, no solo los que tocan el propio workflow. Antes, como el
+    repo commitea directo a `master`, la cobertura efectiva era el `schedule` nocturno
+    + `workflow_dispatch`.
+  - *Pendiente:* la imagen `container: semgrep/semgrep` sigue sin fijar por tag/digest
+    (es el analizador, no una dependencia del producto; `latest` suele ser lo deseado)
+    y no se sube SARIF a *code scanning* (los hallazgos solo salen en los logs de
+    Actions).
 
 ---
 
@@ -264,29 +289,43 @@ ps2exe. Puntos de seguridad:
   handlers, posicionales de la casa, `Write-Host` solo en runner/build, plurales de
   nombres públicos).
 - **Cómo correrlo**: `Invoke-ScriptAnalyzer -Path . -Recurse -ReportSummary`
-- **Estado 2026-09-06**: **0 errores, 1 aviso**. El aviso
-  (`PSUseDeclaredVarsMoreThanAssignments` sobre `$CategoryIndex` en
-  `ui/Index/CategoryIndex.ps1`) es un **falso positivo**: la variable se consume en
-  `ui/Engine/CategoryRegistry.ps1` vía dot-source al mismo ámbito, algo que PSSA no ve
-  al analizar archivo por archivo. Mismo patrón en los otros archivos de `ui/Index/` y
-  en `$GradientTokens`.
-- **Pendiente sugerido**: un segundo pase más estricto **solo sobre `core/`**, sin la
-  exclusión de `PSUseShouldProcessForStateChangingFunctions`, para que una función
-  nueva de `core/` que cambie estado y no adopte `ShouldProcess` salte.
+- **Instalado en la máquina de desarrollo** (v1.25.0, 2026-09-07); antes había que
+  esperar a la CI.
+- **Estado 2026-09-07**: **0 errores, 2 avisos**, los dos falsos positivos de la misma
+  familia — `PSUseDeclaredVarsMoreThanAssignments` sobre `$CategoryIndex`
+  (`ui/Index/CategoryIndex.ps1`) y `$ScriptRoot` (`build/_combined.ps1`, generado): la
+  variable se consume vía dot-source al mismo ámbito, algo que PSSA no ve archivo por
+  archivo. Mismo patrón en el resto de `ui/Index/` y en `$GradientTokens`.
+- **Segundo pase estricto solo sobre `core/`** (sin la exclusión de
+  `PSUseShouldProcessForStateChangingFunctions`), ejecutado el 2026-09-07:
+  `Invoke-ScriptAnalyzer -Path ./core -Recurse -Severity Error,Warning -ExcludeRule PSReviewUnusedParameter,PSAvoidUsingPositionalParameters,PSUseSingularNouns,PSAvoidUsingWriteHost`
+  → **6 avisos, los 6 por el verbo del nombre, ninguno real**: `Set-WindowBackdrop`
+  (llama a DWM sobre un handle, sin estado persistente), `Update-CategoryRegistryState`
+  y `Update-SettingStatus` (solo **leen** y calculan), `New-RegistryResult` /
+  `New-RegistryWriteResult` (fábricas de `PSCustomObject`), `Set-RegistryWriteArmed`
+  (booleano en memoria del arnés). **La única función de `core/` que muta el sistema —
+  `Write-RegistryValue` — ya lleva `[CmdletBinding(SupportsShouldProcess)]` +
+  `$PSCmdlet.ShouldProcess`**, igual que `Set-SettingOptimization`. El "hueco residual"
+  que menciona `PSScriptAnalyzerSettings.psd1` (una función nueva de `core/` que mutara
+  el sistema sin adoptar `ShouldProcess`) queda **verificado: hoy no existe**.
 
 ### Semgrep
 
 - **Configurado**: `.github/workflows/semgrep.yml` corre `semgrep ci` en un contenedor,
   con `SEMGREP_APP_TOKEN`. **No hay archivo de reglas en el repo**: depende de la
   config de la plataforma / registro de Semgrep.
-- **No se puede ejecutar localmente** (semgrep no está instalado en la máquina de
-  desarrollo). Los hallazgos salen del contenedor de CI.
-- **Rulesets recomendados** para este proyecto (añadir como `--config` en el workflow o
-  en un `semgrep.yml` versionado, y así queda fijado en el repo):
-  `p/powershell`, `p/security-audit`, `p/secrets`, `p/github-actions`.
-- **Mejoras sugeridas** (§11): quitar el filtro `paths` del disparador `push`; subir
-  SARIF a *GitHub code scanning* para que los hallazgos aparezcan en la pestaña
-  Security y no solo en los logs de Actions.
+- **Instalado en la máquina de desarrollo** (v1.176.1, 2026-09-07). Ejecutado el
+  2026-09-07:
+  `semgrep scan --config p/security-audit --config p/secrets --config p/github-actions --exclude build --exclude tests`
+  (59 reglas, 180 archivos). `p/powershell` **ya no existe** en el registro (HTTP 404);
+  la cobertura de PowerShell de Semgrep es de todos modos limitada —el guardarraíl real
+  para `ui/`/`core/` es `tests/Source/Security.Tests.ps1` + PSScriptAnalyzer—.
+- **Un hallazgo, ya corregido**: `actions/checkout@v6` era una etiqueta mutable
+  (`github-actions-mutable-action-tag`). Fijado por SHA (§8). Repetido el escaneo:
+  **0 hallazgos**.
+- **Mejora pendiente**: subir SARIF a *GitHub code scanning* para que los hallazgos
+  aparezcan en la pestaña Security y no solo en los logs de Actions; versionar los
+  `--config` en el propio workflow para que la config no dependa solo de la plataforma.
 
 ### Por qué Snyk no encaja aquí
 
@@ -334,9 +373,9 @@ Cobertura de `core/` relacionada (ya existente):
 | 1 | Lista blanca de escritura amplia (`SOFTWARE\Policies\Microsoft` alcanza Defender/Update/SmartScreen) | Media | **Mitigado en parte** por la denylist de nombres de valor (§3.4) + revisión manual. Estrechar el prefijo requiere saber qué claves se querrán escribir. |
 | 2 | Rollback solo en memoria; sin "deshacer" en UI; sin aviso de punto de restauración | Media | **Aceptado temporalmente** por decisión del propietario. Pendiente: persistir snapshot → botón deshacer → aviso de restauración. |
 | 3 | `.exe` sin firma Authenticode | Media | **Aceptado** mientras no se distribuya a terceros. Bloquea la distribución. |
-| 4 | CI de Semgrep: disparador `push` filtrado a `paths`, imagen y `checkout` sin digest, sin config de reglas versionada, sin SARIF | Baja | **Documentado, no corregido** (decisión del propietario). Recomendación: quitar `paths`, fijar por digest, versionar `semgrep.yml` con `p/powershell p/security-audit p/secrets p/github-actions`, subir SARIF. |
-| 5 | Sin CI de PSScriptAnalyzer ni de la suite de pruebas (solo Semgrep) | Baja | **Documentado, no corregido.** Recomendación: un workflow en Windows runner que corra `tests/Run-Tests.ps1` y `Invoke-ScriptAnalyzer`. |
-| 6 | `Add-Type` en `SystemBackdrop.ps1` compila una cadena de C# | Info | **Aceptado.** La cadena es un literal fijo y revisado; no se construye en runtime. |
+| 4 | CI de Semgrep incompleta | Baja | **Corregido en parte (2026-09-07):** `actions/checkout` fijado por SHA y quitado el filtro `paths` del `push` (cada push a master pasa por Semgrep). **Queda:** `container: semgrep/semgrep` sin fijar (es el analizador, no una dependencia), `--config` no versionados en el repo, sin subida de SARIF a *code scanning*. |
+| 5 | Sin CI de PSScriptAnalyzer ni de la suite de pruebas (solo Semgrep) | Baja | **Documentado, no corregido.** Recomendación: un workflow en Windows runner que corra `tests/Run-Tests.ps1 -BothHosts` y `Invoke-ScriptAnalyzer`. Ambas herramientas ya están instaladas y se corren a mano (§9); falta el workflow. |
+| 6 | `Add-Type` en `SystemBackdrop.ps1` y `WorkArea.ps1` compila una cadena de C# | Info | **Aceptado.** Las cadenas son literales fijos y revisados; no se construyen en runtime. `WorkArea.ps1` (2026-10-03) subclasifica la ventana propia con `SetWindowLongPtr` solo para corregir `WM_GETMINMAXINFO`; no toca otras ventanas ni otros procesos. |
 | 7 | Contadores de las píldoras de la lista son fijos, no calculados | Info | Sin impacto de seguridad; cosmético. Ya documentado en `README.md`. |
 
 ---

@@ -8,11 +8,18 @@ App de escritorio **WPF construida en PowerShell 5.1**, compilada a un `.exe` po
 
 **Estado actual: interfaz completa + escritura de registro acotada.** `core/` **lee y
 escribe** el registro de Windows. Al pulsar el toggle de un ajuste con `-Registry` (hoy
-solo 1, en *Regedit*), `core/Registry/SettingApply.ps1` escribe cada clave por una
-**lista blanca de rutas** (`core/Registry/Writer.ps1`), respetando el tipo, guardando
+todos los de *Regedit*, **uno por clave**: nunca se agrupan varias claves en un ajuste),
+`core/Registry/SettingApply.ps1` escribe la clave por una **lista blanca** de ramas y
+de valores concretos (`core/Registry/Writer.ps1`), respetando el tipo, guardando
 copia del valor previo en memoria y verificando por relectura. El resto de secciones
 siguen con datos estáticos en `ui/Data/Categories/` y sus `-Tags` a mano. **El `.exe`
 corre elevado.** Modelo de amenaza y contrato completos en `SECURITY.md`.
+
+**Auditorías de seguridad y calidad:** cada pasada deja su informe fechado en
+`auditoria/` y una fila en `auditoria/README.md` (para dejar constancia de qué se
+revisó y qué se arregló). `SECURITY.md` es el documento vivo; los informes de
+`auditoria/` son la foto de cada revisión. Al terminar una auditoría, guarda el
+informe ahí antes de cerrar.
 
 ## Arquitectura (dónde va cada cosa)
 
@@ -26,7 +33,7 @@ De datos a pantalla. **Nunca saltes una capa hacia abajo.**
 | 2 | Mecanismo | `ui/Engine/` | Registran, traducen, guardan y enrutan. Sin datos ni controles. |
 | 3 | Política | `ui/Index/` | **Los archivos principales.** Qué se ve, en qué orden, qué está bloqueado. Nada de contenido. |
 | 4 | Sistema | `core/` | Habla con Windows. **No conoce la interfaz**: ni un control de WPF. Devuelve datos y nunca lanza hacia arriba. |
-| 5 | Datos | `ui/Data/` | `Categories/`, `Preferences/`, `Lang/`. Un archivo por sección, por opción y por idioma. Solo declaraciones, cero código de UI. |
+| 5 | Datos | `ui/Data/` | `Categories/`, `Preferences/`, `Lang/`. Un archivo por sección, por opción y por idioma. Solo declaraciones, cero código de UI. Y `AppInfo.ps1`: **la única fuente de la versión** (la leen la barra de título, el panel del botón ? y `build.ps1`; subir de versión es cambiarla ahí). |
 | 6 | Piezas | `ui/Components/` | Construyen controles concretos. No conocen las vistas. |
 | 7 | Pantallas | `ui/Views/` | Solo ensamblan piezas. Sin `New-Object` de controles sueltos. |
 
@@ -109,7 +116,11 @@ Por orden de lo que más tiempo ahorra:
 3. **La codificación se arregla sola.** El hook `PostToolUse` de
    `.claude/hooks/Normalize-PsEncoding.ps1` deja cada `.ps1` y `.xaml` en UTF-8 con
    BOM y CRLF en cuanto se escribe (regla 3). Ya no hay que normalizar a mano;
-   verificar con `file` sigue siendo gratis.
+   verificar con `file` sigue siendo gratis. **Ojo: el hook vive en
+   `OptimizadorPC/.claude/settings.local.json`, y si la sesión se abre desde la
+   carpeta padre (`Escritorio\Temp`) no se carga.** El 2026-10-03 pasó así y todos
+   los `.ps1` nuevos salieron sin BOM; los cazó `tests/Source/Rules.Tests.ps1`. Si
+   trabajas desde fuera, normaliza a mano los archivos que crees.
 4. **Las skills se cargan al empezar, no cuando alguien las nombra.** Son
    instrucciones que entran en el turno: no arrancan en frío ni gastan contexto de
    más, así que no hay nada que amortizar. La que toque según la tarea
@@ -131,17 +142,18 @@ vez**, no en fila. **Esa decisión la toma Claude solo**, sin preguntar. Ver
 ### El grafo de graphify: para qué sirve y para qué no
 
 Hay un grafo del proyecto en `graphify-out/` (ver su `README.md`). **No sustituye a
-este archivo**, y conviene saber por qué antes de perder tiempo con él. Medido sobre
-la primera pasada, 673 nodos y 1.355 aristas:
+este archivo**, y conviene saber por qué antes de perder tiempo con él. Las cifras al
+día están en `graphify-out/README.md`; lo de aquí vale para todas las pasadas:
 
 | Sirve | No sirve |
 | ----- | -------- |
 | `graphify path A B` y `graphify explain X` sobre **símbolos de código**: se quedan en la capa del árbol sintáctico, que es exacta y trae número de línea. | `graphify query "<pregunta en lenguaje natural>"`. |
 | El `graph.html` para ver el mapa de un vistazo. | Preguntas de "¿cómo funciona esto?": para eso, leer el código. |
-| Los *god nodes* del informe: `T()` con 61 aristas describe este proyecto de una. | Encontrar dónde va algo: para eso está este archivo. |
+| Los *god nodes* del informe: `Set-TextFg()`, `T()`, `Window` — el tema, la traducción y la ventana lo tocan todo. | Encontrar dónde va algo: para eso está este archivo. |
+| | **Los archivos de datos** (`ui/Data/Categories/*.ps1`, `es.ps1`): salen como nodos sueltos, sin aristas. Para buscar un ajuste o una clave, `grep`. |
 
-**Por qué falla la consulta en lenguaje natural: `0` de 1.355 aristas conectan el
-código con la documentación.** No es un grafo, son dos grafos desconectados en el
+**Por qué falla la consulta en lenguaje natural: ninguna arista conecta el código con
+la documentación**, en ninguna de las pasadas. No es un grafo, son dos grafos desconectados en el
 mismo archivo — el AST no sabe qué dice `CLAUDE.md` y la documentación no sabe qué
 función implementa cada regla. Preguntando *"cómo se guarda el registro en un
 archivo"* devolvió 36 nodos de documentación y **ninguna** de las ocho funciones que
@@ -195,7 +207,7 @@ extracción (`--mode deep`, o que los nodos de documentación citen los símbolo
 
 13. **El menú lateral se construye por código, no en el XAML.** `MainWindow.xaml` solo aporta el `Border` llamado `Sidebar` con dos `StackPanel` vacíos (`NavTop` y `NavBottom`) y la marca de selección (`NavIndicator`, ver la regla 25); los botones los crea `Build-Sidebar` a partir de `ui/Index/NavigationIndex.ps1`. Cada botón se registra con `$Window.RegisterName('Nav<Id>', ...)`, así que `FindName('NavSettings')` sigue funcionando — si añades uno nuevo, respeta ese nombrado.
 
-    **Una entrada sin `View` no navega, y es a propósito.** Hoy tienen pantalla Search, Optimize y Settings; las otras cuatro siguen en el menú para conservar la estructura, se ven igual que las demás (ni en gris ni con candado) y `Set-NavSelection` sale antes de tocar nada: ni cambia de vista, ni repinta, ni mueve la marca del menú. **No las mandes a una vista de relleno** — el menú marcaría una cosa y la pantalla enseñaría otra. Activar una es escribir el nombre de su función de vista en `View`.
+    **Una entrada sin `View` no navega, y es a propósito.** Hoy las tres entradas —Search, Optimize y Settings— tienen pantalla (Software, Customize, Advanced y More se quitaron: no se van a implementar; el caso sin `View` lo prueba `Window.Tests.ps1` con una entrada de mentira). Una entrada sin pantalla se ve igual que las demás (ni en gris ni con candado) y `Set-NavSelection` sale antes de tocar nada: ni cambia de vista, ni repinta, ni mueve la marca del menú. **No las mandes a una vista de relleno** — el menú marcaría una cosa y la pantalla enseñaría otra. Activar una es escribir el nombre de su función de vista en `View`.
 
     **Quién está marcado lo decide `Sync-NavSelection`, y lo llama `Show-View`.** No el botón al pulsarse: a una pantalla se puede llegar sin tocar el menú —a la de búsqueda se entra con Enter desde la caja de la cabecera—, y con la marca puesta en el clic el menú acabaría señalando otra cosa. Si la vista actual no es la de ninguna entrada (el detalle de una sección), no se toca nada: sigue marcada aquella desde la que entraste.
 14. **Al plegar el menú se anima el ancho del `Border`, nunca la columna del `Grid`.** La columna es `Auto` y sigue al `Border` sola; animar un `GridLength` exigiría escribir una animación propia porque WPF no trae ninguna. El borde derecho de 1px se pone a 0 al plegar, o el ancho nunca llegaría a cero.
@@ -246,13 +258,12 @@ extracción (`--mode deep`, o que los nodos de documentación citen los símbolo
     que lo vigila.
 
 25. **Los indicadores que se deslizan no se colocan si no hay medidas.** El del menú
-    lateral (`Move-NavIndicator`) y la pastilla del selector de modo
-    (`Move-ModeIndicator`) calculan su sitio con `TranslatePoint`, que necesita que WPF
-    ya haya medido: al arrancar, `main.ps1` pinta la primera pantalla antes de que la
-    ventana exista de verdad y ahí todo vale cero. En ese caso **se esconden** y vuelven
-    por el `SizeChanged`, que se engancha **una sola vez** (marcado en el `Tag` del
-    `Border` o en el `Uid` del `Grid`, porque esas funciones se repiten al cambiar de
-    idioma). Que nunca haya nada sin marcar es cosa del fondo del botón, no del
+    lateral (`Move-NavIndicator`) calcula su sitio con `TranslatePoint`, que necesita
+    que WPF ya haya medido: al arrancar, `main.ps1` pinta la primera pantalla antes de
+    que la ventana exista de verdad y ahí todo vale cero. En ese caso **se esconde** y
+    vuelve por el `SizeChanged`, que se engancha **una sola vez** (marcado en el `Tag`
+    del `Border`, porque la función se repite al cambiar de idioma). (El selector de
+    modo Normal / Builder / Config Review, que tenía su propia pastilla, se quitó.) Que nunca haya nada sin marcar es cosa del fondo del botón, no del
     indicador. Y se anima solo al navegar: durante el plegado del menú el `SizeChanged`
     se dispara decenas de veces y una animación por cada una se pelearía consigo misma.
 
@@ -294,7 +305,7 @@ Dónde vive cada cosa del aspecto, para no buscarla:
 | Las manchas del fondo | `ui/Components/Shell/Backdrop.ps1` (posición, tamaño y vaivén) |
 | Entrada en cascada | `Start-StaggeredEnter`, y quién se mueve lo dice `Get-EnterTarget` |
 | Halo de la tarjeta | `Add-HoverLift -Glow <clave>`; el color se resuelve al pasar el ratón |
-| Marca del menú y pastilla de modo | `Move-NavIndicator` / `Move-ModeIndicator` |
+| Marca del menú | `Move-NavIndicator` |
 | Lista o cuadrícula | opción `grid` de `ui/Index/ViewOptionsIndex.ps1`; el panel lo elige `New-CategoryPanel` |
 | Mica / Acrílico | `ui/Components/Shell/WindowMaterial.ps1` + `core/Interop/SystemBackdrop.ps1` |
 
@@ -321,7 +332,7 @@ decisión de seguridad, no un detalle. Servicios, energía y red **todavía no s
 escriben**: cada uno es una subcarpeta nueva de `core/` con su propio contrato.
 
 - La lógica de sistema vive en `core/`, nunca dentro de las vistas ni de los componentes.
-- **`core/` está dividido por lo que toca de Windows**, no por tamaño: `core/Registry/` (leer y escribir el registro), `core/Interop/` (llamadas a la API de Windows: hoy solo Mica y Acrílico), `core/Shell/` (abrir enlaces por el shell, solo `http`/`https`) y `core/Diagnostics/` (el registro de actividad). Un mecanismo nuevo — red, servicios, energía — es una subcarpeta nueva ahí dentro, y entra al `.exe` sola.
+- **`core/` está dividido por lo que toca de Windows**, no por tamaño: `core/Registry/` (leer y escribir el registro), `core/Interop/` (llamadas a la API de Windows: Mica y Acrílico, y maximizar al área de trabajo), `core/Shell/` (abrir enlaces por el shell, solo `http`/`https`) y `core/Diagnostics/` (el registro de actividad y `SystemInfo.ps1`, sobre qué corre el programa). Un mecanismo nuevo — red, servicios, energía — es una subcarpeta nueva ahí dentro, y entra al `.exe` sola.
 - **Nada de `core/` lanza hacia arriba.** Una clave inexistente o sin permisos es una respuesta, no un error: se devuelve un estado (`read` / `missing` / `denied` / `badpath`) y la interfaz lo pinta. Una excepción escapando de aquí tumbaría la ventana.
 - **Un DWord llega como `Int32` con signo.** `0xFFFFFFFF` se lee como `-1`. Hay que reinterpretarlo sin signo (`Format-RegistryValue`) o los valores altos salen negativos y no cuadran con lo declarado.
 - **Se abre siempre `RegistryView::Registry64`.** Si el `.exe` se compilara a 32 bits, `HKLM\SOFTWARE` se redirigiría a `Wow6432Node` en silencio.

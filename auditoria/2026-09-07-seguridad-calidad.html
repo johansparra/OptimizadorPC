@@ -1,0 +1,541 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Auditoría OptimizadorPC</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zilla+Slab:wght@500;600;700&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+  :root {
+    --bg: #f6f7f9;
+    --surface: #ffffff;
+    --surface-2: #eef1f5;
+    --ink: #1b2130;
+    --ink-soft: #566175;
+    --ink-faint: #8a94a6;
+    --border: #dfe3ea;
+    --border-strong: #c8cfdb;
+    --accent: #35618e;
+    --accent-soft: #e9f1f8;
+    --ok: #2c7a51;      --ok-bg: #e6f2ea;
+    --warn: #9a6413;    --warn-bg: #f6eedb;
+    --crit: #b23b2e;    --crit-bg: #f7e7e4;
+    --info: #46566f;    --info-bg: #e9edf3;
+
+    --f-display: "Zilla Slab", Georgia, "Times New Roman", serif;
+    --f-body: "IBM Plex Sans", system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    --f-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
+
+    --measure: 68ch;
+    --step-0: 0.95rem;
+    --step-1: 1.05rem;
+    --step-2: 1.32rem;
+    --step-3: 1.9rem;
+    --step-00: 0.82rem;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #10131a;
+      --surface: #171b24;
+      --surface-2: #1e2430;
+      --ink: #e4e8ef;
+      --ink-soft: #9aa5b6;
+      --ink-faint: #6b7686;
+      --border: #2a313f;
+      --border-strong: #3a4354;
+      --accent: #6fa6d8;
+      --accent-soft: #182430;
+      --ok: #5cc088;      --ok-bg: #16281f;
+      --warn: #e0a94a;    --warn-bg: #2b2413;
+      --crit: #e07a6c;    --crit-bg: #2e1c19;
+      --info: #8fa3bd;    --info-bg: #1b2230;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #10131a;
+    --surface: #171b24;
+    --surface-2: #1e2430;
+    --ink: #e4e8ef;
+    --ink-soft: #9aa5b6;
+    --ink-faint: #6b7686;
+    --border: #2a313f;
+    --border-strong: #3a4354;
+    --accent: #6fa6d8;
+    --accent-soft: #182430;
+    --ok: #5cc088;      --ok-bg: #16281f;
+    --warn: #e0a94a;    --warn-bg: #2b2413;
+    --crit: #e07a6c;    --crit-bg: #2e1c19;
+    --info: #8fa3bd;    --info-bg: #1b2230;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--f-body);
+    font-size: var(--step-0);
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    max-width: 940px;
+    margin: 0 auto;
+    padding: clamp(1.6rem, 4vw, 3.4rem) clamp(1.1rem, 4vw, 2.2rem) 4rem;
+  }
+
+  /* ---------- masthead ---------- */
+  .masthead { border-bottom: 2px solid var(--accent); padding-bottom: 1.4rem; }
+  .eyebrow {
+    font-family: var(--f-mono);
+    font-size: var(--step-00);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 0 0 0.7rem;
+  }
+  h1 {
+    font-family: var(--f-display);
+    font-weight: 700;
+    font-size: var(--step-3);
+    line-height: 1.12;
+    letter-spacing: -0.01em;
+    text-wrap: balance;
+    margin: 0 0 0.8rem;
+  }
+  .meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem 1.4rem;
+    font-family: var(--f-mono);
+    font-size: var(--step-00);
+    color: var(--ink-soft);
+  }
+  .meta b { color: var(--ink); font-weight: 500; }
+
+  /* ---------- verdict ---------- */
+  .verdict {
+    margin: 2rem 0 2.4rem;
+    padding: 1.15rem 1.3rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--ok);
+    border-radius: 3px;
+  }
+  .verdict p { margin: 0; }
+  .verdict strong { color: var(--ink); }
+
+  /* ---------- metric row ---------- */
+  .metrics {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+    margin: 0 0 2.6rem;
+  }
+  .metric { background: var(--surface); padding: 0.95rem 1rem 1rem; }
+  .metric .n {
+    font-family: var(--f-display);
+    font-weight: 600;
+    font-size: 1.55rem;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
+  .metric .k {
+    display: block;
+    margin-top: 0.4rem;
+    font-family: var(--f-mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+  @media (max-width: 620px) {
+    .metrics { grid-template-columns: repeat(2, 1fr); }
+  }
+
+  /* ---------- sections ---------- */
+  section { margin-top: 2.8rem; }
+  h2 {
+    position: relative;
+    font-family: var(--f-display);
+    font-weight: 600;
+    font-size: var(--step-2);
+    letter-spacing: -0.005em;
+    text-wrap: balance;
+    margin: 0 0 0.5rem;
+    padding-bottom: 0.45rem;
+    border-bottom: 1px solid var(--border);
+  }
+  h2::before {
+    content: attr(data-sec);
+    position: absolute;
+    left: -3.4rem;
+    top: 0.2em;
+    font-family: var(--f-mono);
+    font-size: 0.78rem;
+    font-weight: 500;
+    color: var(--accent);
+  }
+  @media (max-width: 1080px) {
+    h2 { padding-left: 2.6rem; }
+    h2::before { left: 0; top: 0.28em; }
+  }
+  h3 {
+    font-family: var(--f-mono);
+    font-weight: 600;
+    font-size: 0.8rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    margin: 1.7rem 0 0.6rem;
+  }
+  p { max-width: var(--measure); margin: 0.7rem 0; }
+  .lead { color: var(--ink-soft); }
+  a { color: var(--accent); text-underline-offset: 2px; }
+  a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
+  code {
+    font-family: var(--f-mono);
+    font-size: 0.86em;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 0.05em 0.35em;
+    word-break: break-word;
+  }
+
+  ul { max-width: var(--measure); margin: 0.7rem 0; padding-left: 1.15rem; }
+  li { margin: 0.3rem 0; }
+  li::marker { color: var(--ink-faint); }
+
+  /* ---------- tables ---------- */
+  .tablewrap { overflow-x: auto; margin: 1rem 0 0.4rem; border: 1px solid var(--border); border-radius: 4px; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
+  thead th {
+    text-align: left;
+    font-family: var(--f-mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    font-weight: 600;
+    padding: 0.7rem 0.9rem;
+    background: var(--surface-2);
+    border-bottom: 1px solid var(--border-strong);
+    white-space: nowrap;
+  }
+  tbody td {
+    padding: 0.75rem 0.9rem;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+    background: var(--surface);
+  }
+  tbody tr:last-child td { border-bottom: 0; }
+  td .fn { font-family: var(--f-mono); font-size: 0.84em; color: var(--ink); }
+  td small { display: block; color: var(--ink-soft); font-size: 0.86em; margin-top: 0.2rem; }
+
+  /* ---------- chips ---------- */
+  .chip {
+    display: inline-block;
+    font-family: var(--f-mono);
+    font-size: 0.68rem;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    padding: 0.18em 0.5em;
+    border-radius: 3px;
+    white-space: nowrap;
+    border: 1px solid transparent;
+  }
+  .chip.ok   { color: var(--ok);   background: var(--ok-bg);   border-color: color-mix(in srgb, var(--ok) 25%, transparent); }
+  .chip.warn { color: var(--warn); background: var(--warn-bg); border-color: color-mix(in srgb, var(--warn) 25%, transparent); }
+  .chip.crit { color: var(--crit); background: var(--crit-bg); border-color: color-mix(in srgb, var(--crit) 25%, transparent); }
+  .chip.info { color: var(--info); background: var(--info-bg); border-color: color-mix(in srgb, var(--info) 30%, transparent); }
+
+  .sevkey { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0.8rem 0 0; font-size: 0.8rem; color: var(--ink-soft); }
+
+  /* ---------- guardrail list ---------- */
+  .rails { list-style: none; padding: 0; margin: 1rem 0 0; display: grid; gap: 1px; background: var(--border); border: 1px solid var(--border); border-radius: 4px; overflow: hidden; }
+  .rails li { margin: 0; background: var(--surface); padding: 0.8rem 1rem; display: grid; grid-template-columns: auto 1fr; gap: 0.7rem; align-items: start; }
+  .rails .tick { color: var(--ok); font-family: var(--f-mono); font-weight: 600; }
+  .rails code { background: none; border: 0; padding: 0; color: var(--ink); }
+
+  footer {
+    margin-top: 3.4rem;
+    padding-top: 1.2rem;
+    border-top: 1px solid var(--border);
+    font-family: var(--f-mono);
+    font-size: 0.76rem;
+    color: var(--ink-faint);
+    line-height: 1.7;
+  }
+</style>
+
+</head>
+<body>
+<div class="wrap">
+
+  <header class="masthead">
+    <p class="eyebrow">Auditoría de seguridad y calidad</p>
+    <h1>Optimizador PC &mdash; revisión del 7 sep 2026</h1>
+    <div class="meta">
+      <span>Ámbito&nbsp; <b>OptimizadorPC/</b></span>
+      <span>Base&nbsp; <b>bd2f12a</b></span>
+      <span>Método&nbsp; <b>modelo de amenaza + PSScriptAnalyzer 1.25 + Semgrep 1.176 + suite (2 hosts)</b></span>
+    </div>
+  </header>
+
+  <div class="verdict">
+    <p><strong>Veredicto: postura sólida.</strong> La revisión completa de 2026&#8209;09&#8209;06
+    (<code>SECURITY.md</code>) sigue vigente y sus invariantes están fijadas por
+    <code>tests/Source/Security.Tests.ps1</code>. Esta pasada auditó lo añadido desde entonces
+    &mdash;menús Expandir/Contraer del panel Regedit y la preferencia &laquo;Formato de hora&raquo;&mdash;
+    sin superficie nueva, y corrigió las <strong>dos brechas concretas</strong> de la CI de Semgrep
+    (única familia de hallazgos de los escáneres). Lo que queda es riesgo aceptado por el propietario
+    o requiere recursos externos (certificado de firma, decisiones de CI).</p>
+  </div>
+
+  <div class="metrics">
+    <div class="metric"><span class="n">2</span><span class="k">Brechas corregidas</span></div>
+    <div class="metric"><span class="n">438&#8202;/&#8202;438</span><span class="k">Pruebas · 2 hosts</span></div>
+    <div class="metric"><span class="n">0</span><span class="k">PSScriptAnalyzer · errores</span></div>
+    <div class="metric"><span class="n">0</span><span class="k">Semgrep · hallazgos</span></div>
+  </div>
+
+  <section>
+    <h2 data-sec="§1">Alcance y método</h2>
+    <p><code>OptimizadorPC/</code> es una app de escritorio <strong>WPF sobre PowerShell&nbsp;5.1</strong>,
+    compilada a un <code>.exe</code> portable con ps2exe y ejecutada <code>-requireAdmin -noConsole</code>.
+    Todo el código corre elevado y sin consola visible: un fallo o un cambio es silencioso. La app
+    <strong>no habla con la red</strong>, no abre puertos, no carga plugins y solo lee un archivo que
+    escribe ella misma (<code>%APPDATA%\OptimizadorPC\settings.json</code>).</p>
+    <p>Se revisó contra el modelo de amenaza de la casa
+    (<code>.claude/skills/security-reviewer</code>): (1)&nbsp;dejar el equipo menos seguro,
+    (2)&nbsp;dejarlo roto sin vuelta atrás, (3)&nbsp;ejecutar código ajeno con privilegios.
+    Herramientas: barrido de primitivas de ejecución/red, <code>Invoke-ScriptAnalyzer</code> con la
+    config del repo y un segundo pase estricto solo sobre <code>core/</code>,
+    <code>semgrep scan</code> con <code>p/security-audit p/secrets p/github-actions</code>, y la suite
+    completa <code>Run-Tests.ps1 -BothHosts</code> (Windows PowerShell&nbsp;5.1 y pwsh&nbsp;7).</p>
+  </section>
+
+  <section>
+    <h2 data-sec="§2">Hallazgos de esta pasada</h2>
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr><th>Sev.</th><th>Estado</th><th>Área</th><th>Hallazgo y resolución</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="chip warn">Baja</span></td>
+            <td><span class="chip ok">Corregida</span></td>
+            <td>CI · <span class="fn">semgrep.yml</span></td>
+            <td>El paso usaba <code>actions/checkout@v6</code>, una <strong>etiqueta mutable</strong>:
+              el dueño de la acción puede repuntarla en silencio (cadena de suministro). Era el único
+              hallazgo de Semgrep (<span class="fn">github-actions-mutable-action-tag</span>).
+              <small>Fijado a <code>actions/checkout@d23441a4…</code> (v6.1.0). Re-escaneo: 0 hallazgos.</small></td>
+          </tr>
+          <tr>
+            <td><span class="chip warn">Baja</span></td>
+            <td><span class="chip ok">Corregida</span></td>
+            <td>CI · <span class="fn">semgrep.yml</span></td>
+            <td>El disparador <code>push</code> estaba filtrado a
+              <code>paths: [.github/workflows/semgrep.yml]</code>: un push que cambia código
+              <strong>no ejecutaba Semgrep</strong>. Como el repo commitea directo a <code>master</code>,
+              la cobertura efectiva era el <code>schedule</code> nocturno + manual.
+              <small>Quitado el filtro <code>paths</code>. Cada push a <code>main</code>/<code>master</code>
+              pasa ahora por Semgrep.</small></td>
+          </tr>
+          <tr>
+            <td><span class="chip info">Info</span></td>
+            <td><span class="chip ok">Verificada</span></td>
+            <td>core/ · ShouldProcess</td>
+            <td>Pase estricto de PSScriptAnalyzer sobre <code>core/</code> sin la exclusión de
+              <span class="fn">PSUseShouldProcessForStateChangingFunctions</span> &rarr; <strong>6 avisos,
+              los 6 por el verbo del nombre</strong> (<span class="fn">Set-WindowBackdrop</span>,
+              <span class="fn">Update-CategoryRegistryState</span>,
+              <span class="fn">Update-SettingStatus</span>, dos fábricas <span class="fn">New-…Result</span>,
+              <span class="fn">Set-RegistryWriteArmed</span>). Ninguno muta el sistema.
+              <small>La única función de <code>core/</code> que escribe &mdash;
+              <span class="fn">Write-RegistryValue</span>&mdash; ya lleva
+              <code>[CmdletBinding(SupportsShouldProcess)]</code>. Cierra el
+              &laquo;pendiente sugerido&raquo; de <code>SECURITY.md</code> §9.</small></td>
+          </tr>
+          <tr>
+            <td><span class="chip info">Info</span></td>
+            <td><span class="chip ok">Sin superficie</span></td>
+            <td>ui/ · funciones nuevas</td>
+            <td>Menús Expandir/Contraer (<span class="fn">ChipMenu.ps1</span>,
+              <span class="fn">CategoryDetailView.ps1</span>) y preferencia &laquo;Formato de hora&raquo;
+              (<span class="fn">TimeFormat.ps1</span>,
+              <span class="fn">40-TimeFormat.ps1</span>): <strong>0 escrituras al sistema, 0 ejecución
+              dinámica, 0 red.</strong> Único dato en disco: la cadena <code>'24'</code>/<code>'12'</code>
+              por <code>Set-AppSetting</code>. El patrón <code>.ToString(...)</code> es un literal, nunca
+              la cadena guardada; un valor desconocido cae al de partida.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="sevkey">
+      <span class="chip crit">Alta</span> compromete el equipo &nbsp;·&nbsp;
+      <span class="chip warn">Media / Baja</span> hardening &nbsp;·&nbsp;
+      <span class="chip info">Info</span> sin impacto directo
+    </p>
+  </section>
+
+  <section>
+    <h2 data-sec="§3">Riesgos aceptados y pendientes (re&#8209;confirmados)</h2>
+    <p class="lead">Sin cambios respecto a <code>SECURITY.md</code> §11. Se listan para que la decisión
+    siga siendo visible, no porque hayan empeorado.</p>
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr><th>Sev.</th><th>Riesgo</th><th>Situación</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="chip warn">Media</span></td>
+            <td>Lista blanca de escritura amplia: <code>HKLM\SOFTWARE\Policies\Microsoft</code>
+              alcanza las claves GPO de Defender, Windows&nbsp;Update y SmartScreen.</td>
+            <td><strong>Ningún ajuste la usa hoy</strong> (los 6 con <code>-Registry</code> cuelgan de
+              <code>…\Multimedia\SystemProfile</code>). Mitigado por la denylist de nombres de valor
+              (§4), <code>Security.Tests.ps1</code> y revisión manual. Estrecharla exige saber qué
+              claves concretas harán falta.</td>
+          </tr>
+          <tr>
+            <td><span class="chip warn">Media</span></td>
+            <td>Rollback (<code>$RegistrySnapshots</code>) solo en memoria; sin &laquo;deshacer&raquo;
+              en la UI; sin aviso de punto de restauración antes de la primera escritura elevada.</td>
+            <td>Aceptado temporalmente por el propietario. Pendiente, en orden: persistir el snapshot
+              en <code>%APPDATA%</code> &rarr; botón deshacer &rarr; aviso de restauración.</td>
+          </tr>
+          <tr>
+            <td><span class="chip warn">Media</span></td>
+            <td>El <code>.exe</code> no está firmado (Authenticode). Un binario sin firma que pide UAC
+              es justo lo que Windows enseña a no ejecutar.</td>
+            <td>Aceptado mientras no se distribuya a terceros. <strong>Bloquea la distribución.</strong>
+              Mitigación: certificado de firma de código (idealmente EV).</td>
+          </tr>
+          <tr>
+            <td><span class="chip warn">Baja</span></td>
+            <td>CI: la imagen <code>container: semgrep/semgrep</code> sigue sin fijar; los
+              <code>--config</code> no están versionados en el repo; no se sube SARIF a
+              <em>code scanning</em>; no hay workflow de PSScriptAnalyzer ni de la suite.</td>
+            <td>Corregido lo concreto (checkout por SHA, filtro <code>paths</code> fuera). El resto,
+              recomendación §5.</td>
+          </tr>
+          <tr>
+            <td><span class="chip info">Info</span></td>
+            <td><code>Add-Type</code> en <span class="fn">core/Interop/SystemBackdrop.ps1</span>
+              compila una cadena de C#.</td>
+            <td>Aceptado. Es un here&#8209;string literal fijo (<code>@'…'@</code>), revisado; no se
+              construye en runtime. Lo vigila <code>Security.Tests.ps1</code>.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2 data-sec="§4">Cómo está blindado</h2>
+    <p><code>tests/Source/Security.Tests.ps1</code> convierte en fallo de la suite lo que antes solo
+    vivía en prosa. La suite <strong>no arranca en verde</strong> si alguien reintroduce cualquiera
+    de estos:</p>
+    <ul class="rails">
+      <li><span class="tick">&check;</span><span>Toda ruta de <code>-Registry</code> en
+        <code>ui/Data/Categories/*</code> pasa <code>Test-RegistryWriteAllowed</code> &mdash; una ruta
+        fuera de la lista blanca acabaría en <code>blocked</code> en silencio.</span></li>
+      <li><span class="tick">&check;</span><span>Ningún <code>.ps1</code> de <code>ui/</code> o
+        <code>core/</code> usa <code>Invoke-Expression</code>, <code>iex</code>,
+        <code>[scriptblock]::Create</code>, <code>Invoke-WebRequest</code>,
+        <code>DownloadString</code>/<code>DownloadFile</code>, <code>Net.WebClient</code>&hellip;</span></li>
+      <li><span class="tick">&check;</span><span>El único <code>Add-Type -TypeDefinition</code> vive
+        solo en <code>SystemBackdrop.ps1</code> y su fuente sigue siendo un here&#8209;string
+        literal.</span></li>
+      <li><span class="tick">&check;</span><span>Ningún <code>-Registry</code> apunta a un nombre de
+        valor que degrada la seguridad (<code>ConsentPromptBehaviorAdmin</code>,
+        <code>DisableAntiSpyware</code>, <code>SmartScreenEnabled</code>, <code>NoAutoUpdate</code>,
+        <code>EnableFirewall</code>&hellip;) sin <code>AllowsSecurityTradeoff = $true</code>.</span></li>
+      <li><span class="tick">&check;</span><span><code>ExternalLink.ps1</code> abre
+        <strong>exactamente</strong> <code>http</code> y <code>https</code>; exige URI absoluta y
+        rechaza <code>file:</code>, <code>ms-settings:</code>, <code>javascript:</code>, rutas
+        locales.</span></li>
+      <li><span class="tick">&check;</span><span>Cada clave de <code>-Registry</code> declara un
+        <code>Default</code> con el que revertir (<code>OFF</code> lo escribe).</span></li>
+    </ul>
+    <p>Y el contrato de escritura de <code>core/Registry/Writer.ps1</code>: lista blanca de rutas sin
+    diálogo, tipo declarado respetado, copia del valor previo, verificación por relectura,
+    <code>-WhatIf</code>, y <strong>nada lanza hacia arriba</strong> &mdash; una clave protegida es un
+    estado (<code>denied</code>), no una excepción que tumbe la ventana sin consola.</p>
+  </section>
+
+  <section>
+    <h2 data-sec="§5">Calidad</h2>
+
+    <h3>Arquitectura</h3>
+    <p>Modelo de 7 capas, una carpeta por capa, carga por marcadores <code>@@EMBED_DIR@@</code>. Los
+    archivos nuevos entran solos y están bien ubicados: <code>ChipMenu.ps1</code> en
+    <code>ui/Components/Shell/</code>, <code>TimeFormat.ps1</code> en <code>ui/Engine/</code>,
+    <code>40-TimeFormat.ps1</code> en <code>ui/Data/Preferences/</code>. Ningún componente conoce
+    categorías concretas por su <code>Id</code>; el destino de los menús viaja por un identificador
+    estable (<code>-Kind</code>), no por la etiqueta traducida.</p>
+
+    <h3>Pruebas</h3>
+    <p><strong>438 pruebas en 22 archivos</strong>, verdes en los dos hosts. Cubren el contrato de
+    empaquetado (que el <code>.exe</code> lleve todo dentro), la codificación UTF&#8209;8 con BOM, las
+    invariantes de seguridad de §4 y la lógica de <code>core/</code> contra el registro real. El
+    trabajo reciente añadió 36 pruebas.</p>
+
+    <h3>Análisis estático</h3>
+    <p>PSScriptAnalyzer: <strong>0 errores, 2 avisos</strong>, los dos falsos positivos de la misma
+    familia (<span class="fn">PSUseDeclaredVarsMoreThanAssignments</span> sobre <code>$CategoryIndex</code>
+    y sobre <code>$ScriptRoot</code> del generado <code>build/_combined.ps1</code>): variables que se
+    consumen vía dot&#8209;source al mismo ámbito, algo que PSSA no ve archivo por archivo. Cinco
+    exclusiones en <code>PSScriptAnalyzerSettings.psd1</code>, cada una con su motivo escrito.</p>
+
+    <h3>Deuda no crítica</h3>
+    <ul>
+      <li>Contadores de las píldoras de la lista de secciones: fijos, no calculados. Cosmético, ya
+        documentado en <code>README.md</code>.</li>
+      <li><code>New-ChipMenu</code> comparte estructura con <code>New-ViewMenu</code> (tarjeta flotante
+        + filas con hover). Duplicación deliberada y documentada en la cabecera del archivo: la
+        mecánica difiere (órdenes vs. casillas) y fundirlas churnearía un componente ya probado.</li>
+      <li><code>build/_combined.ps1</code> queda en disco tras compilar (está en <code>.gitignore</code>)
+        y añade ruido al pase de PSSA con <code>-Recurse</code>.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2 data-sec="§6">Recomendaciones siguientes</h2>
+    <p class="lead">Por valor, de más a menos. Ninguna bloquea el uso local actual.</p>
+    <ol>
+      <li><strong>Firmar el <code>.exe</code></strong> con un certificado de firma de código (EV para
+        reputación inmediata en SmartScreen) antes de cualquier distribución a terceros.</li>
+      <li><strong>Persistir <code>$RegistrySnapshots</code></strong> en <code>%APPDATA%</code>, añadir
+        &laquo;deshacer último cambio&raquo; en la UI y un aviso de punto de restauración antes de la
+        primera escritura elevada de la sesión.</li>
+      <li><strong>Workflow en runner Windows</strong> que corra <code>Run-Tests.ps1 -BothHosts</code> y
+        <code>Invoke-ScriptAnalyzer</code> en cada push; subir SARIF de Semgrep a
+        <em>code scanning</em> y versionar los <code>--config</code> en el propio workflow.</li>
+      <li><strong>Estrechar <code>HKLM\SOFTWARE\Policies\Microsoft</code></strong> a la rama concreta
+        que haga falta el día que exista un ajuste que la use; hasta entonces, cada ampliación de la
+        lista blanca es una decisión de seguridad revisable.</li>
+    </ol>
+  </section>
+
+  <footer>
+    Generado el 2026-09-07 · base bd2f12a · complementa a SECURITY.md, README.md y CLAUDE.md<br>
+    Herramientas: PSScriptAnalyzer 1.25.0 · Semgrep 1.176.1 · tests/Run-Tests.ps1 (5.1 + pwsh 7)
+  </footer>
+
+</div>
+</body>
+</html>

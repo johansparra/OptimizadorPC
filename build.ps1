@@ -130,16 +130,22 @@ Import-Module ps2exe -RequiredVersion $Ps2ExeVersion
 # El .exe se deja en build/, junto al combinado que lo origina.
 $outPath = Join-Path $buildDir 'OptimizadorPC.exe'
 
+# Nombre y versión, de la MISMA fuente que enseña la aplicación
+# (ui/Data/AppInfo.ps1). Windows pide cuatro números en la versión de
+# un ejecutable; la del proyecto tiene tres, así que se añade el .0.
+. (Join-Path $root 'ui\Data\AppInfo.ps1')
+$exeVersion = '{0}.0' -f $AppInfo.Version
+
 Invoke-ps2exe `
     -inputFile $combinedPath `
     -outputFile $outPath `
     -noConsole `
     -requireAdmin `
-    -title 'Optimizador PC' `
+    -title $AppInfo.Name `
     -description 'Optimizador de Windows 11 Pro' `
     -company 'Personal' `
-    -version '1.0.0.0' `
-    -product 'Optimizador PC'
+    -version $exeVersion `
+    -product $AppInfo.Name
 
 Write-Host "Listo: $outPath" -ForegroundColor Green
 Write-Host 'Ese .exe es portable: cópialo donde quieras, no necesita instalación ni la carpeta ui/.' -ForegroundColor Green

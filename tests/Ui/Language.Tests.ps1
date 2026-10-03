@@ -125,6 +125,13 @@ Describe 'ui/Lang - no falta ninguna traducción' {
         Show-CopyFeedback $copiar
         Reset-CopyFeedback
 
+        # El panel "Acerca de" se arma al pulsar el botón ?, y cada
+        # dato tiene varias formas (exe / script, admin o no): se
+        # piden todas, no solo las de este equipo.
+        New-AboutCard $ventana $null | Out-Null
+        foreach ($k in 'exe', 'script', 'unknown') { Get-AboutHostLabel $k | Out-Null }
+        foreach ($b in $true, $false) { Get-AboutElevationLabel $b | Out-Null }
+
         # El botón de guardar dice una cosa u otra según haya algo
         # apuntado, y los dos rótulos tienen que estar traducidos.
         Clear-AppLog

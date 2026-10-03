@@ -58,8 +58,9 @@ Describe 'seguridad - escritura al registro' {
         $revisadas = 0
         foreach ($entry in Get-AllRegistryKeys) {
             $path = [string]$entry.Key.Path
-            Assert-True (Test-RegistryWriteAllowed $path) `
-                ("ruta fuera de la lista blanca en '$($entry.Category)' / '$($entry.Setting)': $path")
+            $name = [string]$entry.Key.Name
+            Assert-True (Test-RegistryWriteAllowed -Path $path -Name $name) `
+                ("ruta fuera de la lista blanca en '$($entry.Category)' / '$($entry.Setting)': $path\$name")
             $revisadas++
         }
         # Que la prueba de verdad esté mirando algo: hoy hay 1 clave.
@@ -128,16 +129,22 @@ Describe 'seguridad - ejecución de código y red' {
         }
     }
 
-    It 'Add-Type solo se usa en core/Interop/SystemBackdrop.ps1, con fuente literal' {
-        # El único Add-Type del proyecto compila una cadena de C#
-        # FIJA (here-string de comillas simples). Add-Type con fuente
+    It 'Add-Type solo se usa en los archivos revisados de core/Interop/, con fuente literal' {
+        # Cada Add-Type del proyecto compila una cadena de C# FIJA
+        # (here-string de comillas simples). Add-Type con fuente
         # construida en tiempo de ejecución sería equivalente a iex.
+        # Añadir un archivo a esta lista es una decisión de seguridad:
+        # se revisa a mano y se apunta en SECURITY.md §11.
+        $revisados = @(
+            'core/Interop/SystemBackdrop.ps1'   # dwmapi: Mica / Acrílico
+            'core/Interop/WorkArea.ps1'         # user32: maximizar al área de trabajo
+        )
         foreach ($archivo in Get-GuardedSourceFiles) {
             $texto = Get-Content -Path $archivo.FullName -Raw
             if ($texto -notmatch 'Add-Type\s+-TypeDefinition') { continue }
 
             $rel = Get-GuardedRelPath $archivo
-            Assert-Equal 'core/Interop/SystemBackdrop.ps1' $rel `
+            Assert-True ($revisados -contains $rel) `
                 "Add-Type -TypeDefinition nuevo en ${rel} - revísalo a mano, la fuente NO puede venir de fuera"
             Assert-True ($texto -match "(?s)\`$source\s*=\s*@'.*?'@") `
                 "la fuente del Add-Type de ${rel} debería seguir siendo un here-string literal (@'...'@)"

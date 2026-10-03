@@ -15,9 +15,11 @@
 #
 #   2. LISTA BLANCA, sin diálogo de confirmación. Solo se escribe
 #      en las ramas de $RegistryWriteAllowlist (o en algo que
-#      cuelgue de ellas). SAM, SECURITY, BCD, ...\Services y demás
-#      quedan fuera por no estar en la lista. No hay denylist
-#      porque no hace falta: lo que no está, no se toca.
+#      cuelgue de ellas) o en los valores CONCRETOS de
+#      $RegistryWriteAllowedValues (clave exacta + nombre). SAM,
+#      SECURITY, BCD y el resto de ...\Services quedan fuera por no
+#      estar en la lista. No hay denylist porque no hace falta: lo
+#      que no está, no se toca.
 #
 #   3. RESPETA EL TIPO. El valor se escribe con el RegistryValueKind
 #      que declara el ajuste (Type), nunca "a ver qué sale". Un
@@ -64,6 +66,63 @@ $RegistryWriteAllowlist = @(
     'HKEY_CURRENT_USER\Software\OptimizadorPC'
 )
 
+# ---- lista blanca de VALORES -------------------------------------
+#
+# Lo que no se puede abrir como rama entera. Aquí la clave tiene que
+# ser EXACTAMENTE esa -nada de lo que cuelga de ella- y el nombre del
+# valor, uno de los de su lista. Así se puede escribir el Start de
+# SysMain sin abrir ...\Services, o DisableWpbtExecution sin abrir
+# Session Manager (debajo viven KnownDLLs, BootExecute, Environment).
+# Añadir un valor es añadir un nombre aquí, y es una decisión de
+# seguridad igual que una rama.
+$RegistryWriteAllowedValues = @(
+    # TCP/IP global (NO ...\Parameters\Interfaces\{GUID}).
+    @{ Path = 'HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters'
+       Names = @('DefaultTTL', 'Tcp1323Opts', 'TcpTimedWaitDelay', 'MaxUserPort') }
+    # Servidor SMB (compartir archivos de este equipo).
+    @{ Path = 'HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\LanmanServer\Parameters'
+       Names = @('autodisconnect', 'Size', 'EnableOplocks', 'IRPStackSize',
+                 'SharingViolationDelay', 'SharingViolationRetries') }
+    # Tipo de inicio de servicios concretos: solo Start, uno a uno.
+    @{ Path = 'HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\SysMain';      Names = @('Start') }
+    @{ Path = 'HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\DiagTrack';    Names = @('Start') }
+    @{ Path = 'HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\lfsvc';        Names = @('Start') }
+    @{ Path = 'HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\MapsBroker';   Names = @('Start') }
+    @{ Path = 'HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\CscService';   Names = @('Start') }
+    @{ Path = 'HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\StorSvc';      Names = @('Start') }
+    @{ Path = 'HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\SharedAccess'; Names = @('Start') }
+    # Session Manager y dos de sus subclaves.
+    @{ Path = 'HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Session Manager'
+       Names = @('DisableWpbtExecution') }
+    @{ Path = 'HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management\PrefetchParameters'
+       Names = @('EnablePrefetcher') }
+    @{ Path = 'HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Session Manager\Power'
+       Names = @('HibernateEnabled') }
+    # Optimización de distribución (la de Configuración, no la directiva).
+    @{ Path = 'HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\DeliveryOptimization\Config'
+       Names = @('DODownloadMode', 'DownloadMode') }
+    @{ Path = 'HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\DeliveryOptimization\Settings'
+       Names = @('DownloadMode') }
+    # Privacidad.
+    @{ Path = 'HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\DataCollection'
+       Names = @('AllowTelemetry') }
+    @{ Path = 'HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\location'
+       Names = @('Value') }
+    @{ Path = 'HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\AdvertisingInfo';             Names = @('Enabled') }
+    @{ Path = 'HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Privacy'
+       Names = @('TailoredExperiencesWithDiagnosticDataEnabled') }
+    @{ Path = 'HKEY_CURRENT_USER\Software\Microsoft\Speech_OneCore\Settings\OnlineSpeechPrivacy';        Names = @('HasAccepted') }
+    @{ Path = 'HKEY_CURRENT_USER\Software\Microsoft\Input\TIPC';                                        Names = @('Enabled') }
+    @{ Path = 'HKEY_CURRENT_USER\Software\Microsoft\InputPersonalization'
+       Names = @('RestrictImplicitInkCollection', 'RestrictImplicitTextCollection') }
+    @{ Path = 'HKEY_CURRENT_USER\Software\Microsoft\InputPersonalization\TrainedDataStore';             Names = @('HarvestContacts') }
+    @{ Path = 'HKEY_CURRENT_USER\Software\Microsoft\Personalization\Settings';                          Names = @('AcceptedPrivacyPolicy') }
+    @{ Path = 'HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced';          Names = @('Start_TrackProgs') }
+    # Barra de tareas.
+    @{ Path = 'HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced\TaskbarDeveloperSettings'
+       Names = @('TaskbarEndTask') }
+)
+
 # Raíz sin abreviar y en mayúsculas, sin barra final. Deja el
 # resto tal cual: las claves del registro NO distinguen mayúsculas,
 # de eso se encarga la comparación.
@@ -82,8 +141,10 @@ function Get-NormalizedRegistryPath {
     "$root\$($parts[1])"
 }
 
+# Sin -Name solo valen las ramas: la lista de valores exige saber
+# QUÉ valor se va a escribir, y sin él la respuesta es no.
 function Test-RegistryWriteAllowed {
-    param([string]$Path)
+    param([string]$Path, [string]$Name)
 
     $norm = Get-NormalizedRegistryPath $Path
     if (-not $norm) { return $false }
@@ -93,6 +154,16 @@ function Test-RegistryWriteAllowed {
         if (-not $e) { continue }
         if ([string]::Equals($norm, $e, [System.StringComparison]::OrdinalIgnoreCase)) { return $true }
         if ($norm.StartsWith($e + '\', [System.StringComparison]::OrdinalIgnoreCase)) { return $true }
+    }
+
+    if ([string]::IsNullOrEmpty($Name)) { return $false }
+
+    foreach ($entry in $RegistryWriteAllowedValues) {
+        $e = Get-NormalizedRegistryPath $entry.Path
+        if (-not [string]::Equals($norm, $e, [System.StringComparison]::OrdinalIgnoreCase)) { continue }
+        foreach ($n in $entry.Names) {
+            if ([string]::Equals($Name, $n, [System.StringComparison]::OrdinalIgnoreCase)) { return $true }
+        }
     }
     $false
 }
@@ -468,7 +539,7 @@ function Write-RegistryValue {
     }
 
     # 2. Lista blanca.
-    if (-not (Test-RegistryWriteAllowed $Path)) {
+    if (-not (Test-RegistryWriteAllowed -Path $Path -Name $Name)) {
         Write-RegistryWriteRejected $info 'blocked' 'PATH_NOT_ALLOWED' $watch.Elapsed.TotalMilliseconds
         return (New-RegistryWriteResult 'blocked')
     }

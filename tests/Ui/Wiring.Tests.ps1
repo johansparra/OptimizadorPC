@@ -57,9 +57,6 @@ function Get-WiringProbe {
         'Push-Boton $Window.FindName(''BtnMenu'')'
         'Write-Host ("MENU-DESPLEGADO={0}" -f (Get-SidebarExpanded))'
         ''
-        'Push-Boton $Window.FindName(''BtnModeBuilder'')'
-        'Write-Host ("MODO-BUILDER={0} MODO-NORMAL={1}" -f $Window.FindName(''BtnModeBuilder'').Tag, $Window.FindName(''BtnModeNormal'').Tag)'
-        ''
         ''
         '# Refrescar: la misma lectura de la entrada, otra vez.'
         'Clear-AppLog'
@@ -93,11 +90,10 @@ function Get-WiringProbe {
         'Hide-LogPanel $Window'
         ''
         '# El menu lateral, en el host de verdad: una entrada con'
-        '# pantalla y otra sin ella. Las que no la tienen no navegan.'
+        '# pantalla navega. (Las que no la tienen ya no existen en el'
+        '# menu real; eso lo cubre Window.Tests.ps1 con una de mentira.)'
         'Push-Boton $Window.FindName(''NavSettings'')'
         'Write-Host ("NAV-CON-PANTALLA={0}" -f (Get-CurrentViewName))'
-        'Push-Boton $Window.FindName(''NavSoftware'')'
-        'Write-Host ("NAV-SIN-PANTALLA={0} MARCA={1}" -f (Get-CurrentViewName), ($null -ne $Window.FindName(''NavSoftware'').Tag))'
         ''
         '# La busqueda, pulsando de verdad. Sus manejadores llaman a'
         '# funciones del script -Open-SearchResult, Show-View- y eso'
@@ -214,10 +210,6 @@ Describe 'main.ps1 - los botones responden' {
         Assert-Match 'MENU-DESPLEGADO=False' $WiringOutput
     }
 
-    It 'el selector de modo mueve la selección' {
-        Assert-Match 'MODO-BUILDER=sel MODO-NORMAL=\s*$' ($WiringOutput -split "`r?`n" | Where-Object { $_ -like 'MODO-*' })
-    }
-
     It 'el botón de refrescar vuelve a leer el registro y avisa' {
         if ($WiringOutput -match 'REFRESCO-LINEAS=(\d+) ESPERADAS=(\d+) AVISO=(\w+)') {
             Assert-Equal $Matches[2] $Matches[1] 'líneas dejadas por la segunda lectura'
@@ -241,9 +233,8 @@ Describe 'main.ps1 - los botones responden' {
         else { throw 'la sonda no ha dicho nada del refresco con el log fuera' }
     }
 
-    It 'una entrada del menú sin pantalla no lleva a ninguna parte' {
+    It 'una entrada del menú con pantalla navega' {
         Assert-Match 'NAV-CON-PANTALLA=Show-SettingsView' $WiringOutput 'Ajustes sí debería navegar'
-        Assert-Match 'NAV-SIN-PANTALLA=Show-SettingsView MARCA=False' $WiringOutput 'Software no debía moverse de sitio ni marcarse'
     }
 
     It 'la búsqueda pinta resultados y pulsarlos lleva a su sección' {

@@ -25,9 +25,8 @@ Describe 'ui/MainWindow.xaml - la carcasa' {
         # rodando hasta que alguien le pide una propiedad, y el
         # error sale muy lejos de donde está la causa.
         $nombres = @(
-            'TitleBar', 'BtnMenu', 'BtnLog', 'BtnTheme', 'BtnHelp'
+            'TitleBar', 'BtnMenu', 'BtnLog', 'BtnTheme', 'BtnHelp', 'AppVersionBadge'
             'BtnMinimize', 'BtnMaximize', 'BtnClose'
-            'BtnModeNormal', 'BtnModeBuilder', 'BtnModeConfig'
             'HeaderTitleArea', 'HeaderActionsArea', 'HeaderSummaryArea'
             'Sidebar', 'NavTop', 'NavBottom'
             'MainScroll', 'MainContent'
@@ -119,7 +118,6 @@ Describe 'ui/Components/Shell/TitleBar.ps1' {
 
         Assert-Equal 'Activity log' ([string]$ventana.FindName('BtnLog').ToolTip)
         Assert-Equal 'Change theme' ([string]$ventana.FindName('BtnTheme').ToolTip)
-        Assert-Equal 'Normal'       ([string]$ventana.FindName('BtnModeNormal').Content)
     }
 
     It 'en español salen traducidos' {
@@ -189,28 +187,40 @@ Describe 'ui/Components/Shell/Sidebar.ps1' {
     }
 
     It 'una entrada sin pantalla no navega ni mueve la selección' {
-        # Las secciones sin implementar siguen en el menú para que se
-        # vea la estructura, pero pulsarlas no puede llevar a ningún
-        # sitio: ni a una vista vacía ni de vuelta a la lista. El
-        # usuario se queda mirando exactamente lo mismo.
-        $ventana = New-AppWindow
-        Build-Sidebar -Window $ventana
-        Push-NavButton $ventana 'settings'
+        # Una sección sin implementar puede estar en el menú, pero
+        # pulsarla no puede llevar a ningún sitio: ni a una vista vacía
+        # ni de vuelta a la lista. El usuario se queda mirando
+        # exactamente lo mismo. El índice real ya no tiene ninguna, así
+        # que la prueba se trae la suya y deja el índice como estaba.
+        $original = $script:NavigationIndex
+        $script:NavigationIndex = @($original) + @(
+            @{ Id = 'pruebasinvista'; Icon = 'Gear'; Label = 'Settings'; Group = 'Bottom'
+               Visible = $true; Locked = $false; View = $null }
+        )
+        try {
+            $ventana = New-AppWindow
+            Build-Sidebar -Window $ventana
+            Push-NavButton $ventana 'settings'
 
-        $antesVista     = Get-CurrentViewName
-        $antesContenido = $ventana.FindName('MainContent').Content
+            $antesVista     = Get-CurrentViewName
+            $antesContenido = $ventana.FindName('MainContent').Content
 
-        foreach ($nav in Get-NavigationItems) {
-            if ($nav.View) { continue }
+            $sinVista = @(Get-NavigationItems | Where-Object { -not $_.View })
+            Assert-True ($sinVista.Count -gt 0) 'la entrada de prueba no ha llegado al menú'
 
-            $boton = $ventana.FindName((Get-NavElementName $nav.Id))
-            Assert-True $boton.IsEnabled "'$($nav.Id)' tiene que seguir habilitado a la vista"
-            Assert-NoThrow { Push-NavButton $ventana $nav.Id } "pulsar '$($nav.Id)'"
+            foreach ($nav in $sinVista) {
+                $boton = $ventana.FindName((Get-NavElementName $nav.Id))
+                Assert-True $boton.IsEnabled "'$($nav.Id)' tiene que seguir habilitado a la vista"
+                Assert-NoThrow { Push-NavButton $ventana $nav.Id } "pulsar '$($nav.Id)'"
 
-            Assert-Equal $antesVista (Get-CurrentViewName) "'$($nav.Id)' ha navegado"
-            Assert-True ([object]::ReferenceEquals($antesContenido, $ventana.FindName('MainContent').Content)) "'$($nav.Id)' ha repintado la pantalla"
-            Assert-Null $boton.Tag "'$($nav.Id)' se ha quedado marcado en el menú"
-            Assert-Equal 'sel' ([string]$ventana.FindName('NavSettings').Tag) "'$($nav.Id)' ha desmarcado la sección en la que estabas"
+                Assert-Equal $antesVista (Get-CurrentViewName) "'$($nav.Id)' ha navegado"
+                Assert-True ([object]::ReferenceEquals($antesContenido, $ventana.FindName('MainContent').Content)) "'$($nav.Id)' ha repintado la pantalla"
+                Assert-Null $boton.Tag "'$($nav.Id)' se ha quedado marcado en el menú"
+                Assert-Equal 'sel' ([string]$ventana.FindName('NavSettings').Tag) "'$($nav.Id)' ha desmarcado la sección en la que estabas"
+            }
+        }
+        finally {
+            $script:NavigationIndex = $original
         }
     }
 

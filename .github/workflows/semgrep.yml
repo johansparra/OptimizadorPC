@@ -1,12 +1,14 @@
 on:
   workflow_dispatch: {}
   pull_request: {}
+  # Sin filtro `paths`: el repo commitea directo a master, así que
+  # cada push de código tiene que pasar por Semgrep, no solo los que
+  # tocan este workflow. Antes la cobertura efectiva era el schedule
+  # nocturno + manual (ver SECURITY.md §8).
   push:
     branches:
     - main
     - master
-    paths:
-    - .github/workflows/semgrep.yml
   schedule:
   # random HH:MM to avoid a load spike on GitHub Actions at 00:00
   - cron: 26 22 * * *
@@ -22,5 +24,8 @@ jobs:
     container:
       image: semgrep/semgrep
     steps:
-    - uses: actions/checkout@v6
+    # Fijado por SHA: una etiqueta (`@v6`) la puede repuntar el dueño
+    # de la acción en silencio -cadena de suministro-. Subir de
+    # versión = cambiar este SHA a conciencia.
+    - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
     - run: semgrep ci

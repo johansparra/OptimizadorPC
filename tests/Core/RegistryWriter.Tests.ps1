@@ -45,6 +45,24 @@ Describe 'core/Registry/Writer.ps1 - la lista blanca' {
             Assert-False (Test-RegistryWriteAllowed $ruta) "no debería permitir: '$ruta'"
         }
     }
+
+    It 'un valor de la lista de valores pasa solo con su clave exacta y su nombre' {
+        $svc = 'HKLM\SYSTEM\CurrentControlSet\Services\SysMain'
+        Assert-True  (Test-RegistryWriteAllowed -Path $svc -Name 'Start')
+        Assert-True  (Test-RegistryWriteAllowed -Path $svc -Name 'START') 'el nombre no distingue mayúsculas'
+        # Sin nombre, otro nombre, o una subclave: no.
+        Assert-False (Test-RegistryWriteAllowed -Path $svc) 'sin -Name no hay valor que comprobar'
+        Assert-False (Test-RegistryWriteAllowed -Path $svc -Name 'ImagePath') 'ImagePath no está en la lista'
+        Assert-False (Test-RegistryWriteAllowed -Path "$svc\Parameters" -Name 'Start') 'una subclave no hereda el permiso'
+    }
+
+    It 'la lista de valores no abre la rama de Session Manager' {
+        $sm = 'HKLM\SYSTEM\CurrentControlSet\Control\Session Manager'
+        Assert-True  (Test-RegistryWriteAllowed -Path $sm -Name 'DisableWpbtExecution')
+        Assert-False (Test-RegistryWriteAllowed -Path $sm -Name 'BootExecute')
+        Assert-False (Test-RegistryWriteAllowed -Path "$sm\KnownDLLs" -Name 'DisableWpbtExecution')
+        Assert-False (Test-RegistryWriteAllowed -Path 'HKLM\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces\{0}' -Name 'DefaultTTL')
+    }
 }
 
 Describe 'core/Registry/Writer.ps1 - texto declarado a valor tipado' {

@@ -175,6 +175,10 @@ $Window.FindName('BtnLog').Add_Click({
     Switch-LogPanel ([System.Windows.Window]::GetWindow($s))
 })
 
+# ---- Acerca de (el botón ?) ----
+# Versión, descripción y sobre qué está corriendo el programa.
+Initialize-AboutMenu -Window $Window
+
 # Escape cierra el cajón. Es Preview para verlo antes que nadie:
 # si el foco está dentro del cajón, el evento normal no llegaría
 # hasta aquí.
@@ -185,21 +189,6 @@ $Window.Add_PreviewKeyDown({
         $e.Handled = $true
     }
 })
-
-# ---- Selector de modo (solo visual por ahora) ----
-$Window.FindName('BtnModeNormal').Add_Click({ param($s, $e) Set-ModeSelection $s })
-$Window.FindName('BtnModeBuilder').Add_Click({ param($s, $e) Set-ModeSelection $s })
-$Window.FindName('BtnModeConfig').Add_Click({ param($s, $e) Set-ModeSelection $s })
-
-function Set-ModeSelection {
-    param($Button)
-    $win = [System.Windows.Window]::GetWindow($Button)
-    foreach ($name in @('BtnModeNormal', 'BtnModeBuilder', 'BtnModeConfig')) {
-        $win.FindName($name).Tag = $null
-    }
-    $Button.Tag = 'sel'
-    Move-ModeIndicator -Window $win -Animate
-}
 
 # ---- Menú lateral ----
 # Los botones se construyen a partir de ui/Index/NavigationIndex.ps1;
@@ -223,9 +212,13 @@ Build-Backdrop -Window $Window
 # En SourceInitialized y no aquí: antes de ese momento la ventana
 # todavía no tiene descriptor, y sin descriptor no hay nada a lo
 # que pedirle un material.
+#
+# Ahí también se engancha el maximizado al área de trabajo: sin el
+# cromo de Windows, maximizar taparía la barra de tareas.
 $Window.Add_SourceInitialized({
     param($s, $e)
     Sync-WindowMaterial -Window $s
+    $null = Enable-WindowWorkArea -Window $s
 })
 
 # ---- Textos e iconos que el XAML no puede traducir ----

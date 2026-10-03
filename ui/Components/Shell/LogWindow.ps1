@@ -211,6 +211,13 @@ function New-LogWindow {
         else                                { $btn.Content = Glyph 'Maximize' }
     })
 
+    # Sin cromo de Windows, maximizar taparía la barra de tareas.
+    # En SourceInitialized porque antes no hay descriptor.
+    $win.Add_SourceInitialized({
+        param($s, $e)
+        $null = Enable-WindowWorkArea -Window $s
+    })
+
     # Se cierre como se cierre -su botón, Alt+F4, o al salir del
     # programa por ser hija- el estado tiene que quedar limpio, o el
     # botón de la barra de título intentaría enfocar una ventana

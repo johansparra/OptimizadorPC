@@ -15,19 +15,27 @@
 Register-Language 'es' @{
 
     # ---- Menú lateral ----
-    'Software'   = 'Programas'
     'Optimize'   = 'Optimizar'
-    'Customize'  = 'Personalizar'
-    'Advanced'   = 'Avanzado'
     'Settings'   = 'Ajustes'
-    'More'       = 'Más'
 
     # ---- Barra de título ----
-    'Normal'         = 'Normal'
-    'Builder'        = 'Constructor'
-    'Config Review'  = 'Revisar configuración'
     'Change theme'   = 'Cambiar tema'
-    'Help'           = 'Ayuda'
+    'About this program' = 'Acerca de este programa'
+
+    # ---- Acerca de (botón ?) ----
+    'Windows 11 tweaks for performance, gaming and privacy. Every change shows the registry key it touches and can be turned back off.' = 'Ajustes de Windows 11 para rendimiento, juegos y privacidad. Cada cambio enseña la clave del registro que toca y se puede volver a apagar.'
+    'Version'                    = 'Versión'
+    'Details'                    = 'Detalles'
+    'Copy these details'         = 'Copiar estos detalles'
+    'Running as'                 = 'Se ejecuta como'
+    'Compiled program (.exe)'    = 'Programa compilado (.exe)'
+    'Script (development)'       = 'Script (desarrollo)'
+    'Permissions'                = 'Permisos'
+    'Administrator'              = 'Administrador'
+    'Standard user'              = 'Usuario estándar'
+    'Architecture'               = 'Arquitectura'
+    'Data folder'                = 'Carpeta de datos'
+    'View the project on GitHub' = 'Ver el proyecto en GitHub'
     'Hide the menu'  = 'Ocultar el menú'
     'Show the menu'  = 'Mostrar el menú'
     'Activity log'   = 'Registro de actividad'
@@ -268,6 +276,217 @@ Register-Language 'es' @{
     'Sets the storage I/O priority Windows gives to threads of the MMCSS "Games" task. Windows ships it at Normal' = 'Fija la prioridad de E/S de almacenamiento que Windows da a los hilos de la tarea MMCSS "Games". Windows la trae en Normal'
     'Normal (default) - High - Low' = 'Normal (predeterminado) - High - Low'
     'Cuts I/O waits while a match streams assets' = 'Reduce las esperas de E/S mientras una partida carga recursos'
+
+    # Comunes a varios ajustes de Regedit.
+    'Privacy; no effect on game performance' = 'Privacidad; no afecta al rendimiento de los juegos'
+    'Only affects folders this PC shares on the network' = 'Solo afecta a las carpetas que este equipo comparte en la red'
+    '0x00000003 (manual, default) - 0x00000004 (disabled)' = '0x00000003 (manual, predeterminado) - 0x00000004 (deshabilitado)'
+    '0x00000001 (on, default) - 0x00000000 (off)' = '0x00000001 (activado, predeterminado) - 0x00000000 (desactivado)'
+
+    'Default TTL' = 'TTL predeterminado'
+    'Lower the starting hop limit of outgoing IP packets' = 'Baja el límite inicial de saltos de los paquetes IP salientes'
+    'Sets the Time To Live that Windows puts on every packet it sends. It only limits how many routers a packet may cross; it does not change latency or speed' = 'Fija el tiempo de vida (TTL) que Windows pone en cada paquete que envía. Solo limita cuántos routers puede cruzar un paquete; no cambia la latencia ni la velocidad'
+    '0x00000080 (128, Windows) - 0x00000040 (64, Linux and consoles) - 1 to 255' = '0x00000080 (128, Windows) - 0x00000040 (64, Linux y consolas) - 1 a 255'
+    'No measurable effect on ping; 64 is enough for any route on the internet' = 'Sin efecto medible en el ping; 64 basta para cualquier ruta de internet'
+
+    'TCP Timestamps (RFC 1323)' = 'Marcas de tiempo TCP (RFC 1323)'
+    'Turn on TCP timestamps on top of window scaling' = 'Activa las marcas de tiempo TCP además del escalado de ventana'
+    'Bit 0 enables TCP window scaling and bit 1 enables timestamps. Windows 10/11 already scales the window and leaves timestamps off (same as 1); 3 adds timestamps, which improve round-trip measurement at the cost of 12 bytes per packet' = 'El bit 0 activa el escalado de ventana TCP y el bit 1 las marcas de tiempo. Windows 10/11 ya escala la ventana y deja las marcas apagadas (equivale a 1); 3 añade las marcas, que miden mejor el tiempo de ida y vuelta a costa de 12 bytes por paquete'
+    '0x00000001 (window scaling only, Windows behaviour) - 0x00000003 (scaling + timestamps) - 0x00000000 (both off)' = '0x00000001 (solo escalado, lo que hace Windows) - 0x00000003 (escalado + marcas de tiempo) - 0x00000000 (los dos apagados)'
+    'Games mostly use UDP, which TCP options do not touch' = 'Los juegos usan sobre todo UDP, al que las opciones de TCP no afectan'
+
+    'TIME_WAIT Delay' = 'Espera de TIME_WAIT'
+    'Release closed TCP connections sooner' = 'Libera antes las conexiones TCP cerradas'
+    'Sets how many seconds a closed TCP connection stays in TIME_WAIT before its port can be reused. Shorter frees ports faster when many apps open and close connections' = 'Fija cuántos segundos se queda una conexión TCP cerrada en TIME_WAIT antes de poder reutilizar su puerto. Más corto libera puertos antes cuando muchas aplicaciones abren y cierran conexiones'
+    '0x00000078 (120 s, default) - 30 to 300 s - 0x0000001E (30 s, minimum)' = '0x00000078 (120 s, predeterminado) - 30 a 300 s - 0x0000001E (30 s, mínimo)'
+    'Helps only when ports run out from many open apps (launchers, browser, chat)' = 'Solo ayuda si se agotan los puertos por tener muchas aplicaciones abiertas (lanzadores, navegador, chat)'
+
+    'Max User Port' = 'Puerto de usuario máximo'
+    'Highest port number for outgoing connections (legacy value)' = 'Número de puerto más alto para conexiones salientes (valor heredado)'
+    'Sets the top of the ephemeral port range on old versions of Windows. Since Windows Vista this value is ignored: the range is 49152 to 65535 and is changed with netsh' = 'Fija el tope del rango de puertos efímeros en versiones antiguas de Windows. Desde Windows Vista este valor se ignora: el rango es 49152 a 65535 y se cambia con netsh'
+    '0x00001388 (5000, legacy default) - up to 0x0000FFFE (65534). Windows 10/11 does not read it' = '0x00001388 (5000, predeterminado antiguo) - hasta 0x0000FFFE (65534). Windows 10/11 no lo lee'
+    'No effect on Windows 10/11' = 'Sin efecto en Windows 10/11'
+
+    'SMB Auto Disconnect' = 'Desconexión automática de SMB'
+    'Never drop idle file-sharing sessions' = 'No cerrar nunca las sesiones inactivas de archivos compartidos'
+    'Sets how many idle minutes the file-sharing server waits before closing a client session. 0xFFFFFFFF turns the timeout off' = 'Fija cuántos minutos de inactividad espera el servidor de archivos compartidos antes de cerrar la sesión de un cliente. 0xFFFFFFFF quita el límite'
+    '0x0000000F (15 min, default) - 0xFFFFFFFF (never)' = '0x0000000F (15 min, predeterminado) - 0xFFFFFFFF (nunca)'
+
+    'SMB Server Memory Profile' = 'Perfil de memoria del servidor SMB'
+    'Let the file-sharing server use more memory for throughput' = 'Deja que el servidor de archivos compartidos use más memoria para ganar rendimiento'
+    'Tells the file-sharing server how much memory to set aside: 1 minimizes memory, 2 balances, 3 maximizes throughput for sharing files' = 'Indica al servidor de archivos compartidos cuánta memoria reservar: 1 la minimiza, 2 equilibra, 3 maximiza el rendimiento al compartir archivos'
+    '0x00000001 (minimize memory, restored with OFF) - 0x00000002 (balance) - 0x00000003 (maximize throughput)' = '0x00000001 (minimizar memoria, el que restaura OFF) - 0x00000002 (equilibrado) - 0x00000003 (maximizar rendimiento)'
+
+    'SMB Opportunistic Locks' = 'Bloqueos oportunistas de SMB'
+    'Turn off opportunistic locks on shared files' = 'Desactiva los bloqueos oportunistas en los archivos compartidos'
+    'Oplocks let a network client cache a shared file locally. Turning them off avoids stale copies with some old programs, but every read goes over the network' = 'Los oplocks dejan que un cliente de la red guarde en caché un archivo compartido. Desactivarlos evita copias desfasadas con algunos programas antiguos, pero cada lectura pasa por la red'
+    '0x00000001 (enabled, default) - 0x00000000 (disabled)' = '0x00000001 (activado, predeterminado) - 0x00000000 (desactivado)'
+    'Only affects folders this PC shares; usually makes sharing slower' = 'Solo afecta a las carpetas que comparte este equipo; suele hacer más lento el acceso'
+
+    'SMB IRP Stack Size' = 'Tamaño de pila IRP de SMB'
+    'Give the file-sharing server more I/O request slots' = 'Da al servidor de archivos compartidos más huecos por petición de E/S'
+    'Sets how many stack locations each I/O request packet of the file-sharing server gets. More is needed when antivirus or other filter drivers sit on the disk' = 'Fija cuántas posiciones de pila recibe cada paquete de petición de E/S del servidor de archivos compartidos. Hacen falta más cuando hay antivirus u otros controladores de filtro sobre el disco'
+    '0x0000000F (15, default) - 11 to 50 - 0x00000020 (32)' = '0x0000000F (15, predeterminado) - 11 a 50 - 0x00000020 (32)'
+
+    'SMB Sharing Violation Delay' = 'Pausa por infracción de uso compartido en SMB'
+    'No pause between retries when a shared file is in use' = 'Sin pausa entre reintentos cuando un archivo compartido está en uso'
+    'When a network client opens a shared file that is busy, the server waits this long before each retry. Zero retries without waiting' = 'Cuando un cliente de la red abre un archivo compartido que está ocupado, el servidor espera este tiempo antes de cada reintento. Con cero reintenta sin esperar'
+    '0x000000C8 (200 ms, default) - 0x00000000 (no pause)' = '0x000000C8 (200 ms, predeterminado) - 0x00000000 (sin pausa)'
+
+    'SMB Sharing Violation Retries' = 'Reintentos por infracción de uso compartido en SMB'
+    'Fail at once when a shared file is in use' = 'Falla al momento cuando un archivo compartido está en uso'
+    'When a network client opens a shared file that is busy, the server retries this many times before giving up. Zero returns the error immediately' = 'Cuando un cliente de la red abre un archivo compartido que está ocupado, el servidor reintenta este número de veces antes de rendirse. Con cero devuelve el error al instante'
+    '0x00000005 (5, default) - 0x00000000 (no retries)' = '0x00000005 (5, predeterminado) - 0x00000000 (sin reintentos)'
+
+    'SysMain Service' = 'Servicio SysMain'
+    'Disable SysMain (formerly Superfetch)' = 'Deshabilita SysMain (antes Superfetch)'
+    'SysMain preloads into memory the programs you use most and manages the prefetcher. Disabling it stops that background disk and memory work; apps may open a little slower. Applies after a restart' = 'SysMain carga por adelantado en memoria los programas que más usas y gestiona el prefetcher. Deshabilitarlo detiene ese trabajo de disco y memoria en segundo plano; las aplicaciones pueden abrir algo más despacio. Se aplica al reiniciar'
+    '0x00000002 (automatic, default) - 0x00000003 (manual) - 0x00000004 (disabled)' = '0x00000002 (automático, predeterminado) - 0x00000003 (manual) - 0x00000004 (deshabilitado)'
+    'Avoids background disk activity; on an SSD the difference is small' = 'Evita actividad de disco en segundo plano; en un SSD la diferencia es pequeña'
+
+    'QoS Reservable Bandwidth' = 'Ancho de banda reservable de QoS'
+    'Set the bandwidth QoS applications may reserve to 0%' = 'Pone al 0% el ancho de banda que pueden reservar las aplicaciones con QoS'
+    'Policy "Limit reservable bandwidth". Windows does NOT hold back 20% of your connection: the limit only applies to apps that ask for QoS priority, and unused bandwidth is always available to everything else' = 'Directiva "Limitar el ancho de banda reservable". Windows NO aparta el 20% de tu conexión: el límite solo se aplica a las aplicaciones que piden prioridad QoS, y el ancho de banda sin usar siempre está disponible para todo lo demás'
+    'Not set (20%, default; restored as 0x00000014) - 0x00000000 (0%)' = 'Sin definir (20%, predeterminado; se restaura como 0x00000014) - 0x00000000 (0%)'
+    'Myth: it does not free bandwidth for games' = 'Mito: no libera ancho de banda para los juegos'
+
+    'Prefetcher' = 'Prefetcher'
+    'Turn off application and boot prefetching' = 'Desactiva la precarga de aplicaciones y del arranque'
+    'The prefetcher records which files programs and boot need and preloads them next time. Turning it off saves that background work, but programs and boot may load slower, mostly on hard disks' = 'El prefetcher apunta qué archivos necesitan los programas y el arranque y los precarga la siguiente vez. Apagarlo ahorra ese trabajo en segundo plano, pero los programas y el arranque pueden cargar más despacio, sobre todo en discos duros'
+    '0x00000003 (apps and boot, default) - 0x00000002 (boot only) - 0x00000001 (apps only) - 0x00000000 (off)' = '0x00000003 (aplicaciones y arranque, predeterminado) - 0x00000002 (solo arranque) - 0x00000001 (solo aplicaciones) - 0x00000000 (apagado)'
+    'Can make game launch slower on a hard disk' = 'Puede hacer que los juegos tarden más en abrir en un disco duro'
+
+    'Block WPBT Executables' = 'Bloquear ejecutables de WPBT'
+    'Stop the firmware from injecting programs into Windows' = 'Impide que el firmware inyecte programas en Windows'
+    'The Windows Platform Binary Table lets the BIOS/UEFI hand Windows a program to run at every boot (manufacturer tools, anti-theft). Blocking it stops that program, and closes a known way to plant software from the firmware' = 'La Windows Platform Binary Table permite que la BIOS/UEFI le pase a Windows un programa para ejecutar en cada arranque (utilidades del fabricante, antirrobo). Bloquearla detiene ese programa y cierra una vía conocida para colar software desde el firmware'
+    '0x00000000 (allowed, default) - 0x00000001 (blocked)' = '0x00000000 (permitido, predeterminado) - 0x00000001 (bloqueado)'
+    'Raises security; may stop manufacturer utilities that came that way' = 'Sube la seguridad; puede detener utilidades del fabricante que llegaban por esa vía'
+
+    'Activity History' = 'Historial de actividad'
+    'Turn off the activity feed' = 'Apaga la fuente de actividad'
+    'Policy that turns off the activity feed: Windows stops keeping the list of apps, files and pages you have used' = 'Directiva que apaga la fuente de actividad: Windows deja de guardar la lista de aplicaciones, archivos y páginas que has usado'
+    '0x00000001 (allowed, default) - 0x00000000 (blocked)' = '0x00000001 (permitido, predeterminado) - 0x00000000 (bloqueado)'
+
+    'Publish User Activities' = 'Publicar actividades del usuario'
+    'Stop Windows from recording user activities' = 'Impide que Windows registre las actividades del usuario'
+    'Policy that stops apps from publishing what you do to the activity history' = 'Directiva que impide que las aplicaciones publiquen lo que haces en el historial de actividad'
+
+    'Upload User Activities' = 'Subir actividades del usuario'
+    'Stop uploading activity history to Microsoft' = 'Deja de subir el historial de actividad a Microsoft'
+    'Policy that stops the activity history from being sent to Microsoft and synced to your other devices' = 'Directiva que impide que el historial de actividad se envíe a Microsoft y se sincronice con tus otros dispositivos'
+
+    'Consumer Features' = 'Experiencias de consumidor'
+    'Turn off Microsoft consumer experiences' = 'Desactiva las experiencias de consumidor de Microsoft'
+    'Policy that stops Windows from installing suggested apps and showing promotional content. Windows only honours it on Enterprise and Education editions; on Home and Pro it is ignored' = 'Directiva que impide que Windows instale aplicaciones sugeridas y muestre contenido promocional. Windows solo la respeta en las ediciones Enterprise y Education; en Home y Pro se ignora'
+    '0x00000000 (allowed, default) - 0x00000001 (turned off)' = '0x00000000 (permitido, predeterminado) - 0x00000001 (desactivado)'
+    'No effect on Home or Pro editions' = 'Sin efecto en las ediciones Home y Pro'
+
+    'Delivery Optimization' = 'Optimización de distribución'
+    'Download updates only from Microsoft, not from other PCs' = 'Descarga las actualizaciones solo de Microsoft, no de otros equipos'
+    'Sets the Delivery Optimization download mode to HTTP only: Windows Update and the Store stop sharing pieces of updates with other PCs. Updates still install normally. It is the value behind the switch in Settings' = 'Pone el modo de descarga de Optimización de distribución en solo HTTP: Windows Update y la Tienda dejan de compartir trozos de actualizaciones con otros equipos. Las actualizaciones se siguen instalando con normalidad. Es el valor que hay detrás del interruptor de Configuración'
+    '0x00000001 (PCs on the local network, default) - 0x00000000 (HTTP only)' = '0x00000001 (equipos de la red local, predeterminado) - 0x00000000 (solo HTTP)'
+    'Stops update uploads to other PCs from using your connection' = 'Evita que subir actualizaciones a otros equipos ocupe tu conexión'
+
+    'Delivery Optimization (Legacy Mode)' = 'Optimización de distribución (modo antiguo)'
+    'Old name of the Delivery Optimization download mode' = 'Nombre antiguo del modo de descarga de Optimización de distribución'
+    'Same download mode under the name that older Windows 10 builds read. Setting it to HTTP only keeps those builds from sharing pieces of updates with other PCs' = 'El mismo modo de descarga con el nombre que leen las compilaciones antiguas de Windows 10. Ponerlo en solo HTTP evita que esas compilaciones compartan trozos de actualizaciones con otros equipos'
+
+    'Delivery Optimization (Policy)' = 'Optimización de distribución (directiva)'
+    'Force HTTP-only update downloads by policy' = 'Fuerza por directiva la descarga de actualizaciones solo por HTTP'
+    'Group policy for the Delivery Optimization download mode. It wins over the switch in Settings, which then shows as managed by your organization' = 'Directiva de grupo del modo de descarga de Optimización de distribución. Manda sobre el interruptor de Configuración, que pasa a mostrarse como administrado por tu organización'
+
+    'Delivery Optimization (Settings Key)' = 'Optimización de distribución (clave Settings)'
+    'Download mode stored in the Delivery Optimization settings key' = 'Modo de descarga guardado en la clave Settings de Optimización de distribución'
+    'Copy of the download mode that the Settings app keeps in its own key. Setting it to HTTP only keeps it in line with the other Delivery Optimization values' = 'Copia del modo de descarga que la aplicación Configuración guarda en su propia clave. Ponerlo en solo HTTP lo deja alineado con el resto de valores de Optimización de distribución'
+
+    'End Task With Right Click' = 'Finalizar tarea con clic derecho'
+    'Add "End task" to the taskbar right-click menu' = 'Añade "Finalizar tarea" al menú contextual de la barra de tareas'
+    'Shows an "End task" entry when you right-click an app on the taskbar, to close a frozen program without opening Task Manager' = 'Muestra la opción "Finalizar tarea" al hacer clic derecho sobre una aplicación de la barra de tareas, para cerrar un programa colgado sin abrir el Administrador de tareas'
+    '0x00000000 (hidden, default) - 0x00000001 (shown)' = '0x00000000 (oculto, predeterminado) - 0x00000001 (visible)'
+    'Quick way to close a frozen game' = 'Forma rápida de cerrar un juego colgado'
+
+    'Geolocation Service' = 'Servicio de geolocalización'
+    'Disable the location service (lfsvc)' = 'Deshabilita el servicio de ubicación (lfsvc)'
+    'Disables the service that gives apps the position of this PC. Maps, weather and "Find my device" stop knowing where you are. Applies after a restart' = 'Deshabilita el servicio que da a las aplicaciones la posición de este equipo. Mapas, El Tiempo y "Buscar mi dispositivo" dejan de saber dónde estás. Se aplica al reiniciar'
+
+    'Offline Files Service' = 'Servicio de archivos sin conexión'
+    'Disable the Offline Files service (CscService)' = 'Deshabilita el servicio de archivos sin conexión (CscService)'
+    'Disables the service that keeps local copies of network folders to use them without a connection. Nobody uses it on a home PC. Applies after a restart' = 'Deshabilita el servicio que guarda copias locales de carpetas de red para usarlas sin conexión. En un equipo doméstico no se usa. Se aplica al reiniciar'
+    'Unused on a home PC' = 'No se usa en un equipo doméstico'
+
+    'Telemetry Service' = 'Servicio de telemetría'
+    'Disable Connected User Experiences and Telemetry (DiagTrack)' = 'Deshabilita Experiencias del usuario y telemetría asociadas (DiagTrack)'
+    'Disables the service that collects and sends diagnostic data to Microsoft. Windows Update and Defender keep working. Applies after a restart' = 'Deshabilita el servicio que recopila y envía datos de diagnóstico a Microsoft. Windows Update y Defender siguen funcionando. Se aplica al reiniciar'
+    '0x00000002 (automatic, default) - 0x00000004 (disabled)' = '0x00000002 (automático, predeterminado) - 0x00000004 (deshabilitado)'
+    'Privacy; removes a small background load' = 'Privacidad; quita una pequeña carga en segundo plano'
+
+    'Downloaded Maps Manager' = 'Administrador de mapas descargados'
+    'Disable the offline maps service (MapsBroker)' = 'Deshabilita el servicio de mapas sin conexión (MapsBroker)'
+    'Disables the service that downloads and updates offline maps for the Maps app. Applies after a restart' = 'Deshabilita el servicio que descarga y actualiza los mapas sin conexión de la aplicación Mapas. Se aplica al reiniciar'
+    '0x00000002 (automatic, delayed, default) - 0x00000004 (disabled)' = '0x00000002 (automático retrasado, predeterminado) - 0x00000004 (deshabilitado)'
+    'Removes a background service most PCs never use' = 'Quita un servicio en segundo plano que la mayoría de equipos nunca usa'
+
+    'Storage Service' = 'Servicio de almacenamiento'
+    'Disable the Storage Service (StorSvc)' = 'Deshabilita el servicio de almacenamiento (StorSvc)'
+    'Disables the service behind Storage Sense, the storage settings and installing Store apps on other drives; those stop working. Applies after a restart' = 'Deshabilita el servicio que hay detrás del Sensor de almacenamiento, la configuración de almacenamiento y la instalación de aplicaciones de la Tienda en otras unidades; todo eso deja de funcionar. Se aplica al reiniciar'
+    'May break installing Store or Game Pass games on another drive' = 'Puede impedir instalar juegos de la Tienda o de Game Pass en otra unidad'
+
+    'Internet Connection Sharing' = 'Conexión compartida a Internet'
+    'Disable Internet Connection Sharing (SharedAccess)' = 'Deshabilita la conexión compartida a Internet (SharedAccess)'
+    'Disables the service that shares this PC connection with other devices. Mobile hotspot and the Hyper-V Default Switch stop working. Applies after a restart' = 'Deshabilita el servicio que comparte la conexión de este equipo con otros dispositivos. La zona con cobertura inalámbrica móvil y el conmutador predeterminado de Hyper-V dejan de funcionar. Se aplica al reiniciar'
+    'Breaks mobile hotspot; no effect on game performance' = 'Rompe la zona con cobertura inalámbrica móvil; no afecta al rendimiento de los juegos'
+
+    # 'Hibernation' ya está traducido en la sección de energía.
+    'Turn off hibernation and free hiberfil.sys' = 'Desactiva la hibernación y libera hiberfil.sys'
+    'Turns off hibernation. Windows deletes hiberfil.sys (several GB on the system drive) on the next restart, and Fast Startup also stops working because it depends on hibernation' = 'Desactiva la hibernación. Windows borra hiberfil.sys (varios GB en la unidad del sistema) en el siguiente reinicio, y el Inicio rápido también deja de funcionar porque depende de la hibernación'
+    'Frees disk space; boot from off may take a little longer' = 'Libera espacio en disco; arrancar desde apagado puede tardar algo más'
+
+    'Location Access' = 'Acceso a la ubicación'
+    'Deny location access for the whole device' = 'Deniega el acceso a la ubicación en todo el dispositivo'
+    'Same as turning off "Location services" in Settings > Privacy: no app or user on this PC can read its location' = 'Igual que apagar "Servicios de ubicación" en Configuración > Privacidad: ninguna aplicación ni usuario de este equipo puede leer su ubicación'
+    'Allow (default) - Deny' = 'Allow (permitir, predeterminado) - Deny (denegar)'
+
+    'Advertising ID' = 'Id. de publicidad'
+    'Turn off the advertising ID for apps' = 'Desactiva el id. de publicidad para las aplicaciones'
+    'Stops apps from using your advertising ID to show personalized ads. Same as the switch in Settings > Privacy > General' = 'Impide que las aplicaciones usen tu id. de publicidad para mostrar anuncios personalizados. Igual que el interruptor de Configuración > Privacidad > General'
+
+    'Tailored Experiences' = 'Experiencias personalizadas'
+    'Stop Microsoft from using diagnostic data for tips and ads' = 'Impide que Microsoft use los datos de diagnóstico para sugerencias y anuncios'
+    'Stops Microsoft from using your diagnostic data to offer personalized tips, ads and recommendations' = 'Impide que Microsoft use tus datos de diagnóstico para ofrecerte sugerencias, anuncios y recomendaciones personalizados'
+
+    'Online Speech Recognition' = 'Reconocimiento de voz en línea'
+    'Turn off cloud speech recognition' = 'Desactiva el reconocimiento de voz en la nube'
+    'Stops sending your voice to Microsoft for online speech recognition. Voice typing and voice access fall back to what works offline' = 'Deja de enviar tu voz a Microsoft para el reconocimiento de voz en línea. El dictado y el acceso por voz se quedan con lo que funciona sin conexión'
+    '0x00000001 (accepted, default) - 0x00000000 (off)' = '0x00000001 (aceptado, predeterminado) - 0x00000000 (desactivado)'
+
+    'Improve Inking and Typing' = 'Mejorar la escritura a mano y el tecleo'
+    'Stop sending inking and typing data to Microsoft' = 'Deja de enviar a Microsoft datos de escritura a mano y tecleo'
+    'Stops sending samples of what you type and write with a pen to help Microsoft improve its recognition' = 'Deja de enviar muestras de lo que tecleas y escribes con el lápiz para ayudar a Microsoft a mejorar su reconocimiento'
+
+    'Inking and Typing Personalization' = 'Personalización de escritura a mano y tecleo'
+    'Stop learning from your handwriting' = 'Deja de aprender de tu letra'
+    'Part of the "custom inking and typing dictionary": Windows stops collecting what you write with a pen to adapt its handwriting recognition' = 'Parte del "diccionario personalizado de escritura a mano y tecleo": Windows deja de recopilar lo que escribes con el lápiz para adaptar su reconocimiento de escritura'
+
+    'Typing Personalization' = 'Personalización del tecleo'
+    'Stop learning from what you type' = 'Deja de aprender de lo que tecleas'
+    'Part of the "custom inking and typing dictionary": Windows stops collecting the words you type to build its suggestions' = 'Parte del "diccionario personalizado de escritura a mano y tecleo": Windows deja de recopilar las palabras que tecleas para construir sus sugerencias'
+
+    'Harvest Contacts' = 'Recopilar contactos'
+    'Stop learning names from your contacts' = 'Deja de aprender nombres de tus contactos'
+    'Part of the "custom inking and typing dictionary": Windows stops reading your contacts to recognise their names when you write or type' = 'Parte del "diccionario personalizado de escritura a mano y tecleo": Windows deja de leer tus contactos para reconocer sus nombres cuando escribes o tecleas'
+
+    'Personalization Privacy Policy' = 'Directiva de privacidad de la personalización'
+    'Withdraw consent for the personal dictionary' = 'Retira el consentimiento del diccionario personal'
+    'Part of the "custom inking and typing dictionary": withdraws the acceptance of its privacy policy, so the stored data stops being used' = 'Parte del "diccionario personalizado de escritura a mano y tecleo": retira la aceptación de su directiva de privacidad, así que deja de usarse lo que tenía guardado'
+
+    'Diagnostic Data Level' = 'Nivel de datos de diagnóstico'
+    'Send Microsoft the least diagnostic data the edition allows' = 'Envía a Microsoft los mínimos datos de diagnóstico que permite la edición'
+    'Sets the diagnostic data level. 0 (Security) is only honoured on Enterprise and Education; on Home and Pro Windows treats it as 1 (Required data only)' = 'Fija el nivel de datos de diagnóstico. 0 (Seguridad) solo se respeta en Enterprise y Education; en Home y Pro Windows lo trata como 1 (solo datos obligatorios)'
+    '0x00000003 (optional data, default if accepted at setup) - 0x00000001 (required only) - 0x00000000 (security, Enterprise/Education)' = '0x00000003 (datos opcionales, predeterminado si se aceptó en la instalación) - 0x00000001 (solo obligatorios) - 0x00000000 (seguridad, Enterprise/Education)'
+
+    'Track App Launches' = 'Seguimiento de aplicaciones abiertas'
+    'Stop Windows from tracking which apps you open' = 'Impide que Windows registre qué aplicaciones abres'
+    'Stops Windows from recording which apps you launch to improve Start and search results. "Most used" in Start stops filling in' = 'Impide que Windows apunte qué aplicaciones abres para mejorar Inicio y los resultados de búsqueda. La lista "Más usadas" de Inicio deja de rellenarse'
 
     'User Account Control Level' = 'Nivel del Control de cuentas de usuario'
     'Controls UAC notification level and secure desktop behavior' = 'Controla el nivel de aviso del UAC y el comportamiento del escritorio seguro'

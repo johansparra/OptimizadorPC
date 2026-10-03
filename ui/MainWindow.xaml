@@ -189,37 +189,6 @@
             </Setter>
         </Style>
 
-        <!-- ================= SELECTOR DE MODO =================
-             El boton marcado ya NO pinta su propio fondo: la pastilla
-             blanca es una sola (ModeIndicator) y se desliza de un modo
-             a otro, igual que el indicador del menu lateral. Aqui solo
-             queda el color del texto. -->
-        <Style x:Key="ModeButtonStyle" TargetType="Button">
-            <Setter Property="Padding" Value="14,5,14,6"/>
-            <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="FontSize" Value="11.5"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="Foreground" Value="{DynamicResource TextMuted}"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border x:Name="bd" Background="Transparent" CornerRadius="7"
-                                Padding="{TemplateBinding Padding}">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter Property="Foreground" Value="{DynamicResource Text}"/>
-                            </Trigger>
-                            <DataTrigger Binding="{Binding RelativeSource={RelativeSource Self}, Path=Tag}" Value="sel">
-                                <Setter Property="Foreground" Value="{DynamicResource Text}"/>
-                            </DataTrigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
         <!-- ================= NAVEGACION LATERAL =================
              Aqui ya NO hay indicador de seleccion por boton: hay uno
              solo, el Border NavIndicator de mas abajo, que se desliza
@@ -516,34 +485,8 @@
                                Margin="10,0,0,0" Foreground="{DynamicResource Text}"/>
                     <Border CornerRadius="6" Padding="6,1,6,2" Margin="10,1,0,0" VerticalAlignment="Center"
                             Background="{DynamicResource SurfaceSunken}">
-                        <TextBlock Text="v1.0" FontSize="10" FontWeight="SemiBold"
+                        <TextBlock x:Name="AppVersionBadge" Text="v1.0.0" FontSize="10" FontWeight="SemiBold"
                                    Foreground="{DynamicResource TextFaint}"/>
-                    </Border>
-                </StackPanel>
-
-                <!-- selector de modo
-                     La pastilla del modo elegido es UNA SOLA y se desliza
-                     (Move-ModeIndicator, en ui/Components/Shell/TitleBar.ps1).
-                     Va declarada ANTES que los botones para quedar
-                     debajo: en un Grid manda el orden del documento. -->
-                <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
-                    <Border Background="{DynamicResource SurfaceSunken}" CornerRadius="9" Padding="3">
-                        <Grid x:Name="ModeTrack">
-                            <Border x:Name="ModeIndicator" Width="0" CornerRadius="7"
-                                    HorizontalAlignment="Left" VerticalAlignment="Stretch"
-                                    Background="{DynamicResource Surface}"
-                                    Opacity="0" IsHitTestVisible="False">
-                                <Border.Effect>
-                                    <DropShadowEffect Color="Black" Direction="270" ShadowDepth="1"
-                                                      BlurRadius="5" Opacity="0.14"/>
-                                </Border.Effect>
-                            </Border>
-                            <StackPanel x:Name="ModeButtons" Orientation="Horizontal">
-                                <Button x:Name="BtnModeNormal"  Style="{StaticResource ModeButtonStyle}" Tag="sel" Content="Normal"/>
-                                <Button x:Name="BtnModeBuilder" Style="{StaticResource ModeButtonStyle}" Content="Builder"/>
-                                <Button x:Name="BtnModeConfig"  Style="{StaticResource ModeButtonStyle}" Content="Config Review"/>
-                            </StackPanel>
-                        </Grid>
                     </Border>
                 </StackPanel>
 

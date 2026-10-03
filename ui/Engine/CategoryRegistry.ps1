@@ -197,6 +197,12 @@ function Get-CategoryStatusCounts {
       - con -Options  -> desplegable
       - sin -Options  -> interruptor (el -Value debe ser $true / $false)
 
+    -Value es la posición de partida del control, escrita a mano. Un
+    INTERRUPTOR con -Registry no la lleva: su posición sale del estado
+    leído del equipo (ON solo si está 'optimized', ver New-SettingControl
+    en ui/Components/Cards/SettingCard.ps1), igual que no lleva -Tags.
+    Declararla sería la versión inventada de lo mismo.
+
     La "Descripción" de la tarjeta se pinta en cuatro bloques SOLO
     cuando el ajuste declara -Registry (ver New-SettingFactSheet en
     ui/Components/Cards/SettingCard.ps1). Los cuatro campos son
@@ -254,7 +260,7 @@ function New-Setting {
         [Parameter(Mandatory)][string]$Description,
         [string[]]$Tags = @(),
         [string[]]$Options,
-        [Parameter(Mandatory)]$Value,
+        $Value,
         [string]$Badge,
         [hashtable[]]$Registry = @(),
 

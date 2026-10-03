@@ -186,3 +186,34 @@ Describe 'ui/Components/Cards/SettingCard.ps1 - las tarjetas normales no cambian
         finally { Set-ViewOption 'reference' $false }
     }
 }
+
+Describe 'ui/Data/Categories - la posición del interruptor no se inventa' {
+
+    It 'ningún interruptor con -Registry declara -Value' {
+        # Su posición sale del Status leído del equipo (New-SettingControl),
+        # igual que sus etiquetas: un -Value escrito a mano no se usaría
+        # nunca y solo serviría para que alguien creyera que manda.
+        # $CategoryList se recorre sin @() (regla 19 de CLAUDE.md).
+        $revisados = 0
+        foreach ($cat in $CategoryList) {
+            foreach ($setting in @($cat.Items)) {
+                if ($setting.Type -ne 'Toggle' -or @($setting.Registry).Count -eq 0) { continue }
+                Assert-True ($null -eq $setting.Value) `
+                    ("'$($setting.Name)' ($($cat.Id)) lleva -Registry y también -Value: quita el -Value")
+                $revisados++
+            }
+        }
+        Assert-True ($revisados -ge 1) 'no se ha encontrado ningún interruptor con -Registry que revisar'
+    }
+
+    It 'sin -Value, el interruptor sale de su estado real' {
+        $ajuste = New-Setting -Name 'Toggle real' -Description 'x' -Registry @(
+            @{ Path = 'HKEY_CURRENT_USER\Software\OptimizadorPC'; Name = 'X'; Type = 'DWord'
+               Recommended = '1'; Default = '0' })
+        $ajuste.Status = 'optimized'
+        Assert-Match '\bOn\b' (Get-VisualText (New-SettingCard $CardWindow $ajuste))
+
+        $ajuste.Status = 'factory'
+        Assert-Match '\bOff\b' (Get-VisualText (New-SettingCard $CardWindow $ajuste))
+    }
+}
