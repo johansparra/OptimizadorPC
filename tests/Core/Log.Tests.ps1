@@ -266,3 +266,52 @@ Describe 'core/Diagnostics/Log.ps1 - guardar en archivo' {
         Assert-Match 'OptimizadorPC' $carpeta
     }
 }
+
+Describe 'core/Diagnostics/Log.ps1 - el detalle (Items)' {
+
+    It 'cada entrada lleva un Id que no se repite, ni al vaciar' {
+        Clear-AppLog
+        Write-AppLog -Message 'uno'
+        $primera = @(Get-AppLog)[0].Id
+        Clear-AppLog
+        Write-AppLog -Message 'dos'
+        Assert-True (@(Get-AppLog)[0].Id -gt $primera) 'el Id ha vuelto atrás al vaciar'
+        Assert-Equal (@(Get-AppLog)[0].Id) (Get-AppLogSequence)
+    }
+
+    It 'guarda las líneas de detalle; sin ellas, Items queda vacío' {
+        Clear-AppLog
+        Write-AppLog -Message 'con' -Items @('a', 'b')
+        Write-AppLog -Message 'sin'
+        $e = @(Get-AppLog)
+        Assert-Equal 'a | b' (@($e[0].Items) -join ' | ')
+        Assert-Null $e[1].Items
+        Assert-Equal 1 (Get-AppLogDetailCount)
+    }
+
+    It 'el volcado extendido pone el detalle sangrado bajo su entrada' {
+        Clear-AppLog
+        Write-AppLog -Message 'clean %TEMP%' -Items @('Deleted (1 files, 3 B):', '  3 B        C:\x\a.txt')
+        Write-AppLog -Message 'siguiente'
+        $lineas = (Format-AppLogText -Detailed) -split "`r?`n"
+        $i = [array]::IndexOf($lineas, ($lineas | Where-Object { $_ -match 'clean %TEMP%' } | Select-Object -First 1))
+        Assert-Equal '    Deleted (1 files, 3 B):' $lineas[$i + 1]
+        Assert-Equal '      3 B        C:\x\a.txt' $lineas[$i + 2]
+        Assert-Match '^\[' $lineas[$i + 3] 'la entrada siguiente tiene que empezar en la primera columna'
+        Assert-Match 'Details: included \(1 entries' ($lineas -join "`n")
+    }
+
+    It 'el volcado normal no lleva el detalle, pero dice que existe' {
+        Clear-AppLog
+        Write-AppLog -Message 'clean %TEMP%' -Items @('  3 B        C:\x\a.txt')
+        $texto = Format-AppLogText
+        Assert-False ($texto -match 'C:\\x\\a\.txt')
+        Assert-Match 'Details: not included \(1 entries' $texto
+    }
+
+    It 'sin ninguna entrada con detalle, la cabecera no dice nada de él' {
+        Clear-AppLog
+        Write-AppLog -Message 'normal'
+        Assert-False ((Format-AppLogText -Detailed) -match 'Details:')
+    }
+}

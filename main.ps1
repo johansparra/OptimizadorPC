@@ -88,6 +88,15 @@ foreach ($f in (Get-ChildItem (Join-Path $ScriptRoot 'core') -Recurse -Filter '*
 foreach ($f in (Get-ChildItem (Join-Path $ScriptRoot 'ui\Data') -Recurse -Filter '*.ps1' | Sort-Object FullName)) { . $f.FullName }
 # @@ENDEMBED@@
 
+# ---- 5b. Guías: los .md de ui/Data/Guides ----
+# No son código, son documentos que la sección Guías enseña tal cual.
+# En desarrollo se leen de la carpeta; build.ps1 los mete DENTRO del
+# script (en Base64, para que ningún carácter del .md lo rompa) y el
+# .exe no necesita la carpeta al lado. Ver ui/Engine/GuideRegistry.ps1.
+# @@EMBED_GUIDES:ui/Data/Guides@@
+Import-GuideFolder (Join-Path $ScriptRoot 'ui\Data\Guides')
+# @@ENDEMBED@@
+
 # ---- 6. Piezas: los controles concretos ----
 # @@EMBED_DIR:ui/Components@@
 foreach ($f in (Get-ChildItem (Join-Path $ScriptRoot 'ui\Components') -Recurse -Filter '*.ps1' | Sort-Object FullName)) { . $f.FullName }
@@ -121,6 +130,9 @@ Register-UiErrorGuard -Window $Window | Out-Null
 # antes de dibujar nada, para que la primera pintura ya salga con
 # el tema y el idioma correctos y no haya parpadeo.
 Import-AppSettings
+# Los pasos que el usuario dejó marcados (o desmarcados) en las secciones
+# de comandos la última vez. Ver Save-StepChoices.
+Restore-StepChoices
 Set-AppTheme    -Window $Window -Name (Get-AppSetting 'Theme'    -Default 'Light')
 Set-AppLanguage (Get-AppSetting 'Language' -Default (Get-DefaultLanguage))
 

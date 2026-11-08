@@ -29,6 +29,11 @@ $AppLogCapacity = 1000
 $AppLogEntries = New-Object System.Collections.Generic.List[object]
 $AppLogDropped = 0
 
+# Número de la última entrada apuntada. Nunca baja, ni al vaciar: es
+# el Id de cada entrada y lo que mira la interfaz para saber si hay
+# algo nuevo que pintar (Sync-LogView).
+$AppLogSequence = 0
+
 <#
     Apunta una línea en el registro de actividad.
 
@@ -41,8 +46,14 @@ $AppLogDropped = 0
     Status    Palabra corta en inglés para la etiqueta de color.
               La interfaz la pasa por T; $null la deja sin etiqueta.
     Detail    Segunda línea gris, opcional.
+    Items     El DETALLE, opcional: líneas que no caben en Detail y
+              que no se enseñan hasta que se piden. Hoy, los archivos
+              que borró una limpieza o la salida entera de un
+              programa. Mismo texto técnico que Message: no se traduce.
     Level     'info' | 'warn' | 'error'. Decide el color.
     Source    De dónde viene: 'registry', 'app'...
+
+    Cada entrada lleva además un Id que no se repite nunca.
 
     No devuelve nada: se llama desde sitios que están calculando
     otra cosa y un valor suelto se colaría en su salida.
@@ -53,16 +64,23 @@ function Write-AppLog {
         [ValidateSet('info', 'warn', 'error')][string]$Level = 'info',
         [string]$Source = 'app',
         [string]$Status,
-        [string]$Detail
+        [string]$Detail,
+        [string[]]$Items
     )
 
+    $script:AppLogSequence++
+    $list = $null
+    if ($Items -and $Items.Count -gt 0) { $list = [string[]]$Items }
+
     $AppLogEntries.Add([PSCustomObject]@{
+        Id      = $script:AppLogSequence
         Time    = [DateTime]::Now
         Level   = $Level
         Source  = $Source
         Status  = $Status
         Message = $Message
         Detail  = $Detail
+        Items   = $list
     })
 
     # Buffer circular: si se pasa del tope, fuera la más vieja.
@@ -108,6 +126,14 @@ function Get-AppLog {
 
 function Get-AppLogCount { $AppLogEntries.Count }
 
+# El Id de la última entrada apuntada (0 si nunca se apuntó nada).
+function Get-AppLogSequence { $script:AppLogSequence }
+
+# Cuántas entradas guardadas traen detalle (Items).
+function Get-AppLogDetailCount {
+    @($AppLogEntries.ToArray() | Where-Object { $_.Items }).Count
+}
+
 # Cuántas se han tirado por llenarse el buffer.
 function Get-AppLogDropped { $AppLogDropped }
 
@@ -151,21 +177,53 @@ function Format-AppLogLine {
     $line
 }
 
-# Todo el registro como un único texto, con cabecera.
+<#
+    Todo el registro como un único texto, con cabecera.
+
+    -Detailed es la VISTA EXTENDIDA: debajo de cada entrada que traiga
+    detalle (Items) van sus líneas, sangradas con cuatro espacios.
+    Sin él, la cabecera dice cuántas entradas lo traían y que no va
+    dentro, para que quien lea el archivo sepa que existe:
+
+        [2026-11-08 14:56:25] [INFO] [CLEANUP] [succeeded] clean %TEMP% | exit=0 | ...
+            Skipped, in use or no access (36):
+              in use     C:\Users\...\Temp\e0fb7f80-....tmp
+            Deleted (3256 files, 406.6 MB):
+              12 KB      C:\Users\...\Temp\setup.log
+
+    La sangría es lo que separa el detalle de las entradas: toda
+    entrada empieza con '[' en la primera columna, y ninguna línea de
+    detalle.
+#>
 function Format-AppLogText {
+    param([switch]$Detailed)
+
     # El resumen se arma fuera del Add(): dentro de los paréntesis
     # de un método, la coma separa ARGUMENTOS, así que el -f se
     # quedaría solo con el primero y {1} se saldría de la lista.
     $summary = 'Entries: {0}' -f $AppLogEntries.Count
     if ($AppLogDropped -gt 0) { $summary += ' (+{0} dropped)' -f $AppLogDropped }
 
+    $withDetail = Get-AppLogDetailCount
+    $detailLine = $null
+    if ($withDetail -gt 0) {
+        $detailLine = if ($Detailed) { 'Details: included ({0} entries have them)' -f $withDetail }
+                      else { 'Details: not included ({0} entries have them; save with details to get them)' -f $withDetail }
+    }
+
     $lines = New-Object System.Collections.Generic.List[string]
     $lines.Add('Optimizador PC - activity log')
     $lines.Add('Generated: {0:yyyy-MM-dd HH:mm:ss}' -f [DateTime]::Now)
     $lines.Add($summary)
+    if ($detailLine) { $lines.Add($detailLine) }
     $lines.Add('')
 
-    foreach ($entry in $AppLogEntries) { $lines.Add((Format-AppLogLine $entry)) }
+    foreach ($entry in $AppLogEntries) {
+        $lines.Add((Format-AppLogLine $entry))
+        if ($Detailed -and $entry.Items) {
+            foreach ($item in $entry.Items) { $lines.Add('    ' + $item) }
+        }
+    }
     $lines -join [Environment]::NewLine
 }
 
@@ -214,9 +272,12 @@ function Get-AppLogFileName {
     Devuelve la ruta escrita, o $null si no se ha podido (sin
     permisos, disco lleno, ruta inválida...). No lanza: quien
     llame decide qué contarle al usuario.
+
+    -Detailed escribe también el detalle de cada entrada (ver
+    Format-AppLogText).
 #>
 function Export-AppLog {
-    param([string]$Path)
+    param([string]$Path, [switch]$Detailed)
 
     if ($AppLogEntries.Count -eq 0) { return $null }
 
@@ -233,7 +294,7 @@ function Export-AppLog {
 
         # UTF-8 con BOM, que es lo que espera el Bloc de notas de
         # Windows al abrirlo con doble clic.
-        [System.IO.File]::WriteAllText($Path, (Format-AppLogText), (New-Object System.Text.UTF8Encoding($true)))
+        [System.IO.File]::WriteAllText($Path, (Format-AppLogText -Detailed:$Detailed), (New-Object System.Text.UTF8Encoding($true)))
         $Path
     }
     catch {

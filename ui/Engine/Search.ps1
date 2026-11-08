@@ -9,7 +9,8 @@
 # Cómo funciona
 # -------------
 # Se arma UN índice plano con una entrada por cada cosa buscable
-# -cada sección y cada ajuste-, y cada entrada trae:
+# -cada sección, cada ajuste, cada paso de una sección de comandos y
+# cada guía-, y cada entrada trae:
 #
 #   Fields     los datos que se pueden buscar, con su etiqueta. Es lo
 #              que permite decir POR QUÉ ha salido un resultado.
@@ -129,9 +130,51 @@ function Get-SettingSearchFields {
     $fields.ToArray() | Where-Object { $_ }
 }
 
+# Los campos de un paso de una sección de comandos: lo que se ve en
+# su fila, y el comando tal cual (texto técnico, sin traducir).
+function Get-StepSearchFields {
+    param($Category, $Step)
+
+    @(
+        (New-SearchField 'Name'        $Step.Name        -Translate)
+        (New-SearchField 'Description' $Step.Description -Translate)
+        (New-SearchField 'Section'     $Category.Name    -Translate)
+        (New-SearchField 'Command'     (Format-CommandLine $Step))
+        (New-SearchField 'Warning'     $Step.Warning     -Translate)
+    ) | Where-Object { $_ }
+}
+
+<#
+    Los campos de una guía. El texto es del usuario: NO pasa por T. El
+    texto entero va marcado Long, para que el resultado enseñe solo el
+    trozo de alrededor de lo buscado (Get-SearchMatchField).
+#>
+function Get-GuideSearchFields {
+    param($Guide)
+
+    $text = New-SearchField 'Guide text' (ConvertTo-GuidePlainText $Guide)
+    if ($text) { $text | Add-Member -NotePropertyName 'Long' -NotePropertyValue $true }
+    @(
+        (New-SearchField 'Name' $Guide.Title)
+        (New-SearchField 'File' $Guide.FileName)
+        $text
+    ) | Where-Object { $_ }
+}
+
+<#
+    La "sección" bajo la que se agrupan las guías en los resultados. No
+    es una categoría registrada -las guías no son una sección de
+    Optimizar-, pero tiene lo que piden la cabecera del grupo y la
+    tarjeta: nombre, icono y colores.
+#>
+$GuideSearchCategory = [PSCustomObject]@{
+    Id = 'guides'; Name = 'Guides'; Icon = 'Book'; Accent = 'Accent'; AccentSoft = 'AccentSoft'
+    Description = 'Your reference notes: open one to read it and copy what you need'
+}
+
 # Una entrada del índice, con su pajar ya en minúsculas.
 function New-SearchEntry {
-    param([string]$Kind, $Category, $Setting, $Fields)
+    param([string]$Kind, $Category, $Setting, $Fields, $Step, $Guide)
 
     $parts = New-Object System.Collections.Generic.List[string]
     foreach ($field in @($Fields)) {
@@ -143,6 +186,8 @@ function New-SearchEntry {
         Kind     = $Kind
         Category = $Category
         Setting  = $Setting
+        Step     = $Step
+        Guide    = $Guide
         Fields   = @($Fields)
         Haystack = ($parts.ToArray() -join ' ').ToLowerInvariant()
     }
@@ -169,6 +214,14 @@ function New-SearchIndex {
         foreach ($setting in @($category.Items)) {
             $index.Add((New-SearchEntry 'setting' $category $setting (Get-SettingSearchFields $category $setting)))
         }
+
+        foreach ($step in @($category.Steps | Where-Object { $_ })) {
+            $index.Add((New-SearchEntry 'step' $category $null (Get-StepSearchFields $category $step) -Step $step))
+        }
+    }
+
+    foreach ($guide in @(Get-Guides)) {
+        $index.Add((New-SearchEntry 'guide' $GuideSearchCategory $null (Get-GuideSearchFields $guide) -Guide $guide))
     }
 
     $index.ToArray()
@@ -224,10 +277,26 @@ function Get-SearchMatchField {
     foreach ($field in @($Entry.Fields)) {
         $texto = ($field.Text + ' ' + $field.Also).ToLowerInvariant()
         foreach ($term in $Terms) {
-            if ($texto.IndexOf($term, [System.StringComparison]::Ordinal) -ge 0) { return $field }
+            $at = $texto.IndexOf($term, [System.StringComparison]::Ordinal)
+            if ($at -lt 0) { continue }
+            if (-not ($field.PSObject.Properties['Long'] -and $field.Long)) { return $field }
+            return [PSCustomObject]@{ Label = $field.Label; Text = (Get-SearchExcerpt $field.Text $at); Also = '' }
         }
     }
     $null
+}
+
+# El trozo de un texto largo alrededor de una posición, en una línea:
+# "…deshabilitar NetTrace si no estás depurando…".
+function Get-SearchExcerpt {
+    param([string]$Text, [int]$At, [int]$Around = 60)
+
+    $from = [Math]::Max(0, $At - $Around)
+    $to = [Math]::Min($Text.Length, $At + $Around)
+    $cut = ($Text.Substring($from, $to - $from) -replace '\s+', ' ').Trim()
+    if ($from -gt 0) { $cut = '…' + $cut }
+    if ($to -lt $Text.Length) { $cut = $cut + '…' }
+    $cut
 }
 
 <#

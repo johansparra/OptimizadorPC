@@ -13,6 +13,7 @@
 #   -Filter <patrón>   solo las pruebas o los grupos que encajen
 #   -File   <patrón>   solo los archivos *.Tests.ps1 que encajen,
 #                      por ruta relativa:  -File 'Core*'
+#   -Timing            al final, los archivos que más han tardado
 #
 # Devuelve 0 si todo pasa y 1 si algo falla, para poder
 # encadenarlo con && en un script.
@@ -25,7 +26,8 @@
 param(
     [string]$Filter = '',
     [string]$File   = '*',
-    [switch]$BothHosts
+    [switch]$BothHosts,
+    [switch]$Timing
 )
 
 # ---- -BothHosts: los dos interpretes a la vez ----------------
@@ -141,9 +143,22 @@ if ($files.Count -eq 0) {
     exit 1
 }
 
-foreach ($testFile in $files) { . $testFile.FullName }
+# Lo que tarda cada archivo, para -Timing. Nombres raros a propósito:
+# todo se carga en este ámbito y una $t o una $rel se pisarían.
+$runnerTimes = New-Object System.Collections.Generic.List[object]
+foreach ($testFile in $files) {
+    $runnerWatch = [System.Diagnostics.Stopwatch]::StartNew()
+    . $testFile.FullName
+    $runnerTimes.Add([PSCustomObject]@{ File = $testFile.Rel; Seconds = $runnerWatch.Elapsed.TotalSeconds })
+}
 
 Write-TestSummary
+if ($Timing) {
+    Write-Host '  Los que más tardan:' -ForegroundColor DarkGray
+    foreach ($runnerRow in ($runnerTimes.ToArray() | Sort-Object Seconds -Descending | Select-Object -First 10)) {
+        Write-Host ('    {0,6:N1} s  {1}' -f $runnerRow.Seconds, $runnerRow.File) -ForegroundColor DarkGray
+    }
+}
 Write-Host ('  {0} archivo(s) en {1:N1} s' -f $files.Count, ((Get-Date) - $started).TotalSeconds) -ForegroundColor DarkGray
 Write-Host ''
 

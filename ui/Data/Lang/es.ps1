@@ -16,6 +16,7 @@ Register-Language 'es' @{
 
     # ---- Menú lateral ----
     'Optimize'   = 'Optimizar'
+    'Guides'     = 'Guías'
     'Settings'   = 'Ajustes'
 
     # ---- Barra de título ----
@@ -144,6 +145,54 @@ Register-Language 'es' @{
     'One last cleanup with the final configuration in place.' = 'Una última limpieza con la configuración final ya puesta.'
     'List the network adapters' = 'Listar los adaptadores de red'
     'Only reads: shows each adapter and whether it is connected, to check the result in the log.' = 'Solo lee: muestra cada adaptador y si está conectado, para comprobar el resultado en el registro.'
+    # ---- Sección Limpieza (comandos) ----
+    'Cleanup' = 'Limpieza'
+    'Delete temporary files and caches: pick what to clean and run it' = 'Borra temporales y cachés: elige qué limpiar y ejecútalo'
+    # Grupos.
+    'Temporary files and caches' = 'Temporales y cachés'
+    'History and recent items' = 'Historial y elementos recientes'
+    'Windows' = 'Windows'
+    'Disk' = 'Disco'
+    # Pasos.
+    'Your temporary files' = 'Tus archivos temporales'
+    'Empties your temporary folder: what programs and installers leave behind. Files in use are skipped.' = 'Vacía tu carpeta de temporales: lo que dejan atrás los programas y los instaladores. Los archivos en uso se saltan.'
+    'Windows temporary files' = 'Archivos temporales de Windows'
+    'Empties the system temporary folder (C:\Windows\Temp): what updates, installers and services leave behind. Files in use are skipped.' = 'Vacía la carpeta temporal del sistema (C:\Windows\Temp): lo que dejan las actualizaciones, los instaladores y los servicios. Los archivos en uso se saltan.'
+    'Crash dumps' = 'Volcados de bloqueo'
+    'Memory dumps that programs write when they crash. Only useful to send to a developer.' = 'Volcados de memoria que escriben los programas al colgarse. Solo sirven para mandárselos a un desarrollador.'
+    'Pending error reports' = 'Informes de errores pendientes'
+    'Windows Error Reporting reports still waiting to be sent.' = 'Informes de Windows Error Reporting que aún esperan para enviarse.'
+    'Thumbnail and icon cache' = 'Caché de miniaturas e iconos'
+    'Deletes the thumbnail and icon databases; Explorer rebuilds them as you browse. The ones in use are skipped.' = 'Borra las bases de datos de miniaturas e iconos; el Explorador las rehace según navegas. Las que están en uso se saltan.'
+    'Microsoft Edge cache' = 'Caché de Microsoft Edge'
+    'Pages and images cached by the default Edge profile. Close Edge first to clean it completely.' = 'Páginas e imágenes guardadas en caché por el perfil predeterminado de Edge. Cierra Edge antes para limpiarla del todo.'
+    'Temporary Internet files' = 'Archivos temporales de Internet'
+    'The web cache that Windows and older apps share.' = 'La caché web que comparten Windows y las aplicaciones antiguas.'
+    'Internet Explorer history' = 'Historial de Internet Explorer'
+    'The legacy browsing history folder. Edge keeps its own history and does not use it.' = 'La carpeta del historial de navegación antiguo. Edge guarda su propio historial y no la usa.'
+    'Legacy cookies' = 'Cookies antiguas'
+    'Cookies of Internet Explorer and older apps. Modern browsers keep theirs elsewhere.' = 'Cookies de Internet Explorer y de aplicaciones antiguas. Los navegadores actuales guardan las suyas en otro sitio.'
+    'Apps that still use them may sign you out.' = 'Las aplicaciones que aún las usan pueden cerrarte la sesión.'
+    'WebCache database logs' = 'Registros de la base de datos WebCache'
+    'Transaction logs of the database behind the legacy browser history and cache. The ones in use are skipped.' = 'Registros de transacciones de la base de datos del historial y la caché del navegador antiguo. Los que están en uso se saltan.'
+    'If that database was not closed cleanly, deleting its logs can damage it; Windows then rebuilds it empty.' = 'Si esa base de datos no se cerró bien, borrar sus registros puede dañarla; entonces Windows la rehace vacía.'
+    'Recent files and jump lists' = 'Archivos recientes y listas de accesos'
+    'Clears the recent files list, the recent items of Quick access and the taskbar jump lists.' = 'Vacía la lista de archivos recientes, los recientes del Acceso rápido y las listas de accesos de la barra de tareas.'
+    'Also removes what you pinned to the jump lists.' = 'También quita lo que anclaste en las listas de accesos.'
+    'Empty the Recycle Bin' = 'Vaciar la papelera'
+    'Deletes everything in your Recycle Bin, on every drive.' = 'Borra todo lo que hay en tu papelera, en todas las unidades.'
+    'Permanent: what is there cannot be recovered afterwards.' = 'Definitivo: lo que haya ahí no se podrá recuperar después.'
+    'Disk Cleanup with saved profile 1' = 'Liberador de espacio con el perfil guardado 1'
+    'Runs Windows Disk Cleanup with the categories saved in profile 1.' = 'Ejecuta el Liberador de espacio en disco de Windows con las categorías guardadas en el perfil 1.'
+    'Does nothing until you choose the categories once with: cleanmgr /sageset:1. Opens its own window.' = 'No hace nada hasta que elijas las categorías una vez con: cleanmgr /sageset:1. Abre su propia ventana.'
+    'Clean up the component store (WinSxS)' = 'Limpiar el almacén de componentes (WinSxS)'
+    'DISM removes the old copies of system components that updates have replaced.' = 'DISM quita las copias antiguas de componentes del sistema que las actualizaciones han sustituido.'
+    'Takes several minutes.' = 'Tarda varios minutos.'
+    'Make sure TRIM is on' = 'Comprobar que TRIM está activado'
+    'Lets Windows tell SSDs which blocks are free, on NTFS and ReFS. It is on by default; this turns it back on if something disabled it.' = 'Permite que Windows avise a los SSD de qué bloques quedan libres, en NTFS y ReFS. Viene activado; esto lo vuelve a activar si algo lo apagó.'
+    'Optimize every drive' = 'Optimizar todas las unidades'
+    'The right optimization for each drive: TRIM on SSDs, defragmentation on hard disks.' = 'La optimización adecuada para cada unidad: TRIM en los SSD y desfragmentación en los discos duros.'
+    'On hard disks it can take a long time.' = 'En los discos duros puede tardar mucho.'
     'Hide the menu'  = 'Ocultar el menú'
     'Show the menu'  = 'Mostrar el menú'
     'Activity log'   = 'Registro de actividad'
@@ -167,6 +216,12 @@ Register-Language 'es' @{
     'Showing the last {0} of {1} entries' = 'Se enseñan las {0} últimas de {1} entradas'
     'Only the last {0} entries are kept; {1} older ones were discarded' = 'Solo se guardan las {0} últimas entradas; se han descartado {1} más antiguas'
     'Saved to {0}'    = 'Guardado en {0}'
+    'Saved to {0}, with details' = 'Guardado en {0}, con el detalle'
+    # Detalle desplegable (ui/Components/Cards/DetailList.ps1) y la casilla de guardar con detalle.
+    'Show details ({0} lines)' = 'Ver detalle ({0} líneas)'
+    'Hide details' = 'Ocultar detalle'
+    'With details' = 'Con detalle'
+    'Also save the full detail of each entry: the files each cleanup deleted and the full output of each program' = 'Guarda también el detalle completo de cada entrada: los archivos que borró cada limpieza y la salida entera de cada programa'
     'The log file could not be written' = 'No se ha podido escribir el archivo del registro'
 
     # El diálogo "Guardar como" de Windows. Los rótulos de los
@@ -229,6 +284,23 @@ Register-Language 'es' @{
     'Copy the registry path' = 'Copiar la ruta del registro'
     'Copy the value name'    = 'Copiar el nombre del valor'
     'Copied'                 = 'Copiado'
+    # ---- Sección Guías (ui/Views/GuidesView.ps1) ----
+    # El contenido de las guías es del usuario y no se traduce: solo el marco.
+    'Your reference notes: open one to read it and copy what you need' = 'Tus notas de referencia: abre una para leerla y copiar lo que necesites'
+    '1 section' = '1 sección'
+    '{0} sections' = '{0} secciones'
+    '{0} min read' = '{0} min de lectura'
+    'Copy all' = 'Copiar todo'
+    'Contents' = 'Contenido'
+    'Find in this guide' = 'Buscar en esta guía'
+    'No matches' = 'Sin coincidencias'
+    '1 match' = '1 coincidencia'
+    '{0} matches' = '{0} coincidencias'
+    'Copy the whole guide as plain text' = 'Copia la guía entera como texto normal'
+    'Copy the code' = 'Copiar el código'
+    'Guide copied to the clipboard' = 'Guía copiada al portapapeles'
+    'No guides yet' = 'Todavía no hay guías'
+    'Put .md files in ui\Data\Guides and they will show up here' = 'Pon archivos .md en ui\Data\Guides y aparecerán aquí'
     'Select it or press Ctrl+C to copy it' = 'Selecciónalo o pulsa Ctrl+C para copiarlo'
     'Path:'            = 'Ruta:'
     'Value:'           = 'Valor:'
@@ -330,19 +402,10 @@ Register-Language 'es' @{
     'Windows registry keys' = 'Claves de registro de Windows'
 
     'Power' = 'Energía'
-    'Display, Hard Disk, Internet Explorer, Desktop Background Settings, ...' = 'Pantalla, disco duro, Internet Explorer, fondo de escritorio, ...'
-
-    'Gaming & Performance' = 'Juegos y rendimiento'
-    'Processor, Graphics, Network, Security, ...' = 'Procesador, gráficos, red, seguridad, ...'
+    'Power plan: add Ultimate Performance and switch to it' = 'Plan de energía: añade Máximo rendimiento y actívalo'
 
     'Update' = 'Actualizaciones'
     'Update Policy, Delivery & Store, Update Behavior' = 'Directivas de actualización, distribución y Store, comportamiento'
-
-    'Notifications' = 'Notificaciones'
-    'Additional Settings, System Notifications, Privacy Notifications, Security Notifications' = 'Ajustes adicionales, notificaciones del sistema, de privacidad y de seguridad'
-
-    'Sound' = 'Sonido'
-    'System Sounds' = 'Sonidos del sistema'
 
     # ============================================================
     # CONTENIDO: ajustes
@@ -544,7 +607,7 @@ Register-Language 'es' @{
     'Disables the service that shares this PC connection with other devices. Mobile hotspot and the Hyper-V Default Switch stop working. Applies after a restart' = 'Deshabilita el servicio que comparte la conexión de este equipo con otros dispositivos. La zona con cobertura inalámbrica móvil y el conmutador predeterminado de Hyper-V dejan de funcionar. Se aplica al reiniciar'
     'Breaks mobile hotspot; no effect on game performance' = 'Rompe la zona con cobertura inalámbrica móvil; no afecta al rendimiento de los juegos'
 
-    # 'Hibernation' ya está traducido en la sección de energía.
+    'Hibernation' = 'Hibernación'
     'Turn off hibernation and free hiberfil.sys' = 'Desactiva la hibernación y libera hiberfil.sys'
     'Turns off hibernation. Windows deletes hiberfil.sys (several GB on the system drive) on the next restart, and Fast Startup also stops working because it depends on hibernation' = 'Desactiva la hibernación. Windows borra hiberfil.sys (varios GB en la unidad del sistema) en el siguiente reinicio, y el Inicio rápido también deja de funcionar porque depende de la hibernación'
     'Frees disk space; boot from off may take a little longer' = 'Libera espacio en disco; arrancar desde apagado puede tardar algo más'
@@ -618,38 +681,12 @@ Register-Language 'es' @{
     'Windows Error Reporting' = 'Informe de errores de Windows'
     'Choose if Windows should collect and send crash reports and error information to Microsoft' = 'Elige si Windows debe recopilar y enviar a Microsoft los informes de fallos y errores'
 
-    # ---- Power ----
-    'High Performance Power Plan' = 'Plan de energía de alto rendimiento'
-    'Switch to the High Performance / Ultimate Performance power scheme' = 'Cambiar al plan de energía de alto rendimiento o rendimiento máximo'
-
-    'USB Selective Suspend' = 'Suspensión selectiva de USB'
-    'Allow Windows to power down idle USB devices to save energy' = 'Permitir que Windows apague los dispositivos USB inactivos para ahorrar energía'
-
-    'Hibernation' = 'Hibernación'
-    'Enable or disable hibernate mode and the hiberfil.sys reserved space' = 'Activar o desactivar la hibernación y el espacio reservado de hiberfil.sys'
-
-    # ---- Gaming & Performance ----
-    'Game Mode' = 'Modo de juego'
-    'Optimize your PC for play by turning things off in the background' = 'Optimizar el equipo para jugar desactivando procesos en segundo plano'
-
-    'Enhance Pointer Precision' = 'Mejorar la precisión del puntero'
-    'Adjust cursor speed based on movement velocity (mouse acceleration). Most competitive gamers disable this for consistent aiming in FPS games' = 'Ajusta la velocidad del cursor según la del movimiento (aceleración del ratón). La mayoría de jugadores competitivos lo desactivan para apuntar de forma constante en los FPS'
-
-    'Mouse Hover Time' = 'Tiempo de reposo del ratón'
-    'Controls how long you must hover over an element before it activates (in milliseconds). Lower values make tooltips, menus, and hover effects appear faster. Default is 400ms' = 'Controla cuánto hay que mantener el ratón encima de un elemento antes de que reaccione (en milisegundos). Valores más bajos hacen que los mensajes emergentes y los menús aparezcan antes. El valor de fábrica es 400 ms'
-    '100ms' = '100 ms'
-    '200ms' = '200 ms'
-    '400ms (Default)' = '400 ms (de fábrica)'
-    '600ms' = '600 ms'
-
-    'Startup Delay for Apps' = 'Retraso de los programas de inicio'
-    'Delay startup applications by 10 seconds after boot to improve initial system responsiveness. Windows becomes usable faster, but your startup apps take longer to load' = 'Retrasa 10 segundos los programas de inicio para que el sistema responda antes. Windows se puede usar más rápido, pero tus programas tardan más en cargar'
-
-    'Background App Permissions' = 'Permisos de aplicaciones en segundo plano'
-    'Control whether apps can run in the background via Group Policy. Force Deny removes per-app background settings from Windows Settings. Use User in Control if you need apps like Teams, Zoom, or WhatsApp' = 'Controla mediante directivas de grupo si las aplicaciones pueden ejecutarse en segundo plano. "Denegar siempre" quita esa opción por aplicación de la Configuración de Windows. Usa "Decide el usuario" si necesitas Teams, Zoom o WhatsApp'
-    'User in Control' = 'Decide el usuario'
-    'Force Allow' = 'Permitir siempre'
-    'Force Deny' = 'Denegar siempre'
+    # ---- Power (comandos) ----
+    'Add the Ultimate Performance plan' = 'Añadir el plan Máximo rendimiento'
+    'Copies the hidden Ultimate Performance power plan so it can be used and shows up in Power Options. If this program already added it, the step is skipped.' = 'Copia el plan de energía oculto Máximo rendimiento para que se pueda usar y aparezca en Opciones de energía. Si este programa ya lo añadió, el paso se salta.'
+    'Switch to the Ultimate Performance plan' = 'Activar el plan Máximo rendimiento'
+    'Makes it the plan in use: the processor no longer slows down to save power, so it responds faster but uses more energy and runs warmer.' = 'Lo pone como plan en uso: el procesador deja de frenarse para ahorrar energía, así que responde antes pero gasta más y se calienta más.'
+    'On a laptop it drains the battery faster.' = 'En un portátil gasta antes la batería.'
 
     # ---- Update ----
     'Delivery Optimization (P2P)' = 'Optimización de distribución (P2P)'
@@ -657,17 +694,6 @@ Register-Language 'es' @{
 
     'Auto-Restart With Active Sessions' = 'Reinicio automático con sesión iniciada'
     'Allow Windows Update to restart the PC automatically while you are logged in' = 'Permitir que Windows Update reinicie el equipo automáticamente con la sesión iniciada'
-
-    # ---- Notifications ----
-    'Windows Tips & Suggestions' = 'Consejos y sugerencias de Windows'
-    'Show occasional tips, tricks, and suggestions as you use Windows' = 'Mostrar de vez en cuando consejos, trucos y sugerencias mientras usas Windows'
-
-    'Lock Screen Suggestions' = 'Sugerencias en la pantalla de bloqueo'
-    'Show fun facts, tips, and other suggestions on the lock screen' = 'Mostrar curiosidades, consejos y otras sugerencias en la pantalla de bloqueo'
-
-    # ---- Sound ----
-    'Startup Sound' = 'Sonido de inicio'
-    'Play the Windows startup sound when signing in' = 'Reproducir el sonido de inicio de Windows al iniciar sesión'
 
     # ---- Búsqueda ----
     'Search' = 'Buscar'
@@ -690,6 +716,10 @@ Register-Language 'es' @{
     'Options'        = 'Opciones'
     'Value'          = 'Valor'
     'Registry path'  = 'Ruta del registro'
+    'Command'        = 'Comando'
+    'Warning'        = 'Aviso'
+    'File'           = 'Archivo'
+    'Guide text'     = 'Texto de la guía'
     'Registry value' = 'Valor del registro'
     'Type'           = 'Tipo'
     'Current value'  = 'Valor actual'

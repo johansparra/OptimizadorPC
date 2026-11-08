@@ -20,7 +20,7 @@
 # Lo que se guarda en el Tag de cualquier cosa pulsable de aquí.
 function New-SearchResultTag {
     param($Entry, $Popup)
-    [PSCustomObject]@{ Category = $Entry.Category; Setting = $Entry.Setting; Popup = $Popup }
+    [PSCustomObject]@{ Category = $Entry.Category; Setting = $Entry.Setting; Guide = $Entry.Guide; Popup = $Popup }
 }
 
 <#
@@ -38,6 +38,12 @@ function Open-SearchResult {
 
     if ($info.Popup) { $info.Popup.IsOpen = $false }
 
+    # Una guía no es una sección: se abre ella misma.
+    if ($info.Guide) {
+        Show-View -Name 'Show-GuideView' -Arguments @{ Guide = $info.Guide }
+        return
+    }
+
     $destino = @{ Category = $info.Category }
     if ($info.Setting) { $destino['Highlight'] = $info.Setting }
 
@@ -48,8 +54,19 @@ function Open-SearchResult {
 # es de la sección entera.
 function Get-SearchResultTitle {
     param($Entry)
+    if ($Entry.Guide) { return $Entry.Guide.Title }   # del usuario: sin T
+    if ($Entry.Step) { return (T $Entry.Step.Name) }
     if ($Entry.Setting) { return (T $Entry.Setting.Name) }
     T $Entry.Category.Name
+}
+
+# La línea gris bajo el título, ya traducida si toca.
+function Get-SearchResultDescription {
+    param($Entry)
+    if ($Entry.Guide) { return $Entry.Guide.Summary }   # del usuario: sin T
+    if ($Entry.Step) { return (T $Entry.Step.Description) }
+    if ($Entry.Setting) { return (T $Entry.Setting.Description) }
+    T $Entry.Category.Description
 }
 
 # "Ruta del registro: HKEY_LOCAL_MACHINE\..." — el campo por el que
@@ -142,11 +159,8 @@ function New-SearchResultCard {
     Set-TextFg $title 'Text'
     $texts.Children.Add($title) | Out-Null
 
-    $descripcion = $Entry.Category.Description
-    if ($Entry.Setting) { $descripcion = $Entry.Setting.Description }
-
     $desc = New-Object System.Windows.Controls.TextBlock
-    $desc.Text = T $descripcion
+    $desc.Text = Get-SearchResultDescription $Entry
     $desc.FontSize = 11.5
     $desc.TextTrimming = 'CharacterEllipsis'
     $desc.Margin = New-Object System.Windows.Thickness 0, 3, 20, 0

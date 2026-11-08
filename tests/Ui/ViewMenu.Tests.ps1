@@ -72,7 +72,7 @@ Describe 'ui/Views/CategoryDetailView.ps1 - el menú Vista por sección' {
 
     It 'el detalle de las demás secciones sí la ofrece' {
         $ventana = New-AppWindow -Language 'en'
-        Show-View -Name 'Show-CategoryDetailView' -Arguments @{ Category = (Get-CategoryById 'power') }
+        Show-View -Name 'Show-CategoryDetailView' -Arguments @{ Category = (Get-CategoryById 'update') }
 
         Assert-Match 'Grid view' (Get-VisualText $ventana.FindName('HeaderActionsArea')) `
             'una sección sin HideViewOptions ha perdido la opción'

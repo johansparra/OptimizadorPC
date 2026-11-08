@@ -154,12 +154,12 @@ Describe 'seguridad - ejecución de código y red' {
 
 Describe 'seguridad - ejecución de comandos (SECURITY.md §12)' {
 
-    It 'solo core/Network/CommandRunner.ps1 arranca procesos, y ExternalLink abre enlaces' {
+    It 'solo core/Commands/CommandRunner.ps1 arranca procesos, y ExternalLink abre enlaces' {
         # Arrancar un proceso desde un programa elevado es la puerta
         # más ancha que hay. Tiene que estar en UN sitio, con su lista
         # blanca; cualquier otro Process.Start es un agujero nuevo.
         $permitidos = @{
-            'core/Network/CommandRunner.ps1' = 'ProcessStartInfo'
+            'core/Commands/CommandRunner.ps1' = 'ProcessStartInfo'
             'core/Shell/ExternalLink.ps1'    = 'Start-Process'
         }
         foreach ($archivo in Get-GuardedSourceFiles) {
@@ -209,6 +209,54 @@ Describe 'seguridad - ejecución de comandos (SECURITY.md §12)' {
                 if (@($step.Arguments) -contains 'advfirewall') {
                     Assert-False $step.Checked "'$($step.Id)' toca el firewall y viene marcado"
                     Assert-True ([bool]$step.Warning) "'$($step.Id)' toca el firewall y no avisa"
+                }
+            }
+        }
+    }
+
+    It 'solo core/Commands/FolderCleanup.ps1 borra archivos' {
+        # Borrar desde un programa elevado no tiene vuelta atrás. Igual
+        # que arrancar procesos: un sitio, con su lista blanca.
+        foreach ($archivo in Get-GuardedSourceFiles) {
+            $rel = Get-GuardedRelPath $archivo
+            if ($rel -eq 'core/Commands/FolderCleanup.ps1') { continue }
+            $texto = Get-Content -Path $archivo.FullName -Raw
+            # Sin 'del' ni 'ri': en un comentario en español "del" es una
+            # palabra, y el código de aquí no usa alias.
+            foreach ($patron in 'Remove-Item', '\.Delete\(', 'File\]::Delete', 'Directory\]::Delete', 'Clear-RecycleBin') {
+                Assert-False ($texto -match $patron) "borrado de archivos en $rel ($patron): solo FolderCleanup.ps1"
+            }
+        }
+    }
+
+    It 'la lista blanca de carpetas no sale de tu carpeta de usuario' {
+        # §12: corriendo elevado, una entrada que resolviera a C:\Windows
+        # o a la raíz de AppData borraría de más. Cada entrada nombra una
+        # carpeta concreta, y solo %TEMP% puede ser la variable a secas.
+        # La única excepción es C:\Windows\Temp, exacta.
+        $usuario = [Environment]::GetFolderPath('UserProfile').TrimEnd('\') + '\'
+        $winTemp = Join-Path ([Environment]::GetFolderPath('Windows')) 'Temp'
+        foreach ($t in $CleanupAllowedFolders) {
+            $partes = Split-CleanupTarget $t
+            Assert-NotNull $partes "'$t' no tiene forma válida"
+            if ($partes.Root -ne 'TEMP') {
+                Assert-True ([bool]$partes.Relative) "'$t' vaciaría %$($partes.Root)% entera"
+            }
+            $r = Resolve-CleanupTarget $t
+            $ok = [bool]$r.Path -and ($r.Path.StartsWith($usuario, [System.StringComparison]::OrdinalIgnoreCase) -or
+                  [string]::Equals($r.Path, $winTemp, [System.StringComparison]::OrdinalIgnoreCase))
+            Assert-True $ok "'$t' resuelve fuera de tu carpeta: $($r.Path) $($r.Problem)"
+        }
+    }
+
+    It 'vaciar la papelera nunca viene marcado de serie, y avisa' {
+        # Lo que hay en la papelera es lo único de la limpieza que el
+        # usuario puso ahí A PROPÓSITO para poder recuperarlo.
+        foreach ($cat in $CategoryList) {
+            foreach ($step in @($cat.Steps)) {
+                if ($step.Kind -eq 'recyclebin') {
+                    Assert-False $step.Checked "'$($step.Id)' vacía la papelera y viene marcado"
+                    Assert-True ([bool]$step.Warning) "'$($step.Id)' vacía la papelera y no avisa"
                 }
             }
         }

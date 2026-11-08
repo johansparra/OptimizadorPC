@@ -65,10 +65,22 @@ function Set-PageTitle {
     $Window.FindName('HeaderTitleArea').Children.Add($stack) | Out-Null
 }
 
-# Breadcrumb de una categoría: botón atrás + icono + ruta + título.
-# $OnBack es el nombre de la función a la que vuelve el botón.
+<#
+    Breadcrumb: botón atrás + icono + ruta + título.
+
+    $Category da el icono y su color (Icon, Accent, AccentSoft) y el
+    nombre (Name, que pasa por T).
+
+    -BackView  la vista a la que vuelven el botón atrás y la ruta.
+               Por defecto, la lista de Optimizar.
+    -RawTitle  el título TAL CUAL, sin T: para lo que no es texto del
+               programa sino del usuario (el título de una guía).
+#>
 function Set-PageBreadcrumb {
-    param($Window, $Category, [string]$RootLabel = 'Optimizations')
+    param($Window, $Category, [string]$RootLabel = 'Optimizations',
+          [string]$BackView = 'Show-OptimizationsListView', [string]$RawTitle)
+
+    $name = if ($RawTitle) { $RawTitle } else { T $Category.Name }
 
     $row = New-Object System.Windows.Controls.StackPanel
     $row.Orientation = 'Horizontal'
@@ -86,9 +98,11 @@ function Set-PageBreadcrumb {
     Set-BoxLine $back 'Stroke'
     $back.Child = (New-Icon 'Back' 13 'TextMuted')
     # Por Show-View, no llamando a la vista (regla 17 de CLAUDE.md).
+    # A cuál, en el Tag (regla 4).
+    $back.Tag = $BackView
     $back.Add_MouseLeftButtonUp({
         param($s, $e)
-        Show-View -Name 'Show-OptimizationsListView'
+        Show-View -Name ([string]$s.Tag)
     })
     $row.Children.Add($back) | Out-Null
 
@@ -109,9 +123,10 @@ function Set-PageBreadcrumb {
     $rootLink.FontSize = 11
     $rootLink.Cursor = 'Hand'
     Set-TextFg $rootLink 'TextFaint'
+    $rootLink.Tag = $BackView
     $rootLink.Add_MouseLeftButtonUp({
         param($s, $e)
-        Show-View -Name 'Show-OptimizationsListView'
+        Show-View -Name ([string]$s.Tag)
     })
     $trail.Children.Add($rootLink) | Out-Null
 
@@ -120,7 +135,7 @@ function Set-PageBreadcrumb {
     $trail.Children.Add($sep) | Out-Null
 
     $leaf = New-Object System.Windows.Controls.TextBlock
-    $leaf.Text = T $Category.Name
+    $leaf.Text = $name
     $leaf.FontSize = 11
     Set-TextFg $leaf 'TextMuted'
     $trail.Children.Add($leaf) | Out-Null
@@ -128,7 +143,7 @@ function Set-PageBreadcrumb {
     $texts.Children.Add($trail) | Out-Null
 
     $title = New-Object System.Windows.Controls.TextBlock
-    $title.Text = T $Category.Name
+    $title.Text = $name
     $title.FontFamily = $Window.FindResource('DisplayFont')
     $title.FontSize = 21
     $title.FontWeight = 'Bold'

@@ -101,6 +101,11 @@ function New-StepRow {
     $notes = New-StepNotes $Step
     if ($notes.Children.Count -gt 0) { $texts.Children.Add($notes) | Out-Null }
 
+    # Hueco para el detalle de lo que hizo (ui/Components/Cards/DetailList.ps1).
+    # Vacío hasta que el paso corre; lo llena Update-StepRow.
+    $detailHost = New-Object System.Windows.Controls.StackPanel
+    $texts.Children.Add($detailHost) | Out-Null
+
     Add-ToColumn $grid $texts 2
 
     # --- columna 3: estado de la ejecución ---
@@ -125,6 +130,7 @@ function New-StepRow {
     $row.Tag = [PSCustomObject]@{
         Step = $Step; Check = $check; Status = $status
         StatusIcon = $statusIcon; StatusText = $statusText
+        DetailHost = $detailHost; DetailItems = $null; Window = $Window
     }
     $row.Add_MouseLeftButtonUp({ param($s, $e) Switch-StepSelection $s })
     $row.Add_MouseEnter({ param($s, $e) if ($s.IsEnabled) { Set-BoxLine $s 'StrokeHover' } })
@@ -201,6 +207,8 @@ function Update-StepRow {
         Set-TextFg $info.Check 'TextFaint'
     }
 
+    Sync-StepRowDetail $info
+
     if (-not $step.Status) {
         $info.Status.Visibility = 'Collapsed'
         return
@@ -213,6 +221,27 @@ function Update-StepRow {
     $info.Status.Visibility = 'Visible'
 }
 
+<#
+    El detalle de lo que hizo el paso en su última ejecución, plegado
+    bajo el comando. Update-StepRow late cada 120 ms mientras corre:
+    solo se rehace cuando cambian las Items del paso (por referencia),
+    no en cada latido.
+#>
+function Sync-StepRowDetail {
+    param($Info)
+
+    if (-not $Info.PSObject.Properties['DetailHost']) { return }
+    $items = $Info.Step.Items
+    if ([object]::ReferenceEquals($items, $Info.DetailItems)) { return }
+
+    $Info.DetailItems = $items
+    $Info.DetailHost.Children.Clear()
+    if ($items -and @($items).Count -gt 0) {
+        $key = 'step:{0}:{1}' -f $Info.Step.Source, $Info.Step.Id
+        $Info.DetailHost.Children.Add((New-DetailList $Info.Window @($items) $key)) | Out-Null
+    }
+}
+
 # Un clic en la fila: marcar o desmarcar. Mientras se ejecuta no se
 # toca nada -la cola ya está decidida-.
 function Switch-StepSelection {
@@ -223,6 +252,7 @@ function Switch-StepSelection {
     $step = $Row.Tag.Step
     if (-not (Test-StepAvailable $step)) { return }
     $step.Selected = -not $step.Selected
+    Save-StepChoices (Get-CategoryById $step.Source)
     Update-StepRow $Row
     Sync-StepRunPanel
 }

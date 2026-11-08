@@ -2,17 +2,21 @@
 
 Aplicación de escritorio para optimizar Windows 11 Pro. Interfaz **WPF** escrita íntegramente en **PowerShell 5.1** y empaquetada como un **`.exe` portable de un solo archivo** con [ps2exe](https://github.com/MScholtes/PS2EXE).
 
-> **Estado: interfaz completa + escritura de registro acotada, en expansión.**
+> **Estado: interfaz completa + cambios reales acotados, en expansión.**
 > La navegación, las tarjetas, los toggles, los dropdowns, el buscador y el registro
 > de actividad funcionan. `core/` **lee y escribe** el registro de Windows: al pulsar
-> el toggle de un ajuste con `-Registry` (hoy, 1 en *Regedit*) se escribe cada clave
-> por una **lista blanca de rutas** (`core/Registry/Writer.ps1`), respetando el tipo,
-> con copia del valor previo y verificación por relectura. **El `.exe` corre elevado.**
-> Ver [`SECURITY.md`](SECURITY.md) para el modelo de amenaza y el contrato de escritura.
+> el toggle de un ajuste con `-Registry` (hoy los 47 de *Regedit*, uno por clave) se
+> escribe cada clave por una **lista blanca de rutas** (`core/Registry/Writer.ps1`),
+> respetando el tipo, con copia del valor previo y verificación por relectura. Las
+> secciones de **comandos** —*Internet*, *Limpieza* y *Energía*— ejecutan programas
+> de Windows y vacían carpetas de temporales, también por lista blanca
+> (`core/Commands/`). La sección **Guías** enseña las notas `.md` de `ui/Data/Guides/`.
+> **El `.exe` corre elevado.** Ver [`SECURITY.md`](SECURITY.md) para el modelo de
+> amenaza y los contratos.
 >
 > **Pendiente:** persistir el rollback entre sesiones y exponer "deshacer" en la UI,
-> aviso de punto de restauración antes de escribir, y llevar `-Registry` al resto de
-> secciones (hoy solo declaran datos estáticos y sus `-Tags` escritas a mano).
+> aviso de punto de restauración antes de escribir, y dar lógica real a
+> *Actualizaciones* (hoy declara datos estáticos y sus `-Tags` escritas a mano).
 
 ---
 
@@ -38,9 +42,12 @@ OptimizadorPC/
 │   │   └── WorkArea.ps1         Maximizar sin tapar la barra de tareas (user32)
 │   ├── Shell/
 │   │   └── ExternalLink.ps1     Abrir un enlace en el navegador (solo http/https)
-│   ├── Network/
-│   │   └── CommandRunner.ps1    Ejecutar los pasos de Internet: sin shell, lista
-│   │                            blanca de ejecutables y servicios (SECURITY.md §12)
+│   ├── Commands/
+│   │   ├── CommandRunner.ps1    Ejecutar los pasos de Internet, Limpieza y Energía:
+│   │   │                        sin shell, lista blanca de ejecutables y servicios,
+│   │   │                        -SkipIf para saltar lo ya hecho (SECURITY.md §12)
+│   │   └── FolderCleanup.ps1    Vaciar carpetas de temporales y la papelera: lista
+│   │                            blanca de carpetas, solo dentro de la del usuario
 │   └── Diagnostics/
 │       ├── Log.ps1              Registro de actividad: qué se leyó/escribió y cuándo
 │       └── SystemInfo.ps1       Sobre qué corre: Windows, PowerShell, permisos, exe/script
@@ -55,10 +62,15 @@ OptimizadorPC/
 │   │                            interruptor, buscador, botón chip, rejillas
 │   │
 │   ├── Engine/              2. MECANISMO. Registran, traducen, guardan, enrutan.
-│   │   ├── CategoryRegistry.ps1   Declarar secciones y sus ajustes
+│   │   ├── CategoryRegistry.ps1   Declarar secciones, sus ajustes y sus pasos
 │   │   ├── PreferenceRegistry.ps1 Declarar opciones de Settings
+│   │   ├── GuideRegistry.ps1      Registrar las guías (.md): título, resumen, secciones
+│   │   ├── Markdown.ps1           Leer Markdown en bloques y trozos de línea (sin WPF)
+│   │   ├── Search.ps1             El buscador global: índice plano de secciones y ajustes
 │   │   ├── Translation.ps1        Traducción (T, Register-Language)
+│   │   ├── TimeFormat.ps1         Cómo se escribe una hora (24 h / 12 h)
 │   │   ├── AppSettings.ps1        Guardado en %APPDATA% entre sesiones
+│   │   ├── UiGuard.ps1            Que un fallo en un manejador no tumbe la ventana
 │   │   └── Router.ps1             Qué pantalla se ve y cómo repintarla
 │   │
 │   ├── Index/               3. POLÍTICA. ← LOS ARCHIVOS PRINCIPALES
@@ -72,14 +84,17 @@ OptimizadorPC/
 │   │   ├── AppInfo.ps1          Nombre, VERSIÓN (única fuente; la lee build.ps1),
 │   │   │                        descripción y repositorio
 │   │   ├── Categories/          Un archivo por sección
-│   │   │   ├── Regedit.ps1          Power.ps1          Gaming.ps1
-│   │   │   ├── Update.ps1           Notifications.ps1  Sound.ps1
-│   │   │   └── Internet.ps1         COMANDOS, no ajustes: los pasos de
-│   │   │                            Reiniciar_Red_v3.cmd, en orden de ejecución
+│   │   │   ├── Regedit.ps1          Power.ps1          Update.ps1
+│   │   │   ├── Internet.ps1         COMANDOS, no ajustes: los pasos de
+│   │   │   │                        Reiniciar_Red_v3.cmd, en orden de ejecución
+│   │   │   └── Cleanup.ps1          COMANDOS: los de EliminarTemporales.v1.cmd
+│   │   ├── Guides/              Las guías de la sección Guías: un .md por guía,
+│   │   │                        se leen tal cual (entran al .exe en Base64)
 │   │   ├── Preferences/         Un archivo por opción de Settings
 │   │   │   ├── 10-Language.ps1
 │   │   │   ├── 20-Theme.ps1
-│   │   │   └── 30-Material.ps1      opaco / Mica / Acrílico
+│   │   │   ├── 30-Material.ps1      opaco / Mica / Acrílico
+│   │   │   └── 40-TimeFormat.ps1    reloj de 24 h o de 12 h
 │   │   └── Lang/                Un archivo por idioma
 │   │       └── es.ps1               (el inglés es la fuente: no lleva archivo)
 │   │
@@ -92,6 +107,8 @@ OptimizadorPC/
 │   │   │   ├── Backdrop.ps1         el fondo vivo: manchas de color que se mueven
 │   │   │   ├── WindowMaterial.ps1   pone (o quita) Mica / Acrílico en la ventana
 │   │   │   ├── ViewMenu.ps1         chip "Vista" y su desplegable
+│   │   │   ├── ChipMenu.ps1         chip con menú de órdenes (Expandir / Contraer)
+│   │   │   ├── SearchBar.ps1        caja de búsqueda con resultados en vivo
 │   │   │   ├── LogPanel.ps1         cajón del registro de actividad
 │   │   │   ├── LogWindow.ps1        el mismo registro, en ventana aparte
 │   │   │   └── ProgressStrip.ps1    barra de progreso del pie
@@ -99,20 +116,30 @@ OptimizadorPC/
 │   │   │   ├── CategoryCard.ps1     fila de la pantalla principal
 │   │   │   ├── CategoryTile.ps1     la misma sección, en cuadrícula
 │   │   │   ├── SettingCard.ps1      fila de la pantalla de detalle
+│   │   │   ├── Disclosure.ps1       franja plegable del pie de una tarjeta de ajuste
+│   │   │   ├── TechnicalDetails.ps1 pie plegable con las claves del registro
+│   │   │   ├── SettingReference.ps1 pie plegable "Referencia": qué hace, valores, enlace
 │   │   │   ├── PreferenceCard.ps1   fila de la pantalla de Settings
+│   │   │   ├── SearchResultCard.ps1 un resultado del buscador (fila o tarjeta)
 │   │   │   ├── StepRow.ps1          fila del checklist de una sección de comandos
-│   │   │   └── TechnicalDetails.ps1 pie plegable con las claves del registro
+│   │   │   ├── DetailList.ps1       "Ver detalle": lo que hizo un paso, plegado
+│   │   │   └── GuideCard.ps1        tarjeta de una guía, la guía abierta, "Copiar todo"
 │   │   └── Layout/              Piezas de página
 │   │       ├── PageHeader.ps1       cabecera: título, breadcrumb, acciones, hueco fijo
 │   │       ├── Banner.ps1           avisos (p. ej. "sección bloqueada")
 │   │       ├── CategorySummary.ps1  la fila de píldoras bajo el título
+│   │       ├── SearchResults.ps1    cabeceras y avisos de la lista de resultados
+│   │       ├── Toast.ps1            aviso efímero en la cabecera
+│   │       ├── MarkdownDocument.ps1 una guía pintada: FlowDocument de solo lectura
 │   │       └── StepRunPanel.ps1     marco de ejecución: estado, progreso, log en
 │   │                                vivo, y la cola con su temporizador
 │   │
 │   └── Views/               7. LAS PANTALLAS. Solo ensamblan piezas.
 │       ├── OptimizationsListView.ps1
 │       ├── CategoryDetailView.ps1
-│       ├── CategoryStepsView.ps1    la de las secciones de comandos (Internet)
+│       ├── CategoryStepsView.ps1    la de las secciones de comandos
+│       ├── GuidesView.ps1           Guías: la lista y una guía abierta
+│       ├── SearchResultsView.ps1    todos los resultados de una búsqueda
 │       └── SettingsView.ps1
 │
 ├── tests/                   PRUEBAS. Sin dependencias, corren en 5.1 y en 7.
@@ -184,11 +211,9 @@ $CategoryIndex = @(
 
     #  Id                    Visible          Bloqueada
     @{ Id = 'regedit';       Visible = $true;  Locked = $false }
+    @{ Id = 'internet';      Visible = $true;  Locked = $false }
     @{ Id = 'power';         Visible = $true;  Locked = $false }
-    @{ Id = 'gaming';        Visible = $true;  Locked = $false }
     @{ Id = 'update';        Visible = $true;  Locked = $false }
-    @{ Id = 'notifications'; Visible = $true;  Locked = $false }
-    @{ Id = 'sound';         Visible = $true;  Locked = $false }
 
 )
 ```
@@ -246,7 +271,7 @@ Añadir una entrada al menú es añadir una línea aquí. Aunque los botones ya 
 en el XAML, siguen registrados con su nombre, así que `$Window.FindName('NavSettings')`
 funciona igual que antes.
 
-**Hoy las tres entradas —Search, Optimize y Settings— tienen pantalla.** Software,
+**Hoy las cuatro entradas —Search, Optimize, Guides y Settings— tienen pantalla.** Software,
 Customize, Advanced y More se quitaron del menú: no se van a implementar.
 
 Una entrada sin `View` sigue siendo válida: sale igual que las demás —ni en gris ni
@@ -592,14 +617,13 @@ Una fila por archivo de `ui/Data/Categories/`. El orden mostrado es el de `ui/In
 
 | Archivo | Id | Categoría | Icono | Badge | Ajustes |
 | ------- | -- | --------- | ----- | ----- | ------- |
-| `Regedit.ps1` | `regedit` | Regedit | `Shield` | NEW 1 *(contado)* | 1 |
-| `Power.ps1` | `power` | Power | `Power` | — | 3 |
-| `Gaming.ps1` | `gaming` | Gaming & Performance | `Game` | NEW 16 *(a mano)* | 5 |
+| `Regedit.ps1` | `regedit` | Regedit | `Shield` | NEW 41 *(contado)* | 47 |
+| `Internet.ps1` | `internet` | Internet | `Globe` | NEW *(a mano)* | 27 pasos |
+| `Cleanup.ps1` | `cleanup` | Cleanup | `Broom` | NEW *(a mano)* | 15 pasos |
+| `Power.ps1` | `power` | Power | `Power` | NEW *(a mano)* | 2 pasos |
 | `Update.ps1` | `update` | Update | `Sync` | NEW 1 *(a mano)* | 2 |
-| `Notifications.ps1` | `notifications` | Notifications | `Bell` | — | 2 |
-| `Sound.ps1` | `sound` | Sound | `Volume` | — | 1 |
 
-> **El badge se cuenta solo** a partir de los ajustes que llevan su propio `-Badge 'NEW'`: una categoría que no declare `Badge` sale con `NEW <n>`, o sin badge si no hay ninguno marcado. `Gaming.ps1` y `Update.ps1` todavía lo declaran a mano; borrar esa línea los pasa al recuento automático.
+> **El badge se cuenta solo** a partir de los ajustes que llevan su propio `-Badge 'NEW'`: una categoría que no declare `Badge` sale con `NEW <n>`, o sin badge si no hay ninguno marcado. `Update.ps1` todavía lo declara a mano; borrar esa línea los pasa al recuento automático.
 >
 > Los contadores de las píldoras de la LISTA (`29/88`, etc.) siguen siendo **valores fijos declarados a mano**, no cuentan los ajustes reales del archivo. La fila de la pantalla de detalle sí es de verdad: cuenta por el estado leído del registro (ver *El estado de cada ajuste*).
 
@@ -677,7 +701,7 @@ Detalles en [`tests/README.md`](tests/README.md), que además explica **por qué
 ## Convenciones importantes
 
 1. **Nunca edites `build/_combined.ps1`** — se regenera en cada build.
-2. **`build.ps1` solo entiende dos marcadores de `main.ps1`:** `# @@EMBED_DIR:carpeta@@` (una capa entera, subcarpetas incluidas) y `# @@EMBED_XAML:ruta@@`, ambos cerrados con `# @@ENDEMBED@@`. **Un archivo nuevo va DENTRO de una de las siete carpetas de capa** y entonces entra solo; no hay forma de incluir uno suelto, y cargarlo a mano con un `. (Join-Path ...)` haría que el programa funcionase en desarrollo y fallara compilado. Hay una prueba que lo impide.
+2. **`build.ps1` solo entiende tres marcadores de `main.ps1`:** `# @@EMBED_DIR:carpeta@@` (una capa entera, subcarpetas incluidas), `# @@EMBED_GUIDES:ui/Data/Guides@@` (los `.md` de las guías, en Base64) y `# @@EMBED_XAML:ruta@@`, todos cerrados con `# @@ENDEMBED@@`. **Un archivo nuevo va DENTRO de una de las siete carpetas de capa** y entonces entra solo; no hay forma de incluir uno suelto, y cargarlo a mano con un `. (Join-Path ...)` haría que el programa funcionase en desarrollo y fallara compilado. Hay una prueba que lo impide.
 3. **Guarda todo `.ps1` y `.xaml` en UTF-8 CON BOM.** Windows PowerShell 5.1 interpreta un script sin BOM como ANSI y rompe cualquier carácter no ASCII, fallando al parsear. Como PowerShell 7 sí asume UTF-8, un archivo puede funcionar en `pwsh` y reventar en `powershell`.
 4. **Los handlers de eventos no deben usar `.GetNewClosure()`.** El closure los liga a un módulo dinámico donde las funciones del script son invisibles (*"Show-CategoryDetailView is not recognized"* al hacer clic). Pasa el dato por `$control.Tag` y obtén la ventana con `[System.Windows.Window]::GetWindow($s)`.
 5. **Sin consola en el `.exe`**: `Write-Host` no se ve. Depura ejecutando `main.ps1` directamente.
@@ -697,8 +721,33 @@ Detalles en [`tests/README.md`](tests/README.md), que además explica **por qué
 - [x] Recordar el tema y el idioma entre sesiones (`%APPDATA%\OptimizadorPC\settings.json`)
 - [x] **Sección Internet**: los comandos de `Reiniciar_Red_v3.cmd` como checklist, uno por
   paso, ejecutados siempre en orden, sin shell y por lista blanca
-  (`core/Network/CommandRunner.ps1`), con marco fijo de estado, barra de progreso y
+  (`core/Commands/CommandRunner.ps1`), con marco fijo de estado, barra de progreso y
   registro en vivo
+- [x] **Sección Limpieza**: `EliminarTemporales.v1.cmd` con el mismo marco que Internet.
+  Las carpetas se vacían sin `cmd` (`core/Commands/FolderCleanup.ps1`), por lista
+  blanca, dentro de la carpeta del usuario, sin seguir enlaces y por trozos; cada paso
+  deja en el log cuántos archivos borró y cuánto espacio liberó
+- [x] **Detalle desplegable** de lo que hizo cada paso —los archivos que borró o saltó
+  (y por qué), lo que había en la papelera, la salida entera de un programa— bajo su
+  entrada del log y bajo la fila del paso; y guardar el log **con detalle** (casilla
+  junto a "Guardar")
+- [x] **Sección Guías** en el menú lateral: una tarjeta por cada `.md` de
+  `ui/Data/Guides/`, que se lee dentro del programa con formato (títulos, tablas, listas,
+  código con su botón de copiar) y se selecciona y copia como texto normal
+- [x] **Buscador de pasos y guías**: el buscador global encuentra también los pasos de
+  las secciones de comandos (por nombre, descripción o comando) y el texto de las guías,
+  con el trozo de alrededor de lo buscado
+- [x] **Los pasos marcados se recuerdan** entre sesiones (`StepChoices.<sección>` en
+  `settings.json`, solo lo que el usuario cambió respecto a lo de serie)
+- [x] **Guías con índice y búsqueda**: "Contenido" con enlaces a cada sección y "Buscar en
+  esta guía" en la cabecera
+- [x] **Limpieza**: `C:\Windows\Temp`, y un `%TEMP%` movido a otro disco con regla propia;
+  `-WhatIf` real (simulacro) en ejecutar y borrar
+- [x] **Prueba de humo** del programa empaquetado con UI Automation
+  (`tests/Smoke/Invoke-Smoke.ps1`) y `-Timing` en `Run-Tests.ps1`
+- [x] **Sección Energía**: `maximo rendimiento de enerigia.bat` como comandos. Añade
+  el plan Máximo rendimiento a un GUID fijo (se salta si ya está, `-SkipIf`: el `.bat`
+  creaba una copia nueva en cada ejecución) y lo activa
 - [x] **Insignia de administrador** en la barra de título; sin permisos, los pasos que
   los necesitan salen desmarcados, apagados y avisando
 - [x] **Filtro por estado** en el detalle de una sección: las píldoras del resumen son
@@ -712,17 +761,15 @@ Detalles en [`tests/README.md`](tests/README.md), que además explica **por qué
   guarda el valor previo solo en memoria (`$RegistrySnapshots`): se pierde al cerrar
 - [ ] **Aviso de punto de restauración** (o `reg export` de la rama) antes de la primera
   escritura elevada
-- [ ] Llevar `-Registry` al resto de secciones: sin claves declaradas siguen mostrando
-  sus `-Tags` escritas a mano y no hay estado que calcular
-- [ ] Lógica real del resto de mecanismos (servicios, planes de energía) como subcarpetas
-  nuevas de `core/`
+- [ ] Llevar `-Registry` a *Actualizaciones*, la única sección de ajustes que queda sin
+  claves: muestra sus `-Tags` escritas a mano y no hay estado que calcular
+- [ ] Lógica real de otros mecanismos (servicios, tareas programadas, directivas) como
+  subcarpetas nuevas de `core/`. Los planes de energía ya van por comandos (*Energía*)
 - [ ] Que el control de la tarjeta de un ajuste **sin** `-Registry` refleje un valor real
   y no el `Value` estático del archivo de la sección
 - [ ] "Quick Actions" y "Reset" de la lista (hoy decorativos; el "Refrescar" del detalle
   sí funciona)
 - [ ] Contadores de las píldoras de la lista calculados en vez de fijos
-- [ ] Prueba de humo sobre el `.exe` compilado con `System.Windows.Automation` (ver
-  `tests/README.md`)
-- [ ] Que el buscador encuentre también los pasos de Internet (hoy indexa solo ajustes)
-- [ ] Recordar entre sesiones qué pasos de Internet están marcados
+- [ ] Prueba de humo del `.exe` **elevado** sin intervención (la de hoy arranca el script
+  empaquetado sin elevar; con `-Exe` hace falta aceptar el UAC a mano)
 - [ ] Un paso "volver a DHCP" para deshacer el DNS fijo de Google

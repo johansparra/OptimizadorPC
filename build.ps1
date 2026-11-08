@@ -14,10 +14,11 @@
     Uso:
         powershell -ExecutionPolicy Bypass -File .\build.ps1
 
-    Solo entiende DOS marcadores de main.ps1:
+    Solo entiende TRES marcadores de main.ps1:
 
-        # @@EMBED_DIR:carpeta@@ ... # @@ENDEMBED@@   una carpeta entera
-        # @@EMBED_XAML:ruta@@   ... # @@ENDEMBED@@   el XAML
+        # @@EMBED_DIR:carpeta@@    ... # @@ENDEMBED@@   una carpeta entera de .ps1
+        # @@EMBED_GUIDES:carpeta@@ ... # @@ENDEMBED@@   los .md de las guías
+        # @@EMBED_XAML:ruta@@      ... # @@ENDEMBED@@   el XAML
 
     Todo lo demas se copia tal cual. No hay forma de incluir un
     archivo suelto: si necesitas uno nuevo, va dentro de una de las
@@ -80,6 +81,30 @@ while ($i -lt $mainLines.Count) {
         Write-Host ("  {0,-18} {1} archivo(s)" -f $dirRel, $files.Count) -ForegroundColor DarkGray
 
         # saltar el foreach original que recorria la carpeta en desarrollo
+        while ($i -lt $mainLines.Count -and $mainLines[$i] -notmatch '^\s*# @@ENDEMBED@@\s*$') { $i++ }
+        $i++
+        continue
+    }
+
+    # Las guías: cada .md de la carpeta (sin subcarpetas, por nombre,
+    # igual que Import-GuideFolder) se convierte en una llamada a
+    # Register-Guide con el texto en Base64. Base64 y no un aquí-string
+    # porque el .md es texto libre: un '@ a principio de línea cerraría
+    # el aquí-string y el .exe no arrancaría.
+    if ($line -match '^\s*# @@EMBED_GUIDES:(.+)@@\s*$') {
+        $dirRel = $Matches[1]
+        $dirPath = Join-Path $root ($dirRel -replace '/', '\')
+        $guides = @()
+        if (Test-Path $dirPath) { $guides = @(Get-ChildItem -Path $dirPath -Filter '*.md' -File | Sort-Object FullName) }
+
+        foreach ($guide in $guides) {
+            $b64 = [System.Convert]::ToBase64String([System.IO.File]::ReadAllBytes($guide.FullName))
+            $name = $guide.Name -replace "'", "''"
+            $output.Add("# ---- guía incluida: $dirRel/$($guide.Name) ----")
+            $output.Add("Register-Guide -FileName '$name' -Markdown (ConvertFrom-GuideBase64 '$b64')")
+        }
+        Write-Host ("  {0,-18} {1} guía(s)" -f $dirRel, $guides.Count) -ForegroundColor DarkGray
+
         while ($i -lt $mainLines.Count -and $mainLines[$i] -notmatch '^\s*# @@ENDEMBED@@\s*$') { $i++ }
         $i++
         continue

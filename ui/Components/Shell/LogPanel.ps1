@@ -45,6 +45,9 @@ $LogScrimOpacity = 0.32
 
 $LogPanelOpen = $false
 
+# '<última Id>/<entradas>' de lo último que pintó Update-LogList.
+$LogRenderedState = ''
+
 function Get-LogPanelOpen { $script:LogPanelOpen }
 
 # ---- Abrir y cerrar -----------------------------------------
@@ -367,6 +370,22 @@ function New-LogToolbar {
     Register-LogName $Window 'LogBtnSave' $save
     $buttons.Children.Add($save) | Out-Null
 
+    # "Con detalle": si el archivo lleva también la vista extendida -los
+    # archivos que borró cada limpieza, la salida entera de cada
+    # programa-. Es una casilla al lado de Guardar, a la vista, para
+    # que la pregunta esté hecha ANTES de guardar y no escondida en un
+    # diálogo. Solo aparece si alguna entrada trae detalle.
+    $details = New-ChipButton $Window 'With details' 'CheckOn'
+    $details.Height = 32
+    $details.ToolTip = T 'Also save the full detail of each entry: the files each cleanup deleted and the full output of each program'
+    $details.Add_Click({
+        param($s, $e)
+        Set-LogExportDetails (-not (Get-LogExportDetails))
+        Update-LogSaveButton ([System.Windows.Window]::GetWindow($s))
+    })
+    Register-LogName $Window 'LogBtnDetails' $details
+    $buttons.Children.Add($details) | Out-Null
+
     # Nace ya encendido o apagado según lo que haya: la barra se
     # construye también sin pasar por Update-LogList (al sacar el
     # log a su ventana, por ejemplo).
@@ -555,15 +574,33 @@ function Get-LogSavePath {
 function Save-AppLogTo {
     param($Window, [string]$Path)
 
-    $written = Export-AppLog -Path $Path
+    # Con detalle solo si se pidió Y hay detalle que escribir: el pie
+    # no puede decir "con detalle" de un archivo que no lo lleva.
+    $detailed = (Get-LogExportDetails) -and ((Get-AppLogDetailCount) -gt 0)
+    $written = Export-AppLog -Path $Path -Detailed:$detailed
     if (-not $written) {
         Set-LogFooterText $Window (T 'The log file could not be written') 'Danger'
         return $null
     }
 
     Set-LogSaveFolder (Split-Path -Parent $written)
-    Set-LogFooterText $Window ((T 'Saved to {0}') -f $written) 'Success'
+    $msg = if ($detailed) { T 'Saved to {0}, with details' } else { T 'Saved to {0}' }
+    Set-LogFooterText $Window ($msg -f $written) 'Success'
     $written
+}
+
+# ¿Se guarda el log con el detalle? Por defecto sí: quien ha vaciado
+# carpetas suele querer la lista de lo que se fue. Se recuerda entre
+# sesiones (regla 18).
+function Get-LogExportDetails {
+    $v = Get-AppSetting 'LogExportDetails'
+    if ($null -eq $v) { return $true }
+    [bool]$v
+}
+
+function Set-LogExportDetails {
+    param([bool]$On)
+    Set-AppSetting 'LogExportDetails' $On
 }
 
 <#
@@ -608,6 +645,17 @@ function Update-LogSaveButton {
     $save.IsEnabled = $hay
     $save.Opacity = if ($hay) { 1 } else { 0.45 }
     $save.ToolTip = if ($hay) { T 'Save the log to a file' } else { T 'Nothing to save yet' }
+
+    # La casilla de "con detalle": solo si hay detalle que guardar, y
+    # con la marca de lo elegido. El icono es el primer hijo del chip
+    # (ver New-ChipButton).
+    $details = $Window.FindName('LogBtnDetails')
+    if (-not $details) { return }
+    $details.Visibility = if ((Get-AppLogDetailCount) -gt 0) { 'Visible' } else { 'Collapsed' }
+    $on = Get-LogExportDetails
+    $icon = $details.Content.Children[0]
+    $icon.Text = if ($on) { Glyph 'CheckOn' } else { Glyph 'CheckOff' }
+    Set-TextFg $icon $(if ($on) { 'Accent' } else { 'TextMuted' })
 }
 
 # Los controles del cajón se registran con nombre, igual que los
@@ -636,6 +684,9 @@ function Update-LogList {
     $list = $Window.FindName('LogList')
     if (-not $list) { return }
     $list.Children.Clear()
+
+    # Lo que se acaba de pintar, para que Sync-LogView sepa si hay algo nuevo.
+    $script:LogRenderedState = '{0}/{1}' -f (Get-AppLogSequence), (Get-AppLogCount)
 
     $total = Get-AppLogCount
     $shown = @(Get-AppLog -Last $LogPanelMaxRows)
@@ -699,6 +750,13 @@ function Update-LogList {
     un cajón ni una ventana.
 #>
 function Sync-LogView {
+    # Sin entradas nuevas no hay nada que rehacer. Importa: durante una
+    # ejecución esto se llama en cada latido (120 ms), y rehacer la
+    # lista entera cerraría la selección o movería el detalle abierto
+    # que el usuario está leyendo.
+    $now = '{0}/{1}' -f (Get-AppLogSequence), (Get-AppLogCount)
+    if ($now -eq $script:LogRenderedState) { return }
+
     if (Get-LogDetached)  { Update-LogList (Get-LogWindow); return }
     if (Get-LogPanelOpen) { Update-LogList (Get-AppWindow) }
 }
@@ -753,6 +811,13 @@ function New-LogRow {
         $detail.Margin = New-Object System.Windows.Thickness 0, 2, 0, 0
         Set-TextFg $detail 'TextFaint'
         $texts.Children.Add($detail) | Out-Null
+    }
+
+    # El detalle que no se ve de un vistazo -los archivos que borró una
+    # limpieza, la salida entera de un programa-, plegado. Se recuerda
+    # abierto por el Id de la entrada: la lista se rehace a menudo.
+    if ($Entry.PSObject.Properties['Items'] -and $Entry.Items) {
+        $texts.Children.Add((New-DetailList $Window $Entry.Items ('log:{0}' -f $Entry.Id))) | Out-Null
     }
 
     Add-ToColumn $grid $texts 2
@@ -833,7 +898,7 @@ function New-LogPill {
         'write failed'     = @{ Fg = 'Danger';    Bg = 'DangerSoft' }
         'typefail'         = @{ Fg = 'Danger';    Bg = 'DangerSoft' }
         'unsupported'      = @{ Fg = 'Warn';      Bg = 'WarnSoft' }
-        # Ejecución de comandos (core/Network/CommandRunner.ps1).
+        # Ejecución de comandos (core/Commands/CommandRunner.ps1).
         'running'          = @{ Fg = 'Accent';    Bg = 'AccentSoft' }
         'succeeded'        = @{ Fg = 'Success';   Bg = 'SuccessSoft' }
         'failed'           = @{ Fg = 'Danger';    Bg = 'DangerSoft' }

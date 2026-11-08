@@ -99,6 +99,7 @@ Describe 'reglas del proyecto - qué entra en el .exe' {
             Assert-Match ('# @@EMBED_DIR:' + [regex]::Escape($carpeta) + '@@') $main "la carpeta $carpeta"
         }
         Assert-Match '# @@EMBED_XAML:ui/MainWindow.xaml@@' $main 'el XAML'
+        Assert-Match '# @@EMBED_GUIDES:ui/Data/Guides@@'   $main 'las guías (.md)'
         Assert-Match '# @@ENDEMBED@@'                      $main 'el cierre de los bloques'
     }
 
@@ -158,6 +159,18 @@ Describe 'reglas del proyecto - qué entra en el .exe' {
             Assert-Match ('inicio incluido: ' + [regex]::Escape($rel)) $texto "no ha entrado $rel"
         }
         Assert-Match '<Window xmlns=' $texto 'no ha entrado el XAML'
+
+        # Las guías van dentro, cada una en Base64, y se leen IGUAL que
+        # el archivo: es lo que verá el .exe, que no tiene la carpeta.
+        $guias = @(Get-ChildItem -Path (Join-Path (Get-AppRoot) 'ui\Data\Guides') -Filter '*.md' -File)
+        Assert-True ($guias.Count -ge 1) 'no hay ninguna guía que comprobar'
+        foreach ($g in $guias) {
+            $patron = "(?m)^Register-Guide -FileName '" + [regex]::Escape($g.Name) + "' -Markdown \(ConvertFrom-GuideBase64 '([^']+)'\)"
+            $encaje = [regex]::Match($texto, $patron)
+            Assert-True $encaje.Success "no ha entrado la guía $($g.Name)"
+            $vuelta = ConvertFrom-GuideBase64 $encaje.Groups[1].Value
+            Assert-Equal ([System.IO.File]::ReadAllText($g.FullName)) $vuelta "la guía $($g.Name) no vuelve igual"
+        }
 
         # Un marcador que sobreviva al empaquetado significa que
         # build.ps1 no lo ha reconocido y el .exe intentará leer

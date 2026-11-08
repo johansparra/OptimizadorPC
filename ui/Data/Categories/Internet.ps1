@@ -14,7 +14,7 @@
 # AÑADIR UN COMANDO = añadir un New-CommandStep en su sitio de la
 # lista (ver la ayuda en ui/Engine/CategoryRegistry.ps1). Si usa un
 # ejecutable o un servicio nuevo, hay que darlo de alta también en la
-# lista blanca de core/Network/CommandRunner.ps1: eso es una decisión
+# lista blanca de core/Commands/CommandRunner.ps1: eso es una decisión
 # de seguridad (SECURITY.md §12), no un detalle.
 #
 # Lo que tiene efectos que conviene decidir a conciencia -borrar las

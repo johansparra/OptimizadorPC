@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Auditoría 2026-11-08 — Optimizador PC</title>
+<style>
+  :root { --bg:#f7f8fa; --card:#fff; --text:#1d2129; --muted:#5b6472; --line:#e3e6eb;
+          --ok:#1f8a4c; --warn:#b26a00; --bad:#c62d3a; --accent:#2f6fde; --code:#eef1f5; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#14171c; --card:#1c2027; --text:#e7eaf0; --muted:#9aa3b2; --line:#2c323c;
+            --ok:#4cc382; --warn:#e3a43a; --bad:#ef6b75; --accent:#6ea0ff; --code:#252a33; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:15px/1.55 "Segoe UI", system-ui, sans-serif; }
+  main { max-width: 980px; margin: 0 auto; padding: 32px 16px 56px; }
+  h1 { font-size: 26px; margin: 0 0 4px; } h2 { font-size: 19px; margin: 34px 0 10px; }
+  .sub { color: var(--muted); margin: 0 0 22px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; margin: 12px 0; }
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; }
+  .kpi b { display: block; font-size: 22px; } .kpi span { color: var(--muted); font-size: 13px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; }
+  code { background: var(--code); padding: 1px 5px; border-radius: 5px; font-family: "Cascadia Mono", Consolas, monospace; font-size: 13px; }
+  .tag { font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+  .ok { color: var(--ok); border: 1px solid var(--ok); } .warn { color: var(--warn); border: 1px solid var(--warn); }
+  .bad { color: var(--bad); border: 1px solid var(--bad); }
+  .table-wrap { overflow-x: auto; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Auditoría de seguridad y calidad — 2026-11-08</h1>
+  <p class="sub">Repaso de la superficie nueva desde el 2026-09-07: secciones Limpieza y Energía, borrado de archivos, detalle del registro de actividad, sección Guías. Rama <code>visual/fluent-cards</code>, base <code>203097a</code>.</p>
+
+  <div class="kpis">
+    <div class="card kpi"><b>602 / 602</b><span>pruebas, en 5.1 y en 7</span></div>
+    <div class="card kpi"><b>0</b><span>hallazgos de Semgrep (security-audit + secrets, 109 archivos)</span></div>
+    <div class="card kpi"><b>1</b><span>aviso de PSScriptAnalyzer (el de la línea base)</span></div>
+    <div class="card kpi"><b>3</b><span>cambios de endurecimiento aplicados</span></div>
+  </div>
+
+  <h2>Superficie revisada</h2>
+  <div class="card table-wrap">
+    <table>
+      <tr><th>Qué</th><th>Dónde</th><th>Contrato</th></tr>
+      <tr><td>Ejecutar programas (<code>Dism</code>, <code>cleanmgr</code>, <code>fsutil</code>, <code>defrag</code>, <code>powercfg</code>)</td><td><code>core/Commands/CommandRunner.ps1</code></td><td>Sin shell, lista blanca por nombre y ruta de sistema, argumentos literales del repositorio. Sin cambios en el modelo; solo crece la lista.</td></tr>
+      <tr><td>Borrar archivos y vaciar la papelera</td><td><code>core/Commands/FolderCleanup.ps1</code></td><td>Único sitio que borra. Lista blanca de carpetas, dentro del perfil (y <code>C:\Windows\Temp</code> exacto), sin seguir enlaces, por trozos.</td></tr>
+      <tr><td>Saltar un paso ya hecho (<code>-SkipIf</code>)</td><td><code>CommandRunner.ps1</code></td><td>Solo <b>lee</b> el registro, después del desarme.</td></tr>
+      <tr><td>Detalle en el log (rutas borradas, papelera)</td><td><code>core/Diagnostics/Log.ps1</code></td><td>En memoria; a disco solo si el usuario guarda "con detalle".</td></tr>
+      <tr><td>Guías (<code>.md</code>)</td><td><code>ui/Engine/Markdown.ps1</code>, <code>MarkdownDocument.ps1</code></td><td>Se leen como texto; nunca se ejecutan. Enlaces por <code>Invoke-ExternalLink</code> (http/https).</td></tr>
+    </table>
+  </div>
+
+  <h2>Hallazgos</h2>
+  <div class="card table-wrap">
+    <table>
+      <tr><th>#</th><th>Hallazgo</th><th>Severidad</th><th>Estado</th></tr>
+      <tr><td>1</td><td><b>Carrera al vaciar una carpeta (TOCTOU).</b> Una subcarpeta comprobada como real al apuntarla podía cambiarse por una unión antes de entrar en ella; corriendo elevado, el borrado seguiría la unión. Lo puede provocar cualquier proceso del mismo usuario, sin privilegios.</td><td><span class="tag bad">Media</span></td><td><span class="tag warn">Mitigado</span> — <code>Open-CleanupFolder</code> vuelve a mirar el atributo de enlace justo antes de entrar, con prueba que reproduce el cambio. La carrera se estrecha a un instante pero no desaparece: cerrarla del todo exige borrar por descriptor (API nativa). Riesgo aceptado, <code>SECURITY.md</code> §11 nº 10.</td></tr>
+      <tr><td>2</td><td><b>Funciones que cambian el sistema sin <code>ShouldProcess</code>.</b> <code>SECURITY.md</code> §9 daba por verificado que solo <code>Write-RegistryValue</code> mutaba el sistema; <code>Start-CommandStep</code> y el borrado ya lo hacían.</td><td><span class="tag warn">Baja</span></td><td><span class="tag ok">Corregido</span> — <code>-WhatIf</code> real en <code>Start-CommandStep</code>, <code>Remove-CleanupFile</code>, <code>Remove-CleanupFolder</code> y <code>Clear-CleanupRecycleBin</code>: la limpieza se recorre en simulacro y dice lo que borraría.</td></tr>
+      <tr><td>3</td><td><b><code>%TEMP%</code> fuera del perfil bloqueado sin matiz</b> (un disco RAM en <code>R:\Temp</code>) y <code>C:\Windows\Temp</code> sin cubrir.</td><td><span class="tag ok">Info</span></td><td><span class="tag ok">Corregido</span> — <code>Get-CleanupPathProblem</code>: <code>C:\Windows\Temp</code> exacto (pide admin), y un <code>%TEMP%</code> que se llame Temp/Tmp fuera de Windows, Archivos de programa, ProgramData y otros perfiles. Probado con rutas buenas y malas.</td></tr>
+      <tr><td>4</td><td>Aviso nuevo de PSScriptAnalyzer: <code>$sender</code> como parámetro (variable automática) en el índice de las guías.</td><td><span class="tag ok">Info</span></td><td><span class="tag ok">Corregido</span></td></tr>
+      <tr><td>5</td><td>Lo borrado por Limpieza no pasa por la papelera.</td><td><span class="tag warn">Media</span></td><td><span class="tag warn">Aceptado</span> — igual que el <code>.cmd</code> original; lo que se echa de menos viene desmarcado y con aviso (§11 nº 9).</td></tr>
+    </table>
+  </div>
+
+  <h2>Análisis estático</h2>
+  <div class="card">
+    <p><b>PSScriptAnalyzer 1.25.0</b>, con la configuración del proyecto sobre <code>ui/</code> y <code>core/</code>: <b>1 aviso</b>, el falso positivo de <code>$CategoryIndex</code> de siempre. Pase estricto sobre <code>core/</code> (sin la exclusión de <code>ShouldProcess</code>): <b>12 avisos, todos por el verbo del nombre</b> (fábricas de objetos, interruptores del arnés, <code>Stop-CommandStep</code> que solo corta su propio proceso). Ninguna función que borre o ejecute queda sin <code>ShouldProcess</code>.</p>
+    <p><b>Semgrep</b> (<code>--oss-only</code>, reglas <code>p/security-audit</code> y <code>p/secrets</code>): 0 hallazgos, 0 errores, 109 archivos.</p>
+  </div>
+
+  <h2>Lo que no cubre esta revisión</h2>
+  <div class="card">
+    <p>El binario: el <code>.exe</code> se recompila en esta misma pasada y la prueba de humo nueva (<code>tests/Smoke/Invoke-Smoke.ps1</code>) arranca el script empaquetado sin elevar. El <code>.exe</code> elevado sigue sin probarse de forma automática: pide UAC.</p>
+  </div>
+</main>
+</body>
+</html>

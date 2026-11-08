@@ -13,7 +13,7 @@
 #
 # Y es también quien EJECUTA: lleva la cola, el temporizador, las
 # pausas y el estado. Cada paso lo arranca y lo cierra
-# core/Network/CommandRunner.ps1, que no sabe nada de esto.
+# core/Commands/CommandRunner.ps1, que no sabe nada de esto.
 #
 # CÓMO NO CONGELAR LA VENTANA
 #
@@ -258,7 +258,11 @@ function Start-StepRun {
     $queue = @($all | Where-Object { Test-StepSelected $_ })
     if ($queue.Count -eq 0) { return $false }
 
-    foreach ($s in $all) { $s.Status = $null }
+    foreach ($s in $all) {
+        $s.Status = $null
+        $s.Items = $null
+        Set-DetailListOpen ('step:{0}:{1}' -f $Category.Id, $s.Id) $false
+    }
     foreach ($s in $queue) { $s.Status = 'pending' }
 
     $StepRun.Active = $true
@@ -273,7 +277,7 @@ function Start-StepRun {
     $StepRun.Lines.Clear()
 
     $msg = 'Run started: {0} of {1} commands ({2})' -f $queue.Count, $all.Count, $Category.Id
-    Write-AppLog -Source 'network' -Status 'running' -Message $msg
+    Write-AppLog -Source $Category.Id -Status 'running' -Message $msg
     Add-StepRunLine 'info' ((T 'Starting: {0} commands, in order') -f $queue.Count)
 
     $window = Get-AppWindow
@@ -320,6 +324,8 @@ function Complete-CurrentStep {
     $result = Complete-CommandStep $handle
 
     $step.Status = $result.State
+    # Lo que hizo, línea a línea: la fila lo enseña plegado.
+    $step.Items = @($result.Items)
     if ($result.State -eq 'succeeded') {
         $StepRun.Succeeded++
         if ($step.RequiresRestart) { $StepRun.Restart = $true }
@@ -364,9 +370,10 @@ function Complete-StepRun {
 
     $msg = 'Run {0}: {1} succeeded, {2} failed, {3} total' -f $How, $StepRun.Succeeded, $StepRun.Failed, $StepRun.Queue.Count
     $level = if ($StepRun.Failed -gt 0) { 'warn' } else { 'info' }
-    Write-AppLog -Source 'network' -Level $level -Status $How -Message $msg
+    $source = $StepRun.Category.Id
+    Write-AppLog -Source $source -Level $level -Status $How -Message $msg
     if ($StepRun.Restart) {
-        Write-AppLog -Source 'network' -Level 'warn' -Status 'warn' -Message 'Restart the PC so the network resets take effect'
+        Write-AppLog -Source $source -Level 'warn' -Status 'warn' -Message 'Restart the PC so the network resets take effect'
     }
 
     if ($How -eq 'done') {
@@ -386,6 +393,8 @@ function Stop-StepRun {
     if ($StepRun.Handle) {
         $result = Stop-CommandStep $StepRun.Handle
         $StepRun.Handle.Step.Status = 'cancelled'
+        # Lo borrado antes de detener sigue borrado: que se vea qué fue.
+        $StepRun.Handle.Step.Items = @($result.Items)
         Add-StepRunLine 'cancelled' $result.CommandLine
         $StepRun.Handle = $null
     }
@@ -443,7 +452,13 @@ function Sync-StepRunPanel {
         if ($StepRun.Index -ge 0 -and $StepRun.Index -lt $StepRun.Queue.Count) { $current = $StepRun.Queue[$StepRun.Index] }
         if ($current) {
             $title.Text = (T 'Running: {0}') -f (T $current.Name)
-            $detail.Text = Format-CommandLine $current
+            # Lo que va hecho, si el paso lo sabe (vaciar una carpeta:
+            # archivos borrados y espacio liberado). Es texto del log, sin
+            # traducir, como la línea de comando que acompaña.
+            $line = Format-CommandLine $current
+            $progress = Get-CommandStepProgress $StepRun.Handle
+            if ($progress) { $line = '{0}  ·  {1}' -f $line, $progress }
+            $detail.Text = $line
         }
         Set-StepRunIcon $icon 'Sync' 'Accent'
         $count.Text = "$done/$total"
@@ -616,5 +631,6 @@ function Set-StepSelection {
             'none'    { $false }
         }
     }
+    Save-StepChoices $Category
     Sync-StepRunPanel
 }

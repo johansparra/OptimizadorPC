@@ -54,6 +54,85 @@ Describe 'ui/Data/Categories/Internet.ps1 - los pasos' {
     }
 }
 
+Describe 'ui/Data/Categories/Cleanup.ps1 - los pasos' {
+
+    It 'la sección existe, va justo debajo de Internet y trae los pasos del .cmd' {
+        $cat = Get-CategoryById 'cleanup'
+        Assert-NotNull $cat
+        Assert-True (@($cat.Steps).Count -ge 10) 'faltan pasos'
+        Assert-Equal 0 @($cat.Items).Count 'una sección de comandos no tiene ajustes'
+
+        $orden = @(Get-OptimizationCategories | ForEach-Object { $_.Id })
+        Assert-Equal ([array]::IndexOf($orden, 'internet') + 1) ([array]::IndexOf($orden, 'cleanup'))
+    }
+
+    It 'cada paso tiene un Id único y sus líneas del log caen en "cleanup"' {
+        $pasos = @((Get-CategoryById 'cleanup').Steps)
+        $ids = @($pasos | ForEach-Object { $_.Id })
+        Assert-Equal $ids.Count @($ids | Select-Object -Unique).Count
+        foreach ($p in $pasos) { Assert-Equal 'cleanup' $p.Source $p.Id }
+    }
+
+    It 'lo que se puede echar de menos viene desmarcado y con aviso' {
+        foreach ($id in 'recycle-bin', 'recent-items', 'legacy-cookies', 'webcache-logs') {
+            $step = @((Get-CategoryById 'cleanup').Steps) | Where-Object { $_.Id -eq $id }
+            Assert-False $step.Checked "$id no debería venir marcado"
+            Assert-True ([bool]$step.Warning) "$id tiene que avisar"
+        }
+    }
+
+    It 'vaciar carpetas del perfil no pide administrador; C:\Windows\Temp, DISM, cleanmgr, fsutil y defrag, sí' {
+        foreach ($step in @((Get-CategoryById 'cleanup').Steps)) {
+            $esperado = $step.Kind -eq 'exe' -or $step.Id -eq 'windows-temp'
+            Assert-Equal $esperado $step.RequiresAdmin "$($step.Id) ($($step.Kind))"
+        }
+    }
+
+    It 'correrla desarmada pasa por todos los marcados, en orden, sin borrar nada' {
+        $null = New-AppWindow -Language 'en'
+        $cat = Get-CategoryById 'cleanup'
+        Set-StepSelection -Category $cat -Mode 'all'
+        Show-View -Name 'Show-CategoryDetailView' -Arguments @{ Category = $cat }
+        Clear-AppLog
+        Assert-True (Start-StepRun -Category $cat)
+        Complete-TestStepRun
+
+        $corridos = @(Get-AppLog -Source 'cleanup' | Where-Object { $_.Status -eq 'running' -and $_.Message -notlike 'Run started*' } | ForEach-Object { $_.Message })
+        $esperados = @(@($cat.Steps) | ForEach-Object { Format-CommandLine $_ })
+        Assert-Equal ($esperados -join ' | ') ($corridos -join ' | ')
+        foreach ($p in @($cat.Steps)) { Assert-Equal 'disarmed' $p.Status $p.Id }
+        Set-StepSelection -Category $cat -Mode 'default'
+    }
+}
+
+Describe 'ui/Data/Categories/Power.ps1 - el plan Máximo rendimiento' {
+
+    It 'Energía es una sección de comandos: añadir el plan y activarlo, en ese orden' {
+        $cat = Get-CategoryById 'power'
+        Assert-Equal 0 @($cat.Items).Count
+        Assert-Equal 'ultimate-plan-add | ultimate-plan-activate' ((@($cat.Steps) | ForEach-Object { $_.Id }) -join ' | ')
+    }
+
+    It 'la copia va siempre al mismo GUID, se salta si ya existe y se activa ese mismo' {
+        # Sin GUID de destino, cada ejecución dejaba otro plan
+        # "Máximo rendimiento" en Opciones de energía.
+        $pasos = @((Get-CategoryById 'power').Steps)
+        $copia = @($pasos[0].Arguments)
+        Assert-Equal '/duplicatescheme' $copia[0]
+        Assert-Equal 'e9a42b02-d5df-448d-aa00-03f14749eb61' $copia[1] 'la plantilla oculta de Ultimate Performance'
+        $destino = $copia[2]
+        Assert-Match '^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$' $destino 'falta el GUID de destino fijo'
+
+        Assert-Match ([regex]::Escape("PowerSchemes\$destino") + '$') $pasos[0].SkipIf.Path
+        Assert-Equal 'FriendlyName' $pasos[0].SkipIf.Name
+        Assert-Equal "/setactive $destino" (@($pasos[1].Arguments) -join ' ')
+    }
+
+    It 'activarlo avisa del gasto de batería' {
+        Assert-True ([bool]@((Get-CategoryById 'power').Steps)[1].Warning)
+    }
+}
+
 Describe 'ui/Views/CategoryStepsView.ps1 - la pantalla' {
 
     It 'abrir Internet pinta la lista de pasos y el marco fijo, no ajustes' {
@@ -133,7 +212,7 @@ Describe 'ui/Components/Layout/StepRunPanel.ps1 - ejecutar' {
         Assert-True (Start-StepRun -Category $cat)
         Complete-TestStepRun
 
-        $corridos = @(Get-AppLog -Source 'network' | Where-Object { $_.Status -eq 'running' -and $_.Message -notlike 'Run started*' } | ForEach-Object { $_.Message })
+        $corridos = @(Get-AppLog -Source 'internet' | Where-Object { $_.Status -eq 'running' -and $_.Message -notlike 'Run started*' } | ForEach-Object { $_.Message })
         $esperados = @(4, 8, 20 | ForEach-Object { Format-CommandLine $pasos[$_] })
         Assert-Equal ($esperados -join ' | ') ($corridos -join ' | ')
 
@@ -174,7 +253,7 @@ Describe 'ui/Components/Layout/StepRunPanel.ps1 - ejecutar' {
         Assert-False (Get-StepRunActive)
         Assert-Equal 'cancelled' (Get-StepRunState).Phase
         Assert-True (@($cat.Steps | Where-Object { $_.Status -eq 'skipped' }).Count -gt 0) 'nada quedó omitido'
-        Assert-Equal 'cancelled' (@(Get-AppLog -Source 'network')[-1].Status)
+        Assert-Equal 'cancelled' (@(Get-AppLog -Source 'internet')[-1].Status)
         Set-StepSelection -Category $cat -Mode 'default'
     }
 
@@ -289,5 +368,53 @@ Describe 'ui/Components/Shell/TitleBar.ps1 - la insignia de administrador' {
             Set-AppElevationOverride $true
             Set-AppLanguage 'en'
         }
+    }
+}
+
+Describe 'ui/Engine/CategoryRegistry.ps1 - los pasos marcados se recuerdan' {
+
+    It 'lo que el usuario cambia se guarda y vuelve igual al arrancar' {
+        $cat = Get-CategoryById 'cleanup'
+        try {
+            Set-StepSelection -Category $cat -Mode 'default'
+            $papelera = @($cat.Steps) | Where-Object { $_.Id -eq 'recycle-bin' }
+            $temp = @($cat.Steps) | Where-Object { $_.Id -eq 'temp-user' }
+            $papelera.Selected = $true
+            $temp.Selected = $false
+            Save-StepChoices $cat
+            Assert-Equal 'temp-user | recycle-bin' ((@(Get-AppSetting 'StepChoices.cleanup') | Sort-Object -Descending) -join ' | ')
+
+            # "Arrancar": todo como viene de serie, y luego restaurar.
+            foreach ($s in @($cat.Steps)) { $s.Selected = $s.Checked }
+            Restore-StepChoices
+            Assert-True $papelera.Selected 'la papelera debería volver marcada'
+            Assert-False $temp.Selected 'los temporales deberían volver desmarcados'
+        }
+        finally { Set-StepSelection -Category $cat -Mode 'default' }
+    }
+
+    It 'un paso que no se tocó sale como venga declarado' {
+        $cat = Get-CategoryById 'cleanup'
+        try {
+            Set-AppSetting 'StepChoices.cleanup' @('recycle-bin')
+            foreach ($s in @($cat.Steps)) { $s.Selected = -not $s.Checked }
+            Restore-StepChoices
+            $otros = @($cat.Steps | Where-Object { $_.Id -ne 'recycle-bin' -and $_.Selected -ne $_.Checked })
+            Assert-Equal 0 $otros.Count 'un paso que nadie cambió no sale como venía'
+        }
+        finally { Set-StepSelection -Category $cat -Mode 'default' }
+    }
+
+    It 'pulsar una fila lo guarda' {
+        $ventana = New-AppWindow -Language 'en'
+        $cat = Get-CategoryById 'power'
+        try {
+            Set-StepSelection -Category $cat -Mode 'default'
+            Show-View -Name 'Show-CategoryDetailView' -Arguments @{ Category = $cat }
+            $fila = @($ventana.FindName('StepList').Children | Where-Object { $_.Tag -and $_.Tag.PSObject.Properties['Step'] })[1]
+            Switch-StepSelection $fila
+            Assert-Equal 'ultimate-plan-activate' ([string]@(Get-AppSetting 'StepChoices.power')[0])
+        }
+        finally { Set-StepSelection -Category $cat -Mode 'default' }
     }
 }

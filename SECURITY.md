@@ -18,6 +18,25 @@ la cadena `'24'`/`'12'` de la preferencia, por `Set-AppSetting` como el resto. P
 Semgrep, ya instalables en la máquina de desarrollo, se ejecutaron (resultados en §9).
 Se corrigió la CI de Semgrep (§8, §11 riesgo 4).
 
+**Repaso 2026-11-08** (rama `visual/fluent-cards`, sin confirmar todavía). Superficie
+nueva desde el repaso anterior, toda con su lista blanca y sus invariantes en §10:
+
+- **Más comandos.** Secciones *Limpieza* (`Dism`, `cleanmgr`, `fsutil`, `defrag`) y
+  *Energía* (`powercfg`), por el mismo `core/Commands/CommandRunner.ps1` (antes
+  `core/Network/`). `-SkipIf` solo **lee** el registro para saltar un paso ya hecho.
+- **Borrado de archivos.** `core/Commands/FolderCleanup.ps1`, el único sitio que borra:
+  carpetas de una lista blanca, siempre dentro del perfil, sin seguir enlaces (§12).
+- **Datos del usuario en el log.** El detalle de una limpieza lleva rutas de archivos
+  del perfil y nombres de lo que había en la papelera; solo sale a disco si el usuario
+  guarda el log "con detalle" (§7).
+
+Revisión formal de esa superficie: [`auditoria/2026-11-08-seguridad-calidad.html`](auditoria/2026-11-08-seguridad-calidad.html).
+Tres cambios de endurecimiento: `-WhatIf` real en ejecutar y borrar (§9), volver a mirar
+el atributo de enlace antes de entrar en una carpeta (§11 nº 10) y la regla de carpetas
+fuera del perfil (§12).
+- **Guías.** Los `.md` de `ui/Data/Guides/` se enseñan como texto. Van dentro del `.exe`
+  en Base64 y nunca se ejecutan; sus enlaces pasan por `Invoke-ExternalLink` (§6).
+
 ---
 
 ## 1. Qué es esto y por qué importa
@@ -46,7 +65,8 @@ Los tres riesgos reales, por gravedad:
 ## 2. Superficie de ataque
 
 La aplicación **no habla con la red** (no descarga ni envía nada; la sección Internet
-**configura** la red local con `netsh` e `ipconfig`, ver §12), no abre puertos, no
+**configura** la red local con `netsh` e `ipconfig`, y la de Limpieza **borra**
+temporales de la carpeta del usuario; ver §12), no abre puertos, no
 carga plugins y no lee archivos que le pase un tercero. Las únicas entradas externas
 son:
 
@@ -56,8 +76,9 @@ son:
 | El **registro de Windows** que se lee | El equipo | Se abre siempre `RegistryView::Registry64`. Un `DWord` llega como `Int32` con signo y se reinterpreta sin signo (`Format-RegistryValue`). `core/` **nunca lanza**: devuelve un estado (`read`/`missing`/`denied`/`badpath`). |
 | URLs de referencia (`-Link` de cada ajuste) | **Escritas en el propio repositorio** (`ui/Data/Categories/*.ps1`) | Antes de llegar al shell se validan: tiene que ser una URI absoluta con esquema `http` o `https` (`core/Shell/ExternalLink.ps1`). Cualquier otra cosa se rechaza sin tocar el shell. |
 | `-Recommended` / `-Default` de cada clave de registro | **Escritas en el propio repositorio** | Es el contrato de aplicación y de reversión. No proviene de entrada del usuario. |
-| Pasos de las secciones de comandos (`-Exe`, `-Arguments`, `-Service` de cada `New-CommandStep`) | **Escritos en el propio repositorio** (`ui/Data/Categories/Internet.ps1`) | Se ejecutan **sin shell**, solo ejecutables y servicios de una lista blanca, por ruta completa de la carpeta de sistema. Ver §12. El usuario solo elige **cuáles** correr, no **qué** se ejecuta. |
+| Pasos de las secciones de comandos (`-Exe`, `-Arguments`, `-Service`, `-Clean` de cada `New-CommandStep`) | **Escritos en el propio repositorio** (`ui/Data/Categories/Internet.ps1`, `Cleanup.ps1`) | Se ejecutan **sin shell**, solo ejecutables, servicios y carpetas de una lista blanca; los ejecutables por ruta completa de la carpeta de sistema, las carpetas siempre dentro de la del usuario. Ver §12. El usuario solo elige **cuáles** correr, no **qué** se ejecuta. |
 | Salida de esos comandos | El equipo | Solo se **muestra** y se apunta en el log. Nunca se ejecuta ni se usa para construir otro comando. |
+| Guías (`ui/Data/Guides/*.md`) | **Escritas en el propio repositorio**, dentro del `.exe` en Base64 | Se **leen** como texto (`ui/Engine/Markdown.ps1`) y se pintan en un `RichTextBox` de solo lectura. Nunca se ejecutan; sus enlaces pasan por `Invoke-ExternalLink` (solo `http`/`https`, §6). |
 
 No hay ningún punto donde una cadena controlable por un tercero se convierta en código:
 sin `Invoke-Expression`, sin `[scriptblock]::Create`, sin `Add-Type` con fuente
@@ -72,9 +93,9 @@ descargas. Lo vigila `tests/Source/Security.Tests.ps1`.
 
 La escritura vive en **`core/Registry/Writer.ps1`** (una clave por llamada) y se
 dispara desde **`core/Registry/SettingApply.ps1`** (el toggle ON/OFF de un ajuste con
-`-Registry`). Nada más escribe en el registro. Hoy hay **un** ajuste con `-Registry`:
-`NetworkThrottlingIndex` en la sección *Regedit* — benigno, reversible, en una rama
-permitida.
+`-Registry`). Nada más escribe en el registro. Hoy son **47** ajustes con `-Registry`,
+todos en la sección *Regedit* y **uno por clave**; el primero que se cableó fue
+`NetworkThrottlingIndex` —benigno, reversible, en una rama permitida—.
 
 ### 3.1 Lista blanca de rutas
 
@@ -214,7 +235,8 @@ Corriendo como administrador, **nada de esto entra** en `ui/` ni en `core/`:
 | `Add-Type` con fuente construida en tiempo de ejecución | Lo mismo, compilado. (Los dos `Add-Type` del proyecto usan una cadena literal fija.) |
 | `Invoke-WebRequest`, `Invoke-RestMethod`, `DownloadString`, `DownloadFile`, `Start-BitsTransfer` | La aplicación no habla con la red. |
 | `Start-Process` con la ruta sin comillas | *Unquoted path* → ejecutable equivocado. |
-| Arrancar un proceso fuera de `core/Network/CommandRunner.ps1` (o un enlace fuera de `core/Shell/ExternalLink.ps1`) | Cada sitio que arranca procesos es una puerta; hay dos, con su lista blanca. Ver §12. |
+| Arrancar un proceso fuera de `core/Commands/CommandRunner.ps1` (o un enlace fuera de `core/Shell/ExternalLink.ps1`) | Cada sitio que arranca procesos es una puerta; hay dos, con su lista blanca. Ver §12. |
+| Borrar archivos fuera de `core/Commands/FolderCleanup.ps1` | Borrar desde un proceso elevado no tiene vuelta atrás: un solo sitio, con su lista blanca de carpetas. Ver §12. |
 | Arrancar `cmd.exe`, `powershell.exe` o cualquier intérprete | Un intérprete convierte texto en código: tuberías, `&&`, redirecciones. |
 | Ejecutar algo desde una carpeta escribible por todos | `C:\ProgramData`, `%TEMP%`, la carpeta del `.exe` si está en Descargas. |
 | `-ExecutionPolicy Bypass` dentro del producto | Vale para desarrollo y para el `README`; no como algo que la app haga a espaldas del usuario. |
@@ -250,7 +272,14 @@ cualquier cosa (otro `.exe`, un `.bat`, un archivo local), así que:
   del registro leídos y escritos (viejo → nuevo). Se puede **exportar a un archivo** que
   elige el usuario ("Save to file" del cajón del log). Es divulgación de configuración
   del sistema **por acción propia del usuario** — aceptable. No sale a la red por sí
-  solo. Hoy solo contiene claves de optimización, nada sensible.
+  solo. Las claves del registro son de optimización, nada sensible.
+- **El detalle de la limpieza sí lleva nombres de archivos del usuario**: las rutas que
+  borró cada `-Clean` (dentro de su perfil) y los nombres de lo que había en la
+  papelera. Vive en memoria con el resto del log (como mucho `$CleanupListMax` rutas
+  por lista) y solo va a disco si el usuario guarda el log **con la casilla "Con
+  detalle" puesta**, que está a la vista junto a "Guardar". Sin ella, el archivo solo
+  dice cuántas entradas tenían detalle. Mismo criterio que el resto: divulgación por
+  acción propia, nunca a la red.
 - **Sin telemetría, sin red saliente.** Si algún día aparece cualquiera de las dos, es
   una decisión de producto con consentimiento explícito.
 
@@ -314,6 +343,13 @@ ps2exe. Puntos de seguridad:
   `$PSCmdlet.ShouldProcess`**, igual que `Set-SettingOptimization`. El "hueco residual"
   que menciona `PSScriptAnalyzerSettings.psd1` (una función nueva de `core/` que mutara
   el sistema sin adoptar `ShouldProcess`) queda **verificado: hoy no existe**.
+- **Estado 2026-11-08**: con la configuración del proyecto, **1 aviso** (el de
+  `$CategoryIndex`). El pase estricto sobre `core/` da **12**, todos por el verbo del
+  nombre (fábricas, interruptores del arnés, `Stop-CommandStep` que solo corta su propio
+  proceso). Lo que sí mutaba el sistema sin `ShouldProcess` desde las secciones de
+  comandos —`Start-CommandStep`, `Remove-CleanupFile`, `Remove-CleanupFolder`,
+  `Clear-CleanupRecycleBin`— **ya lo adopta**: con `-WhatIf` no se arranca nada, y la
+  limpieza se recorre en simulacro y dice lo que borraría.
 
 ### Semgrep
 
@@ -364,15 +400,21 @@ antes solo vivía en prosa. **Falla la suite** si:
 | Ningún `.ps1` de `ui/` o `core/` usa `Invoke-Expression`, `iex`, `[scriptblock]::Create`, `Invoke-WebRequest`, `Invoke-RestMethod`, `DownloadString`, `DownloadFile`, `Start-BitsTransfer` | Ejecución de código ajeno / llamada de red desde proceso elevado. |
 | Ningún `-Registry` apunta a un nombre de valor de la denylist del §3.4 sin `AllowsSecurityTradeoff = $true` en el ajuste | Un "tweak recomendado" que apaga Defender/UAC/Update sin declararlo. |
 | `core/Shell/ExternalLink.ps1` `$ExternalLinkSchemes` es exactamente `http`, `https` | Un proceso elevado abriendo `file:` / `ms-settings:` / un `.exe` local. |
-| Solo `core/Network/CommandRunner.ps1` usa `ProcessStartInfo` / `Process::Start`, y solo `ExternalLink.ps1` usa `Start-Process` | Una tercera puerta para arrancar procesos con privilegios. |
+| Solo `core/Commands/CommandRunner.ps1` usa `ProcessStartInfo` / `Process::Start`, y solo `ExternalLink.ps1` usa `Start-Process` | Una tercera puerta para arrancar procesos con privilegios. |
+| Solo `core/Commands/FolderCleanup.ps1` borra archivos (`Remove-Item`, `.Delete(`, `Clear-RecycleBin`) | Una segunda puerta para borrar con privilegios, sin lista blanca. |
+| Toda entrada de `$CleanupAllowedFolders` tiene forma válida, resuelve **dentro de la carpeta del usuario** y, salvo `%TEMP%`, nombra una subcarpeta concreta | Vaciar `%LOCALAPPDATA%` entera, o algo del sistema, por una línea mal escrita. |
+| Un paso que vacía la papelera nunca viene marcado de serie y lleva aviso | Borrar sin vuelta atrás lo que el usuario guardó ahí para poder recuperarlo. |
 | `$CommandAllowedExecutables` no tiene rutas ni intérpretes; `$CommandAllowedServices` no tiene servicios de seguridad (Defender, firewall, Update...) | Ampliar la lista hasta convertirla en una shell. |
 | Todo `New-CommandStep` de cualquier sección pasa `Test-CommandStepAllowed` | Un paso fuera de la lista acabaría en `blocked` al pulsar, en silencio. |
 | Un paso que toca `advfirewall` nunca viene marcado de serie y lleva aviso | Borrar las reglas del firewall sin que el usuario lo decida. |
 
 Cobertura de la ejecución de comandos: `tests/Core/CommandRunner.Tests.ps1` (lista
 blanca, rutas rechazadas, desarmado, `blocked`, un proceso real de solo lectura,
-decodificación de la salida) y `tests/Ui/StepsView.Tests.ps1` (solo lo marcado,
-siempre en el orden del archivo, detener, sección bloqueada).
+decodificación de la salida), `tests/Core/FolderCleanup.Tests.ps1` (lista blanca de
+carpetas, `%TEMP%` fuera del perfil, los dos modos de borrado, que una unión no se
+sigue, por trozos; sobre una carpeta de mentira en `%TEMP%`) y
+`tests/Ui/StepsView.Tests.ps1` (solo lo marcado, siempre en el orden del archivo,
+detener, sección bloqueada, Limpieza entera desarmada).
 
 Cobertura de `core/` relacionada (ya existente):
 `tests/Core/RegistryWriter.Tests.ps1` (lista blanca, tipado, snapshot, relectura,
@@ -393,14 +435,18 @@ Cobertura de `core/` relacionada (ya existente):
 | 6 | `Add-Type` en `SystemBackdrop.ps1` y `WorkArea.ps1` compila una cadena de C# | Info | **Aceptado.** Las cadenas son literales fijos y revisados; no se construyen en runtime. `WorkArea.ps1` (2026-10-03) subclasifica la ventana propia con `SetWindowLongPtr` solo para corregir `WM_GETMINMAXINFO`; no toca otras ventanas ni otros procesos. |
 | 7 | Contadores de las píldoras de la lista son fijos, no calculados | Info | Sin impacto de seguridad; cosmético. Ya documentado en `README.md`. |
 | 8 | Los pasos de Internet **no se deshacen** desde la app (reset de Winsock, TCP/IP, firewall, DNS fijo) | Media | **Aceptado (2026-10-03).** Son los comandos del `.cmd` que el usuario ya usaba. Mitigado: lo que borra configuración propia (firewall, DNS) viene desmarcado y con aviso, se ejecuta paso a paso con registro de cada uno, y los reset piden reiniciar. Pendiente si se quiere: un paso "volver a DHCP" para el DNS. |
+| 10 | **Carrera al vaciar una carpeta (TOCTOU).** Entre comprobar que una subcarpeta no es un enlace y entrar en ella, otro proceso del mismo usuario podría cambiarla por una unión; corriendo elevado, el borrado la seguiría | Media | **Mitigado y aceptado (2026-11-08).** `Open-CleanupFolder` vuelve a mirar el atributo justo antes de entrar (prueba: `FolderCleanup.Tests.ps1`), lo que reduce la ventana a un instante. Cerrarla del todo exigiría borrar por descriptor con la API nativa (`FILE_FLAG_OPEN_REPARSE_POINT`). |
+| 9 | Lo que borra Limpieza **no pasa por la papelera** y no se recupera | Media | **Aceptado (2026-11-08).** Es lo que hacía `EliminarTemporales.v1.cmd` con `del /q`. Mitigado: solo carpetas de una lista blanca y dentro de la del usuario; lo que se puede echar de menos (papelera, recientes, cookies, registros de WebCache) viene desmarcado y con aviso; los archivos en uso se saltan; cada paso deja en el log cuánto borró. |
 
 ---
 
 ## 12. Ejecución de comandos — el contrato
 
-Las secciones de **comandos** (hoy Internet) no escriben claves: ejecutan programas
-de Windows (`netsh`, `ipconfig`, `nbtstat`, `arp`) y arrancan dos servicios. Todo
-pasa por **`core/Network/CommandRunner.ps1`**, y estas son sus reglas:
+Las secciones de **comandos** (hoy Internet, Limpieza y Energía) no escriben claves:
+ejecutan programas de Windows (`netsh`, `ipconfig`, `nbtstat`, `arp`; `Dism`,
+`cleanmgr`, `fsutil`, `defrag`; `powercfg`), arrancan dos servicios y vacían carpetas
+de temporales. Todo
+pasa por **`core/Commands/CommandRunner.ps1`**, y estas son sus reglas:
 
 1. **Sin intérprete.** `ProcessStartInfo` con `UseShellExecute = $false`: el
    ejecutable se arranca directamente. Sin `cmd /c`, no hay tuberías, `&&`,
@@ -422,12 +468,55 @@ pasa por **`core/Network/CommandRunner.ps1`**, y estas son sus reglas:
 7. **Rastro**: cada paso deja en el log su inicio (`running`) y su resultado con
    código de salida, duración y la salida recortada.
 8. **Desarmable**: las pruebas lo desarman (`Set-CommandRunArmed $false`) y cada
-   paso acaba en `disarmed` sin arrancar nada.
+   paso acaba en `disarmed` sin arrancar nada ni borrar nada.
+9. **Borrar carpetas** (`-Clean`) no arranca `cmd /c del`: lo hace
+   **`core/Commands/FolderCleanup.ps1`** con .NET, y es el único sitio del programa que
+   borra archivos.
+   - **Lista blanca de carpetas** (`$CleanupAllowedFolders`), escritas como en el
+     `.cmd` (`%TEMP%`, `%LOCALAPPDATA%\...`). El paso tiene que nombrar una **tal
+     cual**: ni una subcarpeta ni otro patrón.
+   - Solo tres variables (`%TEMP%`, `%LOCALAPPDATA%`, `%APPDATA%`), y las resuelve la
+     app: las dos últimas con `GetFolderPath`, no leyendo el entorno.
+   - **Dentro de la carpeta del usuario, con dos excepciones contadas**
+     (`Get-CleanupPathProblem`): `C:\Windows\Temp` exacto (su paso pide administrador), y
+     un `%TEMP%` movido fuera del perfil si la carpeta se llama `Temp` o `Tmp`, no es la
+     raíz de un disco y no cuelga de Windows, Archivos de programa, ProgramData ni de la
+     carpeta de perfiles. Todo lo demás, `blocked`: un `TMP=C:\Windows` vaciaría el
+     sistema corriendo elevado.
+   - **Simulable.** `Start-CommandStep -WhatIf` recorre la carpeta sin borrar y apunta lo
+     que borraría (`WhatIf, nothing deleted: ...`).
+   - **Los enlaces no se siguen.** Una unión o un enlace simbólico de dentro se quita
+     (el enlace) o se deja; nunca se entra. Si la carpeta misma es un enlace, `blocked`.
+   - **Se vacía, no se borra**: la carpeta raíz se queda, y lo que está en uso se salta
+     y se cuenta.
+   - Dos modos, los del `:DelMode` del `.cmd`: la carpeta a secas lo borra todo
+     (también ocultos y subcarpetas); con `\*.ext` al final, solo esos archivos, sin
+     ocultos ni de sistema y sin quitar carpetas.
+   - **Por trozos** de 80 ms en cada latido del temporizador: `%TEMP%` con decenas de
+     miles de archivos no congela la ventana.
+10. **La papelera** (`-EmptyRecycleBin`) se vacía con `Clear-RecycleBin`, solo la del
+    usuario, y nunca viene marcada de serie.
 
-**Añadir un ejecutable o un servicio a la lista es una decisión de seguridad**, igual
-que una rama de la lista blanca del registro: se revisa a mano, se apunta aquí y las
-pruebas de §10 lo vigilan. Añadir un **paso** con un ejecutable ya permitido es solo
-añadir un `New-CommandStep` en el archivo de la sección.
+**Añadir un ejecutable, un servicio o una carpeta a la lista es una decisión de
+seguridad**, igual que una rama de la lista blanca del registro: se revisa a mano, se
+apunta aquí y las pruebas de §10 lo vigilan. Añadir un **paso** con un ejecutable o
+una carpeta ya permitidos es solo añadir un `New-CommandStep` en el archivo de la
+sección.
+
+Ejecutables de Limpieza, y por qué no son una shell: `Dism.exe` (solo
+`/StartComponentCleanup`, sin `/ResetBase`), `cleanmgr.exe` (`/sagerun:1`),
+`fsutil.exe` (`behavior set DisableDeleteNotify 0`, es decir, TRIM **activado**) y
+`defrag.exe` (`/C /O`). `fsutil` puede mucho más; lo que corre lo fijan los argumentos
+literales del repositorio, igual que con `netsh`.
+
+Ejecutable de Energía: `powercfg.exe`, solo `/duplicatescheme` de la plantilla oculta de
+Máximo rendimiento a un GUID **fijo** del programa y `/setactive` de ese GUID. No borra
+ni modifica ningún otro plan.
+
+**Saltar lo ya hecho (`-SkipIf`)**: un paso puede declarar un valor del registro; si
+existe, el paso no se ejecuta y termina `succeeded` ("already in place"). Solo se
+**lee** (`Read-RegistryValueRaw`), después de la comprobación de desarme. Existe porque
+`powercfg` devuelve el mismo código para "ya existe" que para cualquier otro fallo.
 
 ---
 

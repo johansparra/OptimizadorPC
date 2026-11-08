@@ -6,14 +6,22 @@ Contexto para trabajar en **Optimizador PC**. Ver `README.md` para la estructura
 
 App de escritorio **WPF construida en PowerShell 5.1**, compilada a un `.exe` portable con **ps2exe**. Muestra categorías de optimizaciones de Windows 11 con toggles y dropdowns.
 
-**Estado actual: interfaz completa + escritura de registro acotada.** `core/` **lee y
-escribe** el registro de Windows. Al pulsar el toggle de un ajuste con `-Registry` (hoy
-todos los de *Regedit*, **uno por clave**: nunca se agrupan varias claves en un ajuste),
-`core/Registry/SettingApply.ps1` escribe la clave por una **lista blanca** de ramas y
-de valores concretos (`core/Registry/Writer.ps1`), respetando el tipo, guardando
-copia del valor previo en memoria y verificando por relectura. El resto de secciones
-siguen con datos estáticos en `ui/Data/Categories/` y sus `-Tags` a mano. **El `.exe`
-corre elevado.** Modelo de amenaza y contrato completos en `SECURITY.md`.
+**Estado actual: interfaz completa + cambios reales acotados.** Tres mecanismos tocan
+el equipo, cada uno con su lista blanca:
+
+- **Registro.** Al pulsar el toggle de un ajuste con `-Registry` (hoy los 47 de
+  *Regedit*, **uno por clave**: nunca se agrupan varias claves en un ajuste),
+  `core/Registry/SettingApply.ps1` escribe la clave por una **lista blanca** de ramas y
+  de valores concretos (`core/Registry/Writer.ps1`), respetando el tipo, guardando
+  copia del valor previo en memoria y verificando por relectura.
+- **Comandos.** Las secciones *Internet*, *Limpieza* y *Energía* ejecutan programas de
+  Windows sin shell y por lista blanca (`core/Commands/CommandRunner.ps1`).
+- **Borrado.** *Limpieza* vacía carpetas de temporales del perfil y la papelera
+  (`core/Commands/FolderCleanup.ps1`, el único sitio que borra archivos).
+
+*Actualizaciones* sigue con datos estáticos en `ui/Data/Categories/` y sus `-Tags` a
+mano. La sección **Guías** enseña los `.md` de `ui/Data/Guides/`. **El `.exe` corre
+elevado.** Modelo de amenaza y contratos completos en `SECURITY.md`.
 
 **Auditorías de seguridad y calidad:** cada pasada deja su informe fechado en
 `auditoria/` y una fila en `auditoria/README.md` (para dejar constancia de qué se
@@ -120,13 +128,25 @@ Por orden de lo que más tiempo ahorra:
    `OptimizadorPC/.claude/settings.local.json`, y si la sesión se abre desde la
    carpeta padre (`Escritorio\Temp`) no se carga.** El 2026-10-03 pasó así y todos
    los `.ps1` nuevos salieron sin BOM; los cazó `tests/Source/Rules.Tests.ps1`. Si
-   trabajas desde fuera, normaliza a mano los archivos que crees.
+   trabajas desde fuera, normaliza a mano los archivos que crees. **Abierta desde
+   fuera tampoco cargan los agentes** (Claude Code busca `.claude/agents/` subiendo
+   desde la carpeta de trabajo, nunca bajando) **ni los permisos** de
+   `settings.local.json`; las skills sí aparecen, pero solo al tocar archivos de
+   `OptimizadorPC/`. Comprobado el 2026-11-08: la configuración es válida
+   (`claude plugin validate .claude/agents` y `.claude/skills` pasan, y el hook
+   normaliza bien), lo que falla es el sitio desde donde se abre. **Abre la sesión
+   desde `OptimizadorPC/`.** Y ojo con `sed -i` desde Git Bash: conserva el BOM pero
+   **deja LF**; si lo usas, renormaliza (o edita con la herramienta de edición, o con
+   `python -I`).
 4. **Las skills se cargan al empezar, no cuando alguien las nombra.** Son
    instrucciones que entran en el turno: no arrancan en frío ni gastan contexto de
    más, así que no hay nada que amortizar. La que toque según la tarea
    (`windows-desktop-architect` para interfaz, `powershell-engineer` para cualquier
-   `.ps1`, `exploracion` para leer y buscar, `versionado` para confirmar), y se dice
-   en una línea.
+   `.ps1`, `exploracion` para leer y buscar, `versionado` para confirmar,
+   `review-animations` si se toca movimiento, `break-ui` para probar una pieza con
+   datos del peor caso), y se dice en una línea. Las dos últimas vienen de
+   `emilkowalski/skills` adaptadas a WPF; `break-ui` trae `render.ps1`, que pinta una
+   pieza a PNG sin abrir la ventana (es lo que hace de pantallazo aquí).
 
 **El freno de verdad son los permisos.** Un comando que no esté en la lista de
 `.claude/settings.local.json` detiene la sesión hasta que alguien lo apruebe. Si algo
@@ -152,12 +172,19 @@ día están en `graphify-out/README.md`; lo de aquí vale para todas las pasadas
 | Los *god nodes* del informe: `Set-TextFg()`, `T()`, `Window` — el tema, la traducción y la ventana lo tocan todo. | Encontrar dónde va algo: para eso está este archivo. |
 | | **Los archivos de datos** (`ui/Data/Categories/*.ps1`, `es.ps1`): salen como nodos sueltos, sin aristas. Para buscar un ajuste o una clave, `grep`. |
 
-**Por qué falla la consulta en lenguaje natural: ninguna arista conecta el código con
-la documentación**, en ninguna de las pasadas. No es un grafo, son dos grafos desconectados en el
-mismo archivo — el AST no sabe qué dice `CLAUDE.md` y la documentación no sabe qué
+**Por qué fallaba la consulta en lenguaje natural: ninguna arista conectaba el código
+con la documentación** en las cuatro primeras pasadas. Eran dos grafos desconectados en
+el mismo archivo — el AST no sabía qué dice `CLAUDE.md` y la documentación no sabía qué
 función implementa cada regla. Preguntando *"cómo se guarda el registro en un
 archivo"* devolvió 36 nodos de documentación y **ninguna** de las ocho funciones que
 lo hacen, más una comunidad entera de ruido enganchada por la palabra "archivos".
+**Desde la pasada del 2026-11-08 hay 674 aristas documentación↔código** (los
+extractores enlazaron cada `.md` con las funciones y archivos que nombra). **Medido el
+mismo día, mejora a medias**: "cómo se vacían carpetas" va directo a `FolderCleanup.ps1`
+y "cómo se guarda el log en un archivo" ya llega a `Export-AppLog`, pero "qué función
+escribe una clave del registro" arranca en las guías de gaming (que hablan de claves) y
+no llega a `Write-RegistryValue`. Las guías son contenido, no código, y meten ruido en
+las preguntas sobre el registro. Así que sigue valiendo lo de abajo.
 
 **La descripción de la skill dice que, existiendo `graphify-out/`, cualquier pregunta
 sobre el código se trate primero como consulta al grafo. Aquí NO.** Con la calidad
@@ -173,8 +200,9 @@ extracción (`--mode deep`, o que los nodos de documentación citen los símbolo
 ## Reglas del proyecto
 
 1. **Editar siempre los archivos fuente**, nunca `build/_combined.ps1` — es generado y se sobrescribe en cada build.
-2. **`build.ps1` parsea `main.ps1` y solo entiende dos marcadores.** No se deben romper:
+2. **`build.ps1` parsea `main.ps1` y solo entiende tres marcadores.** No se deben romper:
    - Las carpetas completas, entre `# @@EMBED_DIR:ui/Carpeta@@` y `# @@ENDEMBED@@` (**recursivo**: incluye las subcarpetas).
+   - Las guías, entre `# @@EMBED_GUIDES:ui/Data/Guides@@` y `# @@ENDEMBED@@`: cada `.md` de la carpeta (sin subcarpetas) se escribe como `Register-Guide ... (ConvertFrom-GuideBase64 '...')`. En Base64 porque un `.md` es texto libre y un `'@` a principio de línea rompería un aquí-string. En desarrollo, y en `tests/Harness/AppHost.ps1`, el mismo bloque llama a `Import-GuideFolder`. `Rules.Tests.ps1` comprueba que cada guía entra y vuelve **igual**.
    - El XAML, entre `# @@EMBED_XAML:...@@` y `# @@ENDEMBED@@`.
 
    **No hay forma de incluir un archivo suelto.** Todo `.ps1` va DENTRO de una de las siete carpetas que se incrustan, y entonces entra solo. Cualquier otra manera de cargarlo (un `. (Join-Path ...)` a mano) se copia tal cual al script combinado y el `.exe` intentará abrir algo que no tiene al lado: funciona en desarrollo y falla compilado. Hay una prueba que lo impide.
@@ -207,7 +235,7 @@ extracción (`--mode deep`, o que los nodos de documentación citen los símbolo
 
 13. **El menú lateral se construye por código, no en el XAML.** `MainWindow.xaml` solo aporta el `Border` llamado `Sidebar` con dos `StackPanel` vacíos (`NavTop` y `NavBottom`) y la marca de selección (`NavIndicator`, ver la regla 25); los botones los crea `Build-Sidebar` a partir de `ui/Index/NavigationIndex.ps1`. Cada botón se registra con `$Window.RegisterName('Nav<Id>', ...)`, así que `FindName('NavSettings')` sigue funcionando — si añades uno nuevo, respeta ese nombrado.
 
-    **Una entrada sin `View` no navega, y es a propósito.** Hoy las tres entradas —Search, Optimize y Settings— tienen pantalla (Software, Customize, Advanced y More se quitaron: no se van a implementar; el caso sin `View` lo prueba `Window.Tests.ps1` con una entrada de mentira). Una entrada sin pantalla se ve igual que las demás (ni en gris ni con candado) y `Set-NavSelection` sale antes de tocar nada: ni cambia de vista, ni repinta, ni mueve la marca del menú. **No las mandes a una vista de relleno** — el menú marcaría una cosa y la pantalla enseñaría otra. Activar una es escribir el nombre de su función de vista en `View`.
+    **Una entrada sin `View` no navega, y es a propósito.** Hoy las cuatro entradas —Search, Optimize, Guides y Settings— tienen pantalla (Software, Customize, Advanced y More se quitaron: no se van a implementar; el caso sin `View` lo prueba `Window.Tests.ps1` con una entrada de mentira). Una entrada sin pantalla se ve igual que las demás (ni en gris ni con candado) y `Set-NavSelection` sale antes de tocar nada: ni cambia de vista, ni repinta, ni mueve la marca del menú. **No las mandes a una vista de relleno** — el menú marcaría una cosa y la pantalla enseñaría otra. Activar una es escribir el nombre de su función de vista en `View`.
 
     **Quién está marcado lo decide `Sync-NavSelection`, y lo llama `Show-View`.** No el botón al pulsarse: a una pantalla se puede llegar sin tocar el menú —a la de búsqueda se entra con Enter desde la caja de la cabecera—, y con la marca puesta en el clic el menú acabaría señalando otra cosa. Si la vista actual no es la de ninguna entrada (el detalle de una sección), no se toca nada: sigue marcada aquella desde la que entraste.
 14. **Al plegar el menú se anima el ancho del `Border`, nunca la columna del `Grid`.** La columna es `Auto` y sigue al `Border` sola; animar un `GridLength` exigiría escribir una animación propia porque WPF no trae ninguna. El borde derecho de 1px se pone a 0 al plegar, o el ancho nunca llegaría a cero.
@@ -328,12 +356,12 @@ guarda copia del valor previo (`$RegistrySnapshots`, **solo en memoria** hoy), v
 por relectura y soporta `-WhatIf` (`SupportsShouldProcess`). El toggle la dispara vía
 `core/Registry/SettingApply.ps1`: `ON`→`Recommended`, `OFF`→`Default`. **Antes de tocar
 esto lee `SECURITY.md`** — la app corre elevada y ampliar la lista blanca es una
-decisión de seguridad, no un detalle. La red ya tiene su mecanismo (`core/Network/`,
-ver "Las secciones de comandos" más abajo). Servicios y energía **todavía no**: cada
+decisión de seguridad, no un detalle. La red y la limpieza ya tienen su mecanismo
+(`core/Commands/`, ver "Las secciones de comandos" más abajo). Servicios y energía **todavía no**: cada
 uno será una subcarpeta nueva de `core/` con su propio contrato.
 
 - La lógica de sistema vive en `core/`, nunca dentro de las vistas ni de los componentes.
-- **`core/` está dividido por lo que toca de Windows**, no por tamaño: `core/Registry/` (leer y escribir el registro), `core/Interop/` (llamadas a la API de Windows: Mica y Acrílico, y maximizar al área de trabajo), `core/Shell/` (abrir enlaces por el shell, solo `http`/`https`), `core/Network/` (ejecutar los pasos de las secciones de comandos, sin shell y por lista blanca) y `core/Diagnostics/` (el registro de actividad y `SystemInfo.ps1`, sobre qué corre el programa). Un mecanismo nuevo — red, servicios, energía — es una subcarpeta nueva ahí dentro, y entra al `.exe` sola.
+- **`core/` está dividido por lo que toca de Windows**, no por tamaño: `core/Registry/` (leer y escribir el registro), `core/Interop/` (llamadas a la API de Windows: Mica y Acrílico, y maximizar al área de trabajo), `core/Shell/` (abrir enlaces por el shell, solo `http`/`https`), `core/Commands/` (ejecutar los pasos de las secciones de comandos, sin shell y por lista blanca, y vaciar carpetas de temporales: `FolderCleanup.ps1` es el único sitio que borra archivos) y `core/Diagnostics/` (el registro de actividad y `SystemInfo.ps1`, sobre qué corre el programa). Un mecanismo nuevo — red, servicios, energía — es una subcarpeta nueva ahí dentro, y entra al `.exe` sola.
 - **Nada de `core/` lanza hacia arriba.** Una clave inexistente o sin permisos es una respuesta, no un error: se devuelve un estado (`read` / `missing` / `denied` / `badpath`) y la interfaz lo pinta. Una excepción escapando de aquí tumbaría la ventana.
 - **Un DWord llega como `Int32` con signo.** `0xFFFFFFFF` se lee como `-1`. Hay que reinterpretarlo sin signo (`Format-RegistryValue`) o los valores altos salen negativos y no cuadran con lo declarado.
 - **Se abre siempre `RegistryView::Registry64`.** Si el `.exe` se compilara a 32 bits, `HKLM\SOFTWARE` se redirigiría a `Wow6432Node` en silencio.
@@ -349,17 +377,20 @@ uno será una subcarpeta nueva de `core/` con su propio contrato.
 - Todo cambio de registro/servicio debe ser reversible y tener su valor de restauración documentado. Para el registro, ese contrato es el `Default` de cada clave (a dónde vuelve `OFF`) más el snapshot en memoria de `Writer.ps1` (el valor que había, aunque fuera personalizado). **Pendiente**: persistir ese snapshot y exponer "deshacer" en la UI; hoy se pierde al cerrar.
 - **Un ajuste que baja la postura de seguridad del equipo** (UAC, Defender, SmartScreen, Windows Update, BitLocker…) no puede llamarse "Recommended" sin más, su descripción tiene que decir qué protección se pierde, y no puede venir activo por defecto. `tests/Source/Security.Tests.ps1` vigila que ningún `-Registry` toque esos nombres de valor sin declararlo. Ver `SECURITY.md` §4.
 
-## Las secciones de comandos (hoy Internet)
+## Las secciones de comandos (hoy Internet, Limpieza y Energía)
 
 Una sección que declara **`Steps`** en vez de `Items` no enseña ajustes: es una lista
-de comandos para marcar y un botón para correrlos. Sale de `Reiniciar_Red_v3.cmd`, un
-comando por paso.
+de comandos para marcar y un botón para correrlos. Cada una sale de un script suelto de
+`Escritorio\Temp`, un comando por paso: *Internet* de `Reiniciar_Red_v3.cmd`,
+*Limpieza* de `EliminarTemporales.v1.cmd` y *Energía* de
+`maximo rendimiento de enerigia.bat`.
 
 | Qué | Dónde |
 | --- | ----- |
-| Los pasos (qué se ejecuta, en qué orden, qué viene marcado) | `ui/Data/Categories/Internet.ps1` |
+| Los pasos (qué se ejecuta, en qué orden, qué viene marcado) | `ui/Data/Categories/Internet.ps1`, `Cleanup.ps1` y `Power.ps1` |
 | Cómo se declara un paso | `New-CommandStep` en `ui/Engine/CategoryRegistry.ps1` |
-| Ejecutar un paso: lista blanca, sin shell, rastro en el log | `core/Network/CommandRunner.ps1` |
+| Ejecutar un paso: lista blanca, sin shell, rastro en el log | `core/Commands/CommandRunner.ps1` |
+| Vaciar carpetas (`-Clean`) y la papelera: lista blanca de carpetas, por trozos | `core/Commands/FolderCleanup.ps1` |
 | La cola, las pausas, el temporizador y el marco de estado | `ui/Components/Layout/StepRunPanel.ps1` |
 | La fila del checklist | `ui/Components/Cards/StepRow.ps1` |
 | La pantalla | `ui/Views/CategoryStepsView.ps1` (la abre `Show-CategoryDetailView` al ver `Steps`) |
@@ -368,6 +399,12 @@ comando por paso.
   ejecutable o un servicio que no está en `$CommandAllowedExecutables` /
   `$CommandAllowedServices`, hay que darlo de alta ahí: es una decisión de seguridad
   (`SECURITY.md` §12) y `Security.Tests.ps1` falla si un paso no pasa la lista.
+- **Lo marcado se recuerda entre sesiones**: `Save-StepChoices` guarda en
+  `settings.json` (`StepChoices.<sección>`) solo los pasos que el usuario CAMBIÓ respecto
+  a su `-Checked`, y `Restore-StepChoices` los vuelve a poner al arrancar (`main.ps1`,
+  tras `Import-AppSettings`). Un paso nuevo sale como venga declarado.
+- **`-WhatIf` es de verdad**: `Start-CommandStep -WhatIf` no arranca nada; un `-Clean` se
+  recorre en simulacro (`DryRun`) y dice lo que borraría, y la papelera, cuánto tiene.
 - **El orden de ejecución es el del archivo**, marque el usuario lo que marque. Los
   pasos dependen unos de otros: no se reordenan al vuelo.
 - **Nunca un intérprete**: ni `cmd /c`, ni `powershell -c`. El ejecutable se arranca
@@ -389,9 +426,11 @@ comando por paso.
 - **Permisos de administrador.** El programa está pensado para correr SIEMPRE elevado
   (el `.exe` lo pide). La insignia junto a la versión (`Sync-AdminBadge`) dice si lo
   está. Cada paso lleva `-RequiresAdmin` (por defecto `$true`); sin permisos, esos
-  pasos salen desmarcados, apagados y con el aviso, y no entran en la cola. Hoy solo
-  tres funcionan sin permisos, **comprobado, no supuesto**: `nbtstat -R` sin permisos
-  falla y aun así devuelve 0. La selección que vale es la EFECTIVA
+  pasos salen desmarcados, apagados y con el aviso, y no entran en la cola. En
+  *Internet* solo tres funcionan sin permisos, **comprobado, no supuesto**: `nbtstat -R`
+  sin permisos falla y aun así devuelve 0. En *Limpieza*, vaciar carpetas y la papelera
+  no los pide (`-Clean` y `-EmptyRecycleBin` llevan `-RequiresAdmin $false` por
+  defecto: borran en la carpeta del usuario). La selección que vale es la EFECTIVA
   (`Test-StepSelected` = marcado **y** `Test-StepAvailable`), no `Selected` a secas.
   Quién está elevado lo dice `Test-AppElevated`; las pruebas lo fijan con
   `Set-AppElevationOverride` (el arnés, a `$true`, como el `.exe`).
@@ -400,6 +439,43 @@ comando por paso.
 - **Las pruebas no tocan la red**: el arnés desarma la ejecución (`Set-CommandRunArmed
   $false`) y apaga las pausas. La única que arranca un proceso real usa el paso de solo
   lectura (`netsh interface show interface`).
+
+## La sección Guías (el botón del libro)
+
+Una tarjeta por cada `.md` de `ui/Data/Guides/`; al abrirla se lee dentro del programa
+y se puede seleccionar y copiar como texto normal. **Añadir una guía = soltar el `.md`
+en esa carpeta** (y recompilar el `.exe`, que las lleva dentro: ver la regla 2).
+
+| Qué | Dónde |
+| --- | ----- |
+| Registrar las guías (título, resumen, secciones, minutos) | `ui/Engine/GuideRegistry.ps1` |
+| Leer Markdown en bloques y trozos de línea (sin WPF) | `ui/Engine/Markdown.ps1` |
+| Pintar el documento (`RichTextBox` de solo lectura sobre un `FlowDocument`) | `ui/Components/Layout/MarkdownDocument.ps1` |
+| Tarjeta, documento en su tarjeta, "Copiar todo", estado vacío | `ui/Components/Cards/GuideCard.ps1` |
+| Las dos pantallas (lista y guía abierta) | `ui/Views/GuidesView.ps1` |
+
+- **El contenido es del usuario: nunca pasa por `T`.** Ni el título ni el resumen ni el
+  texto. Por eso `Set-PageBreadcrumb` tiene `-RawTitle` (y `-BackView`, para volver a
+  Guías y no a Optimizar). Lo que sí se traduce es el marco.
+- **El lector entiende lo que usan las guías, no todo CommonMark**: títulos, párrafos,
+  negrita, cursiva, código, enlaces, citas, listas anidadas, tablas, bloques de código y
+  separadores. **Una decisión propia**: dentro de un párrafo, una línea que empieza con
+  `**` abre línea nueva (las guías ponen "**Qué hace:**", "**Valores:**"... una por
+  línea), y el resto se junta (párrafos cortados a mano a 80 columnas).
+- **`ConvertFrom-Markdown` ya existe en PowerShell 7**: por eso el lector se llama
+  `Get-MarkdownBlocks`.
+- **Índice y búsqueda dentro de la guía**: con tres o más secciones, `New-MarkdownDocument
+  -Toc` pone "Contenido" tras el título (enlaces con `BringIntoView`). "Buscar en esta
+  guía" (`New-GuideFindBox`) marca la primera aparición al escribir y Enter salta a la
+  siguiente; busca run a run, así que una palabra partida entre negrita y texto normal
+  no se encuentra. `IsInactiveSelectionHighlightEnabled` deja ver lo marcado aunque el
+  foco esté en la caja.
+- **Un `RichTextBox` se queda la rueda del ratón** aunque no tenga nada que desplazar:
+  `Send-MarkdownWheel` se la reenvía a la página.
+- **Ojo con los nombres de parámetro**: PowerShell no distingue mayúsculas en las
+  variables, así que un parámetro `[string]$Title` convierte en texto cualquier `$title`
+  de dentro de la función. Pasó en `Set-PageBreadcrumb` (su `$title` es un `TextBlock`)
+  y rompió todas las migas de pan a la vez.
 
 ## El registro de actividad (el botón "log")
 
@@ -438,6 +514,22 @@ título abre el cajón que las enseña (`ui/Components/Shell/LogPanel.ps1`).
   `Update-LogList` (por donde pasan todos los cambios de las filas) y `Export-AppLog`
   se niega igualmente: la garantía de que no salga un archivo con solo la cabecera
   está en `core/`, no en el botón.
+- **Una entrada puede traer detalle (`Items`)**: líneas que no caben en `Detail` y no
+  se ven hasta que se piden. Hoy, lo que hizo cada paso de una sección de comandos:
+  los archivos que borró o saltó una limpieza (`Get-CleanupItems`), lo que había en la
+  papelera, o la salida entera de un programa cuando no cabe en una línea
+  (`Get-CommandOutputItems`). Se enseña plegado con `New-DetailList`
+  (`ui/Components/Cards/DetailList.ps1`) bajo la entrada del log **y** bajo la fila del
+  paso. **El estado abierto vive en `$DetailListOpen`, no en el control**, por una
+  clave (`log:<Id>`, `step:<sección>:<paso>`): el log se rehace entero y se cerraría
+  solo. Cada entrada lleva un `Id` que no se repite ni al vaciar.
+- **`Sync-LogView` no rehace nada si no hay entradas nuevas** (compara
+  `Get-AppLogSequence` y el recuento con lo último pintado). Durante una ejecución se
+  llama en cada latido; rehacer la lista movería el detalle que se está leyendo.
+- **Guardar "Con detalle"** es una casilla junto a "Guardar" (`LogExportDetails` en
+  `settings.json`, por defecto sí), visible solo si alguna entrada trae detalle. Con
+  ella, `Export-AppLog -Detailed` pone las líneas sangradas cuatro espacios bajo su
+  entrada; sin ella, la cabecera dice cuántas entradas lo tenían.
 - **El volcado usa `[fecha] [NIVEL] [FUENTE]`,** con el estado como cuarto corchete y
   el detalle tras una barra. Cada campo se delimita solo, así que una línea se parte
   con una expresión regular aunque el mensaje lleve espacios. Solo afecta al archivo:
@@ -478,8 +570,11 @@ acoplarlo. Lo que hay que saber:
 
 ## El buscador global (la caja de la cabecera)
 
-`ui/Engine/Search.ps1` arma **un índice plano** con una entrada por sección y otra por
-ajuste, cada una con su `Haystack` en minúsculas. Buscar es mirar si están dentro
+`ui/Engine/Search.ps1` arma **un índice plano** con una entrada por sección, por ajuste,
+por paso de una sección de comandos y por guía, cada una con su `Haystack` en
+minúsculas. Las guías se agrupan bajo una "sección" de mentira (`$GuideSearchCategory`),
+su texto no pasa por `T` y el resultado enseña solo el trozo de alrededor de lo buscado
+(campo `Long`, `Get-SearchExcerpt`); pulsarlas abre la guía, no una sección. Buscar es mirar si están dentro
 todos los términos, así que la coincidencia es parcial y sin distinguir mayúsculas:
 medio nombre de valor encuentra la clave entera.
 

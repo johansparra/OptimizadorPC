@@ -42,6 +42,11 @@ $AppLoadedFiles = New-Object System.Collections.Generic.List[string]
 foreach ($hostLine in (Get-Content -Path (Join-Path $AppRoot 'main.ps1'))) {
 
     if ($hostLine -match '^\s*# @@EMBED_XAML:') { break }
+    # Las guías (.md), por el mismo camino que main.ps1 en desarrollo.
+    if ($hostLine -match '^\s*# @@EMBED_GUIDES:(.+)@@\s*$') {
+        Import-GuideFolder (Join-Path $AppRoot ($Matches[1] -replace '/', '\'))
+        continue
+    }
 
     if ($hostLine -match '^\s*# @@EMBED_DIR:(.+)@@\s*$') {
         $hostDir  = $Matches[1]
@@ -93,11 +98,12 @@ function Get-TestSettingsPath { $AppSettingsPath }
 Set-RegistryWriteArmed $false
 
 <#
-    NI EJECUTAN COMANDOS DE RED DE VERDAD.
+    NI EJECUTAN COMANDOS DE VERDAD (NI RED NI BORRADOS).
 
-    Lo mismo para core/Network/CommandRunner.ps1: una prueba que pulse
+    Lo mismo para core/Commands/CommandRunner.ps1: una prueba que pulse
     "Ejecutar" en la sección Internet resetearía Winsock y la pila
-    TCP/IP de la máquina. Desarmado, cada paso termina en 'disarmed'
+    TCP/IP de la máquina, y en Limpieza vaciaría tu %TEMP%.
+    Desarmado, cada paso termina en 'disarmed'
     sin arrancar nada. Las pruebas que quieran un proceso real lo
     rearman con un paso de solo lectura y lo desarman en su finally.
 

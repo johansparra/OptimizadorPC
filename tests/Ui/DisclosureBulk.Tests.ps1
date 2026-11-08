@@ -23,6 +23,14 @@
 
 $BulkWindow = New-AppWindow -Language 'en'
 
+# Regedit tiene 47 ajustes y casi cada prueba de aquí lo pinta entero:
+# era el archivo más lento de la suite (21 s). Lo que se prueba -qué
+# franjas abren los menús- se ve igual con cuatro tarjetas, así que se
+# recorta mientras corre este archivo y se devuelve al final.
+$BulkRegedit = Get-CategoryById 'regedit'
+$BulkRegeditItems = $BulkRegedit.Items
+$BulkRegedit.Items = @($BulkRegeditItems | Select-Object -First 4)
+
 function New-BulkSetting {
     New-Setting -Name 'Ajuste de prueba' -Description 'x' -Value $true -Registry @(
         @{ Path = 'HKEY_LOCAL_MACHINE\SOFTWARE\Test'; Name = 'V'; Type = 'DWord'
@@ -393,3 +401,7 @@ Describe 'ui/Views/CategoryDetailView.ps1 - los menus Expandir / Contraer' {
         finally { Set-ViewOption 'technical' $true }
     }
 }
+
+# Regedit, entero otra vez para el resto de la suite.
+$BulkRegedit.Items = $BulkRegeditItems
+Reset-SearchIndex

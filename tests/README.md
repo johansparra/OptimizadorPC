@@ -11,6 +11,7 @@ powershell -ExecutionPolicy Bypass -File ./tests/Run-Tests.ps1         # solo 5.
 dos (regla 8 de `CLAUDE.md`). Devuelve 0 si todo pasa y 1 si algo falla.
 
 ```powershell
+.\tests\Run-Tests.ps1 -Timing                 # al final, los 10 archivos más lentos
 .\tests\Run-Tests.ps1 -File 'Core*'           # solo una carpeta
 .\tests\Run-Tests.ps1 -File '*Log*'           # Core/Log y Ui/LogPanel
 .\tests\Run-Tests.ps1 -Filter '*registro*'    # solo las pruebas que encajen
@@ -40,21 +41,25 @@ tests/
 | ------- | ----- |
 | `Run-Tests.ps1` | El lanzador. Comprueba STA, carga todo y resume. `-BothHosts` lanza 5.1 y 7 en paralelo. |
 | `Harness/TestKit.ps1` | `Describe` / `It`, `Assert-*`, `Skip-Test`. |
-| `Harness/AppHost.ps1` | Carga la aplicación sin abrir la ventana. `New-AppWindow`, `Find-Visuals`, `Get-VisualText`. Redirige `settings.json` a un temporal, **desarma la escritura al registro** (regla 28) y **la ejecución de comandos de red** (`Set-CommandRunArmed $false`, sin pausas), y se porta como el `.exe`: elevado (`Set-AppElevationOverride $true`). |
+| `Harness/AppHost.ps1` | Carga la aplicación sin abrir la ventana. `New-AppWindow`, `Find-Visuals`, `Get-VisualText`. Redirige `settings.json` a un temporal, **desarma la escritura al registro** (regla 28) y **la ejecución de comandos** —ni red ni borrados— (`Set-CommandRunArmed $false`, sin pausas), carga las guías de `ui/Data/Guides` por el mismo marcador que `main.ps1`, y se porta como el `.exe`: elevado (`Set-AppElevationOverride $true`). |
 | `Harness/Fixtures.ps1` | Claves de prueba en `HKCU\Software\OptimizadorPC\Tests\<PID>`, secciones de mentira, entradas de log. |
-| `Core/Log.Tests.ps1` | El registro de actividad: apuntar, filtrar, el tope del buffer, el volcado a archivo. |
+| `Core/Log.Tests.ps1` | El registro de actividad: apuntar, filtrar, el tope del buffer, el volcado a archivo, el `Id` de cada entrada y el detalle (`Items`) con y sin vista extendida. |
 | `Core/Registry.Tests.ps1` | Leer el registro **de verdad**: los cuatro estados, el DWord con signo, que nunca lance. |
 | `Core/RegistryWriter.Tests.ps1` | **Escribir** el registro contra la rama `HKCU` de pruebas: lista blanca, texto→valor tipado (DWord/QWord/Binary/String/ExpandString, `MultiString` no soportado), snapshot previo, verificación por relectura, `type mismatch`, `nochange`, `-WhatIf`, diagnóstico del fallo, y que nunca lance. |
 | `Core/SettingApply.Tests.ps1` | El toggle: `ON`→`Recommended`, `OFF`→`Default` de todas las claves del ajuste, recálculo del `Status`, `-WhatIf`, ruta fuera de lista blanca sin romper, y el rastro `applying`/`applied`/`checked`/`done` en el log. |
 | `Core/RegistryState.Tests.ps1` | El volcado a los datos de `ui/Data/Categories/` y el aviso de avance. |
 | `Core/SettingStatus.Tests.ps1` | En qué estado queda cada ajuste al comparar lo leído con lo declarado. |
 | `Core/ExternalLink.Tests.ps1` | Que solo se abran URLs `http`/`https` absolutas y que un esquema no permitido ni llegue al shell. |
-| `Core/CommandRunner.Tests.ps1` | Ejecutar los pasos de Internet: lista blanca de ejecutables y servicios, rutas e intérpretes rechazados, desarmado, `blocked`, un proceso **real** de solo lectura (`netsh interface show interface`) y la salida con tildes en UTF-8 y en OEM. |
+| `Core/CommandRunner.Tests.ps1` | Ejecutar los pasos de las secciones de comandos: lista blanca de ejecutables y servicios, rutas e intérpretes rechazados, carpetas de `-Clean` solo de la lista, desarmado, `blocked`, `-SkipIf`, el detalle de un programa, el apartado del log de cada sección, un proceso **real** de solo lectura (`netsh interface show interface`) y la salida con tildes en UTF-8 y en OEM. |
+| `Core/FolderCleanup.Tests.ps1` | Vaciar carpetas, sobre una carpeta de mentira en `%TEMP%`: lista blanca, `%TEMP%` fuera del perfil, los dos modos de borrado, que una unión no se siga, por trozos, y el detalle de lo borrado y lo saltado (con su motivo). La papelera de verdad no se toca. |
 | `Core/SystemInfo.Tests.ps1` | Sobre qué corre el programa: Windows (sin el "Windows 10" falso), PowerShell, exe/script, arquitectura. |
 | `Core/WorkArea.Tests.ps1` | Maximizar al área de trabajo, con una ventana Win32 invisible y `WM_GETMINMAXINFO` a mano. |
 | `Ui/Window.Tests.ps1` | La ventana, los temas, la barra de título, el menú lateral, las vistas. |
 | `Ui/LogPanel.Tests.ps1` | El cajón del log: abrir, cerrar, las filas, el idioma. |
 | `Ui/LogWindow.Tests.ps1` | El log sacado a su propia ventana y devuelto al cajón. |
+| `Ui/DetailList.Tests.ps1` | El detalle desplegable bajo una entrada del log y bajo la fila de un paso: que no se cierre al rehacer la lista, que el clic no marque el paso, y guardar el log con detalle o sin él. |
+| `Ui/DisclosureBulk.Tests.ps1` | Los menús Expandir / Contraer del panel Regedit: abrir y cerrar a la vez las franjas de todas las tarjetas, por tipo. |
+| `Ui/TimeFormat.Tests.ps1` | El formato de hora (24 h / 12 h): medianoche, mediodía y dónde se aplica. |
 | `Ui/TechnicalDetails.Tests.ps1` | El pie de la tarjeta: que la ruta y el valor se puedan seleccionar y copiar. |
 | `Ui/SettingCard.Tests.ps1` | La fila del detalle: el control que sale según el `Type`, el estado inicial del toggle desde el registro, el bloqueo. |
 | `Ui/SettingReference.Tests.ps1` | El bloque de referencia de un ajuste (qué hace, valores, enlace). |
@@ -62,12 +67,13 @@ tests/
 | `Ui/ViewMenu.Tests.ps1` | El chip "Vista" y su desplegable de opciones. |
 | `Ui/Visuals.Tests.ps1` | Entrada en cascada, `Get-EnterTarget`, indicadores deslizantes, `Start-CountUp` sin ventana. |
 | `Ui/Language.Tests.ps1` | Que no quede ni un texto sin traducir en toda la interfaz. |
-| `Ui/StepsView.Tests.ps1` | La sección Internet: solo lo marcado y SIEMPRE en el orden del archivo, detener, bloqueo, y el caso sin permisos de administrador (pasos apagados, fuera de la cola) y la insignia de la barra. |
+| `Ui/StepsView.Tests.ps1` | Las secciones de comandos (Internet, Limpieza, Energía): solo lo marcado y SIEMPRE en el orden del archivo, detener, bloqueo, lo que viene desmarcado y con aviso, el plan de energía a un GUID fijo, y el caso sin permisos de administrador (pasos apagados, fuera de la cola) y la insignia de la barra. |
+| `Ui/Guides.Tests.ps1` | La sección Guías: el lector de Markdown (bloques y trozos de línea), el registro de las guías, la vuelta desde Base64, el texto normal de "Copiar todo", las dos pantallas, y que el contenido del usuario no pase por `T`. |
 | `Ui/StatusFilter.Tests.ps1` | Las píldoras del resumen como filtro: uno, varios, quitar, "Mostrar todos", y que llegar desde la búsqueda lo quite. |
 | `Ui/AboutMenu.Tests.ps1` | El panel "Acerca de" y que la versión salga de una sola fuente. |
 | `Ui/Wiring.Tests.ps1` | Que los botones de `main.ps1` respondan al pulsarlos. |
-| `Source/Rules.Tests.ps1` | Las reglas de `CLAUDE.md` que se ven leyendo el código, el orden de carga de las capas y que el paquete de `build.ps1` parsee. |
-| `Source/Security.Tests.ps1` | Invariantes de seguridad: rutas de `-Registry` dentro de la lista blanca, sin ejecución dinámica ni red en `ui/`/`core/`, sin nombres de valor que degraden la seguridad sin declararlo, `ExternalLink` solo `http`/`https`. Ver `SECURITY.md`. |
+| `Source/Rules.Tests.ps1` | Las reglas de `CLAUDE.md` que se ven leyendo el código, el orden de carga de las capas y que el paquete de `build.ps1` parsee y lleve dentro todos los `.ps1`, el XAML y cada guía (que vuelva igual desde Base64). |
+| `Source/Security.Tests.ps1` | Invariantes de seguridad: rutas de `-Registry` dentro de la lista blanca, sin ejecución dinámica ni red en `ui/`/`core/`, sin nombres de valor que degraden la seguridad sin declararlo, `ExternalLink` solo `http`/`https`, solo `CommandRunner.ps1` arranca procesos y solo `FolderCleanup.ps1` borra archivos, las carpetas de la limpieza dentro del perfil, y la papelera nunca marcada de serie. Ver `SECURITY.md`. |
 
 **`Harness/` es la única carpeta que no contiene pruebas.** Sus tres archivos se
 cargan con punto desde `Run-Tests.ps1` antes que nada, para que todo lo demás vea sus
@@ -113,7 +119,7 @@ Ninguno hacía falta para lo que hay hoy. Estas pruebas construyen los controles
 WPF **de verdad** —la misma clase `Button`, el mismo `Grid`, el XAML real— y miran el
 árbol resultante, solo que sin enseñar la ventana. Eso ya contesta a casi todo lo que
 querrías preguntar (¿está el botón?, ¿se llenó la lista?, ¿se tradujo el título?) y
-tarda ocho segundos en vez de varios minutos, sin ventanas abriéndose por delante de
+tarda un par de minutos por host —587 pruebas— en vez de mucho más, sin ventanas abriéndose por delante de
 lo que estés haciendo.
 
 Los manejadores de `main.ps1` sí se prueban, y sin UIA: `Ui/Wiring.Tests.ps1` levanta
@@ -138,6 +144,19 @@ del binario entregado importa más que antes; sigue pendiente porque cuesta bast
 de mantener y la escritura ya está cubierta a nivel de `core/` contra una rama de
 pruebas en `HKCU` (`Core/RegistryWriter.Tests.ps1`, `Core/SettingApply.Tests.ps1`).
 
+## La prueba de humo (`Smoke/Invoke-Smoke.ps1`)
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\tests\Smoke\Invoke-Smoke.ps1        # el script empaquetado
+powershell -ExecutionPolicy Bypass -File .\tests\Smoke\Invoke-Smoke.ps1 -Exe   # el .exe (pide UAC)
+```
+
+Arranca **de verdad** lo que va en el `.exe` (`build/_combined.ps1`, con Windows
+PowerShell 5.1 y sin elevar) y lo mira desde fuera con `System.Windows.Automation`: que
+sale la ventana, que el menú trae sus cuatro entradas y que el proceso no se muere. No
+pulsa nada y la cierra. No es un `*.Tests.ps1` a propósito: abre una ventana delante de
+lo que estés haciendo, así que `Run-Tests.ps1` no la recoge. Hay que compilar antes.
+
 ## Lo que estas pruebas NO cubren
 
 - **El aspecto.** Si una tarjeta se ve torcida, si un color queda ilegible en el tema
@@ -152,3 +171,7 @@ pruebas en `HKCU` (`Core/RegistryWriter.Tests.ps1`, `Core/SettingApply.Tests.ps1
   escriba de verdad en `HKLM` al pulsarlo en la aplicación compilada no se prueba: eso
   necesitaría el `.exe` elevado y la prueba de humo con UI Automation de arriba.
 - **El `.exe` elevado.** Las pruebas corren en tu sesión normal; el binario pide UAC.
+- **Los comandos de verdad.** El arnés desarma `CommandRunner`: solo corre de verdad el
+  paso de lectura `netsh interface show interface`. La limpieza se prueba sobre una
+  carpeta de mentira, y ni la papelera, ni `powercfg`, ni DISM se ejecutan nunca en
+  las pruebas.

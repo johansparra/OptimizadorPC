@@ -53,7 +53,10 @@ function Get-NewBadgeText {
     Steps        (array)  Pasos que se EJECUTAN, creados con New-CommandStep.
                           Una sección con Steps no enseña ajustes sino una
                           lista para marcar y un botón para correrla (ver
-                          ui/Views/CategoryStepsView.ps1). Hoy: Internet.
+                          ui/Views/CategoryStepsView.ps1). Hoy: Internet
+                          y Limpieza. Cada paso queda apuntado con el Id
+                          de su sección (Source): es el apartado del log
+                          en el que caen sus líneas.
 #>
 function Register-Category {
     param([Parameter(Mandatory)][hashtable]$Definition)
@@ -81,6 +84,10 @@ function Register-Category {
         if (-not $Definition[$required]) {
             throw "Register-Category: falta el campo obligatorio '$required'."
         }
+    }
+
+    foreach ($step in @($Definition['Steps'] | Where-Object { $_ })) {
+        if (-not $step.Source) { $step.Source = $Definition['Id'] }
     }
 
     $CategoryList.Add([PSCustomObject]$Definition)
@@ -342,15 +349,21 @@ function New-Setting {
     Crea un paso para el array Steps de una categoría: algo que se
     EJECUTA, no un ajuste que se lee y se cambia.
 
-    Dos tipos, y se deduce solo:
+    Cuatro tipos, y se deduce solo de qué parámetro lleva:
 
       -Exe + -Arguments  ejecuta un programa de Windows, sin shell.
                          Solo los de la lista blanca de
-                         core/Network/CommandRunner.ps1, siempre desde
+                         core/Commands/CommandRunner.ps1, siempre desde
                          la carpeta de sistema. Los argumentos, uno por
                          elemento y literales: 'int','ipv4','reset'.
       -Service           arranca ese servicio si está parado (y si ya
                          corre, no hace nada). Lista blanca también.
+      -Clean             vacía una carpeta, escrita como en un .cmd:
+                         '%TEMP%' (todo, también subcarpetas) o
+                         '%LOCALAPPDATA%\...\Explorer\*.db' (solo esos
+                         archivos). Tiene que estar TAL CUAL en la lista
+                         blanca de core/Commands/FolderCleanup.ps1.
+      -EmptyRecycleBin   vacía la papelera del usuario.
 
     El ORDEN de ejecución es el de declaración en el archivo, marque
     el usuario lo que marque: un reset de Winsock antes de limpiar la
@@ -367,16 +380,26 @@ function New-Setting {
                          del firewall, fijar DNS) va en $false.
         -Warning         Aviso que sale en ámbar en la fila.
         -RequiresRestart Al terminar, la sección pide reiniciar el equipo.
-        -RequiresAdmin   Por defecto $true: casi todo lo que cambia la red
-                         necesita administrador. Sin permisos, el paso sale
-                         desmarcado, apagado y avisando, y no entra en la
-                         cola. Solo los que de verdad funcionan sin permisos
-                         (comprobado, no supuesto: nbtstat -R falla y aun así
-                         devuelve 0) llevan $false.
+        -RequiresAdmin   Por defecto $true en -Exe y -Service: casi todo lo
+                         que cambia la red necesita administrador. Sin
+                         permisos, el paso sale desmarcado, apagado y
+                         avisando, y no entra en la cola. Solo los que de
+                         verdad funcionan sin permisos (comprobado, no
+                         supuesto: nbtstat -R falla y aun así devuelve 0)
+                         llevan $false. En -Clean y -EmptyRecycleBin es
+                         $false: borran en TU carpeta de usuario, y eso no
+                         necesita permisos.
         -PauseAfter      Segundos de espera tras el paso (el "timeout /t 5"
                          del .cmd original). La espera NO bloquea la ventana.
         -TimeoutSeconds  Tope antes de darlo por colgado. Por defecto, el de
-                         CommandRunner (60 s).
+                         CommandRunner (60 s; 600 s en -Clean).
+        -SkipIf          @{ Path = 'HKEY_...\Clave'; Name = 'Valor' }. Si ese
+                         valor del registro EXISTE, el paso no se ejecuta y
+                         termina 'succeeded' diciendo que ya estaba. Solo se
+                         LEE. Sirve para comandos que no se pueden repetir
+                         (crear algo que ya existe) cuando el programa no
+                         distingue "ya estaba" de un fallo por su código de
+                         salida, como powercfg.
 
     Status y Selected NO se declaran: son estado de la sesión. Selected
     arranca en -Checked y lo cambia el usuario; Status lo va poniendo la
@@ -397,17 +420,31 @@ function New-CommandStep {
         [string]$Exe,
         [string[]]$Arguments = @(),
         [string]$Service,
+        [string]$Clean,
+        [switch]$EmptyRecycleBin,
         [bool]$Checked = $true,
         [string]$Warning,
         [switch]$RequiresRestart,
         [bool]$RequiresAdmin = $true,
         [int]$PauseAfter = 0,
-        [int]$TimeoutSeconds = 0
+        [int]$TimeoutSeconds = 0,
+        [hashtable]$SkipIf
     )
+
+    if ($SkipIf -and (-not $SkipIf.Path -or -not $SkipIf.Name)) {
+        throw "New-CommandStep '$Id': -SkipIf necesita Path y Name."
+    }
 
     if ($Service) { $kind = 'service' }
     elseif ($Exe) { $kind = 'exe' }
-    else { throw "New-CommandStep '$Id': falta -Exe o -Service." }
+    elseif ($Clean) { $kind = 'clean' }
+    elseif ($EmptyRecycleBin) { $kind = 'recyclebin' }
+    else { throw "New-CommandStep '$Id': falta -Exe, -Service, -Clean o -EmptyRecycleBin." }
+
+    # Borrar en la carpeta del usuario no pide permisos.
+    if ($kind -in @('clean', 'recyclebin') -and -not $PSBoundParameters.ContainsKey('RequiresAdmin')) {
+        $RequiresAdmin = $false
+    }
 
     [PSCustomObject]@{
         Id              = $Id
@@ -418,15 +455,53 @@ function New-CommandStep {
         Exe             = $Exe
         Arguments       = @($Arguments)
         Service         = $Service
+        Clean           = $Clean
         Checked         = $Checked
         Warning         = $Warning
         RequiresRestart = [bool]$RequiresRestart
         RequiresAdmin   = $RequiresAdmin
         PauseAfter      = $PauseAfter
         TimeoutSeconds  = $TimeoutSeconds
+        SkipIf          = $SkipIf
+
+        # Lo pone Register-Category: el Id de la sección.
+        Source          = $null
 
         # Estado de la sesión: no se declaran.
         Selected        = $Checked
         Status          = $null
+        Items           = $null     # el detalle de la última ejecución
+    }
+}
+
+<#
+    LO QUE EL USUARIO MARCÓ EN UNA SECCIÓN DE COMANDOS, ENTRE SESIONES.
+
+    Se guarda en settings.json (Set-AppSetting, regla 18) bajo
+    'StepChoices.<sección>', y no como la lista de marcados sino como
+    los pasos que el usuario CAMBIÓ respecto a lo de serie (-Checked).
+    Así un paso nuevo que se añada después a la sección sale como venga
+    declarado, en vez de quedarse desmarcado porque no estaba en la lista.
+#>
+function Save-StepChoices {
+    param($Category)
+
+    if (-not $Category -or -not (Test-CategoryHasSteps $Category)) { return }
+    $changed = @(@($Category.Steps | Where-Object { $_ }) |
+                 Where-Object { [bool]$_.Selected -ne [bool]$_.Checked } |
+                 ForEach-Object { [string]$_.Id })
+    Set-AppSetting ('StepChoices.' + $Category.Id) $changed
+}
+
+# Lo contrario, al arrancar: deja cada paso como lo dejó el usuario.
+function Restore-StepChoices {
+    foreach ($category in $CategoryList) {
+        if (-not (Test-CategoryHasSteps $category)) { continue }
+        $saved = Get-AppSetting ('StepChoices.' + $category.Id)
+        if ($null -eq $saved) { continue }
+        $changed = @(@($saved) | ForEach-Object { [string]$_ })
+        foreach ($step in @($category.Steps | Where-Object { $_ })) {
+            $step.Selected = if ($changed -contains [string]$step.Id) { -not $step.Checked } else { [bool]$step.Checked }
+        }
     }
 }

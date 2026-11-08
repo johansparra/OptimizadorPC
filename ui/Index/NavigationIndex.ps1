@@ -38,7 +38,7 @@
 #   Icon       Nombre de glifo del catálogo de ui/Design/Theme.ps1.
 # ============================================================
 
-# Hoy las tres entradas -Search, Optimize y Settings- tienen pantalla.
+# Hoy las cuatro entradas -Search, Optimize, Guides y Settings- tienen pantalla.
 # Software, Customize, Advanced y More se quitaron a propósito: no se
 # van a implementar. Una entrada sin View sigue siendo válida (ver
 # arriba) y la prueba de Window.Tests.ps1 la cubre con una de mentira.
@@ -51,6 +51,7 @@ $NavigationIndex = @(
     #  Id             Icono        Etiqueta       Grupo      Visible  Bloqueado   Vista
     @{ Id = 'search';    Icon = 'Search';  Label = 'Search';    Group = 'Top';    Visible = $true; Locked = $false; View = 'Show-SearchResultsView' }
     @{ Id = 'optimize';  Icon = 'Gauge';   Label = 'Optimize';  Group = 'Top';    Visible = $true; Locked = $false; View = 'Show-OptimizationsListView'; Default = $true }
+    @{ Id = 'guides';    Icon = 'Book';    Label = 'Guides';    Group = 'Top';    Visible = $true; Locked = $false; View = 'Show-GuidesView' }
 
     @{ Id = 'settings';  Icon = 'Gear';    Label = 'Settings';  Group = 'Bottom'; Visible = $true; Locked = $false; View = 'Show-SettingsView' }
 

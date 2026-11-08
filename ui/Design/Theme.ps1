@@ -24,7 +24,9 @@
 $Glyphs = @{
     # categorías
     Shield = 0xEA18; Power = 0xE7E8; Game = 0xE7FC; Sync = 0xE895
-    Bell   = 0xEA8F; Volume = 0xE767; Globe = 0xE774
+    Bell   = 0xEA8F; Volume = 0xE767; Globe = 0xE774; Broom = 0xEA99
+    # guías (ui/Views/GuidesView.ps1): el libro del menú y la hoja de cada una
+    Book = 0xE82D; Article = 0xF000
     # ejecución de pasos (ui/Views/CategoryStepsView.ps1)
     Play = 0xE768; Stop = 0xE71A; Clock = 0xE823; Done = 0xE930
     Failed = 0xEA39; Warning = 0xE7BA; Restart = 0xE72C

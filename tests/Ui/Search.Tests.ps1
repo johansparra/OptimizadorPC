@@ -52,12 +52,45 @@ function Get-SearchNames {
 
 Describe 'ui/Engine/Search.ps1 - el índice' {
 
-    It 'trae una entrada por sección y otra por cada ajuste' {
-        $esperadas = 0
+    It 'trae una entrada por sección, por ajuste, por paso y por guía' {
+        $esperadas = @(Get-Guides).Count
         foreach ($cat in Get-OptimizationCategories) {
-            $esperadas += 1 + @($cat.Items).Count
+            $esperadas += 1 + @($cat.Items).Count + @($cat.Steps | Where-Object { $_ }).Count
         }
         Assert-Equal $esperadas @(Get-SearchIndex).Count
+    }
+
+    It 'encuentra un paso de una sección de comandos por su comando' {
+        Reset-SearchIndex
+        $r = @(Get-SearchResults 'StartComponentCleanup')
+        $paso = @($r | Where-Object { $_.Kind -eq 'step' })
+        Assert-Equal 1 $paso.Count
+        Assert-Equal 'component-store' $paso[0].Step.Id
+        Assert-Equal 'cleanup' $paso[0].Category.Id
+        Assert-Equal 'Command' $paso[0].Match.Label
+    }
+
+    It 'encuentra una guía por su texto y enseña solo el trozo de alrededor' {
+        Reset-SearchIndex
+        $r = @(Get-SearchResults 'NetTrace')
+        $guia = @($r | Where-Object { $_.Kind -eq 'guide' })
+        Assert-Equal 1 $guia.Count
+        Assert-Equal 'task_scheduler_gaming_tweaks' $guia[0].Guide.Id
+        Assert-Equal 'guides' $guia[0].Category.Id
+        Assert-Match 'NetTrace' $guia[0].Match.Text
+        Assert-True ($guia[0].Match.Text.Length -le 125) 'el trozo debería ser corto, no la guía entera'
+    }
+
+    It 'pulsar un resultado de guía abre la guía' {
+        # La ventana compartida del archivo ($SearchWindow): una nueva dejaría
+        # a las pruebas de abajo pintando en otra.
+        Set-AppWindow $SearchWindow
+        Reset-SearchIndex
+        $entrada = @(Get-SearchResults 'NetTrace' | Where-Object { $_.Kind -eq 'guide' })[0]
+        $tarjeta = New-SearchResultCard -Window (Get-AppWindow) -Entry $entrada
+        Open-SearchResult $tarjeta
+        Assert-Equal 'Show-GuideView' (Get-CurrentViewName)
+        Assert-Equal 'task_scheduler_gaming_tweaks' $CurrentView.Arguments.Guide.Id
     }
 
     It 'se reutiliza mientras nadie lo tire' {
