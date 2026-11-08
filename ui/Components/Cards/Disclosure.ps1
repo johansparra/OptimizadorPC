@@ -49,7 +49,9 @@ function New-DisclosureSection {
 
     # --- fila que pliega y despliega ---
     $header = New-Object System.Windows.Controls.Border
-    $header.Padding = New-Object System.Windows.Thickness 20, 9, 18, 10
+    # Baja y discreta: es de consulta, y repetida en cada tarjeta
+    # llegaba a pesar casi tanto como el ajuste de encima.
+    $header.Padding = New-Object System.Windows.Thickness 20, 6, 18, 7
     $header.Cursor = 'Hand'
     $header.Background = [System.Windows.Media.Brushes]::Transparent
     if ($Flush) {
@@ -59,15 +61,15 @@ function New-DisclosureSection {
     $grid = New-Object System.Windows.Controls.Grid
     Add-GridColumns $grid 'Auto', '*', 'Auto'
 
-    $ic = New-Icon $Icon 13 'TextFaint'
-    $ic.Margin = New-Object System.Windows.Thickness 0, 0, 9, 0
+    $ic = New-Icon $Icon 12 'TextFaint'
+    $ic.Margin = New-Object System.Windows.Thickness 0, 0, 8, 0
     Add-ToColumn $grid $ic 0
 
     $lbl = New-Object System.Windows.Controls.TextBlock
     $lbl.Text = T $Label
     $lbl.FontSize = 11.5
     $lbl.VerticalAlignment = 'Center'
-    Set-TextFg $lbl 'TextMuted'
+    Set-TextFg $lbl 'TextFaint'
     Add-ToColumn $grid $lbl 1
 
     $chevron = New-Icon 'ChevronDown' 10 'TextFaint'

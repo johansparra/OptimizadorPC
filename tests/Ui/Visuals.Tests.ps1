@@ -221,6 +221,67 @@ Describe 'ui/Views/OptimizationsListView.ps1 - lista y cuadrícula' {
         }
         finally { Set-ViewOption 'grid' $false }
     }
+
+    # El reparto se prueba midiendo el panel a mano: sin ventana
+    # abierta no hay SizeChanged, así que se llama a quien lo atiende.
+    It 'las baldosas se estiran hasta llenar la fila' {
+        $ventana = New-AppWindow
+        $panel = New-CategoryTilePanel
+        foreach ($c in @(Get-OptimizationCategories) | Select-Object -First 3) {
+            $panel.Children.Add((New-CategoryTile -Window $ventana -Category $c)) | Out-Null
+        }
+        $panel.Measure((New-Object System.Windows.Size 1158, 2000))
+        $panel.Arrange((New-Object System.Windows.Rect 0, 0, 1158, 2000))
+        Update-CategoryTileWidths $panel
+
+        # Con sitio para cuatro y tres baldosas, tres columnas: una
+        # cuarta columna vacía sería justo el hueco que se quita.
+        $ancho = $panel.Children[0].Children[0].Width
+        Assert-True ($ancho -gt $CategoryTileWidth) "la baldosa crece ($ancho)"
+        $fila = 3 * ($ancho + $CategoryTileGap)
+        Assert-True ($fila -le $panel.ActualWidth) 'las tres caben en una fila'
+        Assert-True (($panel.ActualWidth - $fila) -lt 3) 'y no sobra hueco a la derecha'
+    }
+
+    It 'en un hueco estrecho no baja del ancho mínimo' {
+        $ventana = New-AppWindow
+        $panel = New-CategoryTilePanel
+        $panel.Children.Add((New-CategoryTile -Window $ventana -Category @(Get-OptimizationCategories)[0])) | Out-Null
+        $panel.Measure((New-Object System.Windows.Size 200, 2000))
+        $panel.Arrange((New-Object System.Windows.Rect 0, 0, 200, 2000))
+        Update-CategoryTileWidths $panel
+
+        Assert-Equal $CategoryTileWidth $panel.Children[0].Children[0].Width
+    }
+}
+
+Describe 'ui/Components/Cards/SettingCard.ps1 - el nombre parte, no se corta' {
+
+    It 'el nombre parte en varias líneas y la insignia va en la misma línea' {
+        $ventana = New-AppWindow
+        $ajuste = New-Setting -Name 'Un nombre de ajuste muy largo que en español no cabe en una sola línea' `
+            -Description 'x' -Badge 'NEW' -Value $true
+        $tarjeta = New-SettingCard $ventana $ajuste
+
+        # Armado con Inlines, su .Text viene vacío (ver Get-VisualText):
+        # se busca por el Run de dentro.
+        $nombre = @(Find-Visuals $tarjeta {
+            param($el)
+            $el -is [System.Windows.Controls.TextBlock] -and
+            @($el.Inlines | Where-Object { $_ -is [System.Windows.Documents.Run] -and $_.Text -match 'muy largo' }).Count -gt 0
+        })[0]
+
+        Assert-NotNull $nombre 'el nombre está en la tarjeta'
+        Assert-Equal 'Wrap' ([string]$nombre.TextWrapping) 'en una fila horizontal se cortaba en seco'
+        $enLinea = @($nombre.Inlines | Where-Object { $_ -is [System.Windows.Documents.InlineUIContainer] })
+        Assert-Equal 1 $enLinea.Count 'la insignia va dentro del texto, detrás del nombre'
+    }
+
+    It 'la insignia usa colores del tema, no un blanco a pelo' {
+        $insignia = New-Badge 'NEW 3'
+        Assert-Null $insignia.Child.ReadLocalValue([System.Windows.Controls.TextBlock]::ForegroundProperty).Color `
+            'el texto va por recurso de tema (regla 9)'
+    }
 }
 
 Describe 'ui/Components/Shell/Sidebar.ps1 - el indicador que se desliza' {

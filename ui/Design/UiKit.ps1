@@ -279,9 +279,14 @@ function New-Tag {
     $b
 }
 
-# Distintivo rojo "NEW n". Se traduce la PALABRA y se respeta el
+# Distintivo "NEW n". Se traduce la PALABRA y se respeta el
 # número ('NEW 45' -> 'NUEVO 45'), de modo que ui/Data/Lang/ solo
 # necesita la línea de 'NEW' y no una por cada cifra.
+#
+# En tono SUAVE de acento, no en rojo lleno: en Windows el rojo
+# saturado dice "error", y era lo que más gritaba de la pantalla,
+# por encima del propio nombre de la sección. Ahora habla igual
+# que las píldoras.
 function New-Badge {
     param([string]$Text)
     $b = New-Object System.Windows.Controls.Border
@@ -289,13 +294,13 @@ function New-Badge {
     $b.Padding = New-Object System.Windows.Thickness 7, 1.5, 7, 2.5
     $b.Margin = New-Object System.Windows.Thickness 9, 1, 0, 0
     $b.VerticalAlignment = 'Center'
-    Set-BoxBg $b 'Danger'
+    Set-BoxBg $b 'AccentSoft'
 
     $t = New-Object System.Windows.Controls.TextBlock
     if ($Text -match '^(.*\S)\s+(\d+)$') { $t.Text = (T $Matches[1]) + ' ' + $Matches[2] }
     else                                 { $t.Text = T $Text }
-    $t.FontSize = 9.5; $t.FontWeight = 'Bold'
-    $t.Foreground = [System.Windows.Media.Brushes]::White
+    $t.FontSize = 10; $t.FontWeight = 'SemiBold'
+    Set-TextFg $t 'Accent'
     $b.Child = $t
     $b
 }
@@ -307,17 +312,25 @@ function New-Badge {
 # -Payload viaja en ese mismo Tag para que un segundo manejador
 # -el que aplica el cambio real en SettingCard.ps1- saque del
 # emisor lo que necesita sin cerrar sobre nada.
+#
+# Dibujo de Windows 11: APAGADO es un carril vacío con borde y el
+# knob en gris; ENCENDIDO, carril lleno de acento y knob blanco. El
+# carril gris claro de antes casi no se distinguía de la tarjeta en
+# el tema claro. El color "apagado" es el acento transparente, así
+# la transición de relleno es un fundido del mismo tono y no pasa
+# por un gris intermedio.
 function New-ToggleSwitch {
     param($Window, [bool]$InitialState, $Label, $Payload)
 
-    $w = 40.0; $h = 22.0; $k = 16.0; $pad = 3.0
-    $travel = $w - $k - ($pad * 2)
+    $w = 40.0; $h = 20.0; $k = 12.0; $pad = 4.0
+    $travel = $w - $k - ($pad * 2) - 2   # -2: el borde de 1px a cada lado
     $onColor  = ([System.Windows.Media.SolidColorBrush](Get-Brush $Window 'Accent')).Color
-    $offColor = ([System.Windows.Media.SolidColorBrush](Get-Brush $Window 'TrackOff')).Color
+    $offColor = [System.Windows.Media.Color]::FromArgb(0, $onColor.R, $onColor.G, $onColor.B)
 
     $track = New-Object System.Windows.Controls.Border
     $track.Width = $w; $track.Height = $h
     $track.CornerRadius = New-Object System.Windows.CornerRadius ($h / 2)
+    $track.BorderThickness = New-Object System.Windows.Thickness 1
     $track.Cursor = 'Hand'
     $track.VerticalAlignment = 'Center'
     if ($InitialState) { $start = $onColor } else { $start = $offColor }
@@ -329,17 +342,12 @@ function New-ToggleSwitch {
     $knob.HorizontalAlignment = 'Left'
     $knob.VerticalAlignment = 'Center'
     $knob.Margin = New-Object System.Windows.Thickness $pad, 0, 0, 0
-    Set-BoxBg $knob 'Knob'
-
-    $sh = New-Object System.Windows.Media.Effects.DropShadowEffect
-    $sh.Color = [System.Windows.Media.Colors]::Black
-    $sh.Direction = 270; $sh.ShadowDepth = 1; $sh.BlurRadius = 3; $sh.Opacity = 0.25
-    $knob.Effect = $sh
 
     $tt = New-Object System.Windows.Media.TranslateTransform
     if ($InitialState) { $tt.X = $travel } else { $tt.X = 0 }
     $knob.RenderTransform = $tt
     $track.Child = $knob
+    Set-ToggleLook $track $InitialState
 
     $track.Tag = [PSCustomObject]@{
         State = $InitialState; On = $onColor; Off = $offColor
@@ -357,6 +365,7 @@ function New-ToggleSwitch {
         $ca.Duration = New-Object System.Windows.Duration ([TimeSpan]::FromMilliseconds(170))
         $ca.EasingFunction = New-Ease
         $s.Background.BeginAnimation([System.Windows.Media.SolidColorBrush]::ColorProperty, $ca)
+        Set-ToggleLook $s $new
 
         # El knob se pasa un pelo de su sitio y se asienta: es lo que
         # le da sensación de peso, y es la diferencia entre un
@@ -376,6 +385,21 @@ function New-ToggleSwitch {
     })
 
     $track
+}
+
+# Borde del carril y color del knob según el estado. Por recurso
+# de tema (regla 9): siguen al alternar claro/oscuro. El relleno no
+# pasa por aquí porque se anima.
+function Set-ToggleLook {
+    param($Track, [bool]$On)
+    if ($On) {
+        Set-BoxLine $Track 'Accent'
+        Set-BoxBg $Track.Child 'Knob'
+    }
+    else {
+        Set-BoxLine $Track 'TextMuted'
+        Set-BoxBg $Track.Child 'TextMuted'
+    }
 }
 
 # ---- Caja de búsqueda con icono y marcador de posición -------

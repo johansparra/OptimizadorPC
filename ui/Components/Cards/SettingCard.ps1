@@ -100,21 +100,26 @@ function New-SettingInfo {
     $left = New-Object System.Windows.Controls.StackPanel
     $left.VerticalAlignment = 'Center'
 
-    $nameRow = New-Object System.Windows.Controls.StackPanel
-    $nameRow.Orientation = 'Horizontal'
-
+    # El nombre es UN TextBlock y la insignia va DENTRO, como un
+    # elemento más de la línea. En una fila horizontal (StackPanel)
+    # el texto recibe ancho infinito: no parte ni recorta, y un
+    # nombre largo -el español lo es- se cortaba en seco por la
+    # derecha. Así parte en dos líneas y la insignia le sigue.
     $name = New-Object System.Windows.Controls.TextBlock
-    $name.Text = T $Setting.Name
     $name.FontFamily = $Window.FindResource('DisplayFont')
     $name.FontWeight = 'SemiBold'
-    $name.FontSize = 13.5
+    $name.FontSize = 14
+    $name.TextWrapping = 'Wrap'
+    $name.Margin = New-Object System.Windows.Thickness 0, 0, 30, 0
     Set-TextFg $name 'Text'
-    $nameRow.Children.Add($name) | Out-Null
+    $name.Inlines.Add((New-Object System.Windows.Documents.Run (T $Setting.Name)))
 
     if ($Setting.Badge -and (Get-ViewOption 'badges')) {
-        $nameRow.Children.Add((New-Badge $Setting.Badge)) | Out-Null
+        $badge = New-Object System.Windows.Documents.InlineUIContainer (New-Badge $Setting.Badge)
+        $badge.BaselineAlignment = 'Center'
+        $name.Inlines.Add($badge)
     }
-    $left.Children.Add($nameRow) | Out-Null
+    $left.Children.Add($name) | Out-Null
 
     # La "Descripción": el contenido principal de la clave, en una
     # línea. -WhatItDoes manda si el ajuste lo declara; si no, la
@@ -126,10 +131,15 @@ function New-SettingInfo {
 
     $desc = New-Object System.Windows.Controls.TextBlock
     $desc.Text = T $whatText
-    $desc.FontSize = 11.5
+    $desc.FontSize = 12.5
     $desc.TextWrapping = 'Wrap'
-    $desc.LineHeight = 17
-    $desc.Margin = New-Object System.Windows.Thickness 0, 5, 30, 9
+    $desc.LineHeight = 18
+    # Ancho de lectura: unos 90 caracteres por línea. Con la ventana
+    # grande la descripción llegaba a ocupar mil píxeles y el ojo
+    # perdía la línea al volver al principio.
+    $desc.MaxWidth = 680
+    $desc.HorizontalAlignment = 'Left'
+    $desc.Margin = New-Object System.Windows.Thickness 0, 4, 30, 9
     Set-TextFg $desc 'TextMuted'
     $left.Children.Add($desc) | Out-Null
 
@@ -199,9 +209,9 @@ function New-SettingControl {
 
             $state = New-Object System.Windows.Controls.TextBlock
             if ($initialOn) { $state.Text = T 'On' } else { $state.Text = T 'Off' }
-            $state.FontSize = 11.5
-            $state.FontWeight = 'SemiBold'
-            $state.Width = 24
+            # "Sí/No" al lado, como en la Configuración de Windows 11.
+            $state.FontSize = 12.5
+            $state.Width = 26
             $state.TextAlignment = 'Right'
             $state.VerticalAlignment = 'Center'
             $state.Margin = New-Object System.Windows.Thickness 0, 0, 10, 0

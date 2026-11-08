@@ -67,7 +67,7 @@ function New-CategoryCard {
 
     $desc = New-Object System.Windows.Controls.TextBlock
     $desc.Text = T $Category.Description
-    $desc.FontSize = 12
+    $desc.FontSize = 12.5
     $desc.TextTrimming = 'CharacterEllipsis'
     $desc.Margin = New-Object System.Windows.Thickness 0, 4, 24, 0
     Set-TextFg $desc 'TextMuted'
@@ -170,7 +170,7 @@ function Add-CategoryTagPills {
         $Stats.Children.Add((New-Pill 'StarFill' "$($Category.Recommended)/$total" 'Success' 'SuccessSoft' `
             ((T 'Recommended: {0} of {1}') -f $Category.Recommended, $total))) | Out-Null
     } else {
-        $Stats.Children.Add((New-Pill 'Star' "0/$total" 'TextFaint' 'SurfaceSunken' `
+        $Stats.Children.Add((New-Pill 'Star' "0/$total" 'TextMuted' 'SurfaceSunken' `
             (T 'No recommended settings'))) | Out-Null
     }
 

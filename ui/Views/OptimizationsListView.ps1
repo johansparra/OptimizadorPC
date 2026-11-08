@@ -54,17 +54,12 @@ function Show-OptimizationsListView {
 <#
     El panel donde van las secciones.
 
-    En cuadrícula es un WrapPanel: pone tantas baldosas por fila
-    como quepan y salta sola al estrechar la ventana, sin que haya
-    que decidir columnas en ninguna parte. En lista, el StackPanel
-    de siempre.
+    En cuadrícula, el panel de las baldosas (New-CategoryTilePanel):
+    pone tantas por fila como quepan y las estira para llenar el
+    ancho. En lista, el StackPanel de siempre.
 #>
 function New-CategoryPanel {
-    if (Get-ViewOption 'grid') {
-        $panel = New-Object System.Windows.Controls.WrapPanel
-        $panel.Orientation = 'Horizontal'
-        return $panel
-    }
+    if (Get-ViewOption 'grid') { return New-CategoryTilePanel }
     New-Object System.Windows.Controls.StackPanel
 }
 

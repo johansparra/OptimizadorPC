@@ -23,9 +23,53 @@
 # cosas distintas según cómo se mire la pantalla.
 # ============================================================
 
-# Ancho de cada baldosa. El WrapPanel decide cuántas caben por
-# fila a partir de esto y del ancho de la ventana.
+# Ancho MÍNIMO de cada baldosa y hueco entre ellas. Cuántas caben
+# por fila lo decide el ancho disponible; el ancho real lo reparte
+# Update-CategoryTileWidths para que la fila llegue al borde.
 $CategoryTileWidth = 268.0
+$CategoryTileGap   = 14.0
+
+<#
+    El panel de la cuadrícula.
+
+    Un WrapPanel salta de fila solo, pero con baldosas de ancho fijo
+    deja un hueco a la derecha: a 1190 px caben tres y sobran 330.
+    Al cambiar de tamaño se recalcula cuántas columnas caben y se
+    estira cada baldosa para repartir el sobrante, así la fila acaba
+    alineada con el borde de las tarjetas de la lista.
+#>
+function New-CategoryTilePanel {
+    $panel = New-Object System.Windows.Controls.WrapPanel
+    $panel.Orientation = 'Horizontal'
+    # El hueco va a la derecha de CADA baldosa, también de la última:
+    # el panel se mete ese hueco por fuera para que la fila termine
+    # justo donde terminan las tarjetas de la lista.
+    $panel.Margin = New-Object System.Windows.Thickness 0, 0, (-$CategoryTileGap), 0
+    # Sin closures (regla 4): el panel es el emisor.
+    $panel.Add_SizeChanged({ param($s, $e) Update-CategoryTileWidths $s })
+    $panel
+}
+
+function Update-CategoryTileWidths {
+    param($Panel)
+
+    $available = $Panel.ActualWidth
+    if ($available -le 0) { return }
+
+    # Cada envoltorio lleva el hueco como margen derecho, así que una
+    # columna ocupa baldosa + hueco.
+    $cols = [Math]::Max(1, [Math]::Floor(($available + 0.5) / ($CategoryTileWidth + $CategoryTileGap)))
+    # Nunca más columnas que baldosas: con tres secciones y sitio para
+    # cuatro, la cuarta columna sería justo el hueco que se quiere quitar.
+    $cols = [Math]::Max(1, [Math]::Min($cols, $Panel.Children.Count))
+    $width = [Math]::Floor($available / $cols) - $CategoryTileGap
+    if ($width -lt $CategoryTileWidth) { $width = $CategoryTileWidth }
+
+    foreach ($slot in $Panel.Children) {
+        # El envoltorio quieto de Add-HoverLift: la baldosa es su hijo.
+        if ($slot -is [System.Windows.Controls.Panel] -and $slot.Children.Count -gt 0) { $slot.Children[0].Width = $width }
+    }
+}
 
 function New-CategoryTile {
     param($Window, $Category)
@@ -37,7 +81,7 @@ function New-CategoryTile {
 
     # En cuadrícula el hueco va también a la derecha, no solo abajo:
     # el margen se lo queda el envoltorio (ver Add-HoverLift).
-    $card.Margin = New-Object System.Windows.Thickness 0, 0, 14, 14
+    $card.Margin = New-Object System.Windows.Thickness 0, 0, $CategoryTileGap, $CategoryTileGap
 
     $slot = Add-HoverLift $card -Glow $Category.Accent
     $slot.Cursor = 'Hand'
@@ -87,10 +131,15 @@ function New-CategoryTile {
     # máximo la de descripción corta sube y deja la fila dentada.
     $desc = New-Object System.Windows.Controls.TextBlock
     $desc.Text = T $Category.Description
-    $desc.FontSize = 11.5
+    # Dos líneas exactas: alto de línea fijo (BlockLineHeight) y la
+    # caja del doble, así la tercera no asoma recortada por arriba.
+    $desc.FontSize = 12
+    $desc.LineHeight = 17
+    $desc.LineStackingStrategy = 'BlockLineHeight'
     $desc.TextWrapping = 'Wrap'
     $desc.TextTrimming = 'CharacterEllipsis'
-    $desc.Height = 33
+    $desc.Height = 34
+    $desc.ToolTip = T $Category.Description
     $desc.Margin = New-Object System.Windows.Thickness 0, 6, 0, 14
     Set-TextFg $desc 'TextMuted'
     $stack.Children.Add($desc) | Out-Null
