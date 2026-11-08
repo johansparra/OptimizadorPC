@@ -49,8 +49,9 @@ Trampas relacionadas:
 
 - **`>` y `Out-File` en 5.1 escriben UTF-16LE** por defecto. Nunca generes un `.ps1`
   así.
-- `sed -i` y `perl -i` **conservan** el BOM (operan sobre bytes): son seguros para
-  editar estos archivos desde Bash.
+- `sed -i` y `perl -i` **conservan** el BOM (operan sobre bytes), pero **el `sed` de
+  Git Bash deja los saltos en LF**: después de usarlo, renormaliza a CRLF y comprueba
+  con `file` que diga *with CRLF line terminators*.
 - Verifica siempre después de escribir:
   ```bash
   file ui/Archivo.ps1        # debe decir: UTF-8 (with BOM)
@@ -78,8 +79,9 @@ Dos trampas más de escribir desde Bash **en esta máquina**:
   `.claude/settings.local.json`— y un `sed` con `.\tests\` deja un tabulador dentro del
   texto. Usa **barras normales**: PowerShell las acepta igual y no hay nada que
   escapar.
-- **No hay `python`.** El `python.exe` del PATH es el atajo de la Microsoft Store y
-  falla al invocarlo. Para transformar archivos: `awk`, `sed`, `perl` o PowerShell.
+- **`python` sí funciona** (3.14, de la Microsoft Store). Para transformar archivos
+  respetando BOM y CRLF, `python -I script.py` con el script escrito por la
+  herramienta de escritura es lo más seguro.
 
 ## 3. Trampas que no dan error, dan resultado equivocado
 

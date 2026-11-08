@@ -56,11 +56,14 @@ directo al archivo.
 | Qué secciones se ven y en qué orden | `ui/Index/CategoryIndex.ps1` |
 | Qué hay en el menú lateral | `ui/Index/NavigationIndex.ps1` |
 | Leer el registro de Windows | `core/Registry/` |
+| Ejecutar comandos y vaciar carpetas (Internet, Limpieza, Energía) | `core/Commands/` + `ui/Data/Categories/<sección>.ps1` |
 | El registro de actividad (el log) | `core/Diagnostics/Log.ps1` + `ui/Components/Shell/LogPanel.ps1` |
 | Los textos en español | `ui/Data/Lang/es.ps1` |
 | El marco de la ventana | `ui/Components/Shell/` |
 | Las tarjetas | `ui/Components/Cards/` |
 | Las pantallas | `ui/Views/` |
+| Las guías (`.md`) y su lector de Markdown | `ui/Data/Guides/` + `ui/Engine/GuideRegistry.ps1` y `Markdown.ps1` |
+| El buscador global | `ui/Engine/Search.ps1` + `ui/Components/Shell/SearchBar.ps1` |
 | Cómo se carga todo y en qué orden | `main.ps1` |
 
 Las siete capas y sus reglas están en `CLAUDE.md`; el árbol completo, en `README.md`.
@@ -105,8 +108,10 @@ Ver `versionado` para el resto del ciclo de confirmación.
 
 Aprendidas a base de perderlos:
 
-- **No hay `python`.** El `python.exe` del PATH es el atajo de la Microsoft Store y
-  falla. Para transformar archivos: `awk`, `sed`, `perl` o PowerShell.
+- **`python` sí funciona** (3.14, de la Microsoft Store; antes era solo el atajo y
+  fallaba). Para transformar archivos respetando BOM y CRLF es lo más seguro:
+  `python -I script.py`, con el script escrito por la herramienta de escritura.
+  **`sed -i` de Git Bash conserva el BOM pero deja LF**: si lo usas, renormaliza.
 - **Un heredoc de Bash colapsa `\\` a `\`**, y `sed` convierte `\t` en tabulador. Un
   JSON con rutas de Windows sale inválido y un `sed` con `.\tests\` mete un tabulador
   dentro del texto. Usa **barras normales**: PowerShell las acepta igual.

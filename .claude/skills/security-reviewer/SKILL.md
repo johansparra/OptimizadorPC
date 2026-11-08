@@ -27,13 +27,17 @@ De ahí salen los tres riesgos reales, por orden de gravedad:
    entrada externa (una ruta, un valor, un archivo, una descarga) que acabe
    ejecutándose.
 
-**El estado hoy:** `core/` **lee y escribe** el registro. La escritura vive en
-`core/Registry/Writer.ps1` (una clave) y `core/Registry/SettingApply.ps1` (el toggle
-ON/OFF de un ajuste). Solo hay **un** ajuste con `-Registry` — `NetworkThrottlingIndex`
-en *Regedit*, benigno y reversible. La revisión completa que pedía "el primer
-`SetValue`" ya se hizo; ahora el objeto de revisión es **cada ampliación de la lista
-blanca de rutas y cada ajuste nuevo con `-Registry`**. `SECURITY.md` en la raíz del
-repo tiene el contrato entero.
+**El estado hoy:** tres mecanismos tocan el equipo, cada uno con su lista blanca.
+`core/` **lee y escribe** el registro: la escritura vive en `core/Registry/Writer.ps1`
+(una clave) y `core/Registry/SettingApply.ps1` (el toggle ON/OFF de un ajuste), y hoy
+son **47** ajustes con `-Registry`, todos en *Regedit* y uno por clave. Las secciones
+de comandos **ejecutan programas** (`core/Commands/CommandRunner.ps1`: `netsh`,
+`ipconfig`, `nbtstat`, `arp`, `Dism`, `cleanmgr`, `fsutil`, `defrag`, `powercfg`, sin
+shell) y **borran archivos** (`core/Commands/FolderCleanup.ps1`: carpetas de una lista
+blanca dentro del perfil, sin seguir enlaces, y la papelera). Lo que se revisa ahora
+es **cada ampliación de una lista blanca** —rutas del registro, ejecutables,
+servicios, carpetas— y **cada ajuste o paso nuevo**. `SECURITY.md` en la raíz del
+repo tiene los contratos enteros (§3 registro, §12 comandos y borrado).
 
 ## 2. Ejecución de código — prohibiciones duras
 

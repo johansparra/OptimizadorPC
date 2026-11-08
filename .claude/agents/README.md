@@ -13,6 +13,13 @@ Pedirlos por su nombre sigue funcionando y manda por encima de ese criterio.
 | **`dev`** | lectura + escritura + shell | Implementar el plan. Entrega un *Parte de trabajo*. |
 | **`tester`** | lectura + escritura + shell | Verificar y escribir pruebas. Entrega un *Informe de verificación*. |
 
+**Solo se cargan si la sesión se abre desde `OptimizadorPC/`.** Claude Code busca
+`.claude/agents/` subiendo desde la carpeta de trabajo, nunca bajando: con la sesión
+abierta en `Escritorio\Temp` no aparecen, y tampoco el hook ni los permisos de
+`settings.local.json`. La configuración en sí está bien: `claude plugin validate
+.claude/agents` pasa (comprobado el 2026-11-08). Este `README.md` no lleva cabecera
+YAML a propósito: Claude Code lo trata como documentación y no como agente.
+
 ## Cómo se lanzan
 
 Pídelo en lenguaje normal, nombrando el agente:

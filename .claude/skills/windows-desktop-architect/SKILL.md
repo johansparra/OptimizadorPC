@@ -14,17 +14,18 @@ description: Arquitecto de la aplicación de escritorio WPF sobre PowerShell. Ú
 | # | Capa | Carpeta | Regla |
 | - | --- | --- | --- |
 | 1 | Base | `ui/Design/` | `Theme.ps1` (colores, iconos, animación) y `UiKit.ps1` (piezas genéricas). **Por debajo de todo**: los usa cualquiera y ellos no usan a nadie. |
-| 2 | Mecanismo | `ui/Engine/` | `CategoryRegistry`, `PreferenceRegistry`, `Translation`, `AppSettings`, `Router`. Sin datos ni controles. |
+| 2 | Mecanismo | `ui/Engine/` | `CategoryRegistry`, `PreferenceRegistry`, `GuideRegistry`, `Markdown`, `Search`, `Translation`, `AppSettings`, `Router`. Sin datos ni controles. |
 | 3 | Política | `ui/Index/` | Qué se ve, en qué orden, qué está bloqueado. **Cero contenido.** |
-| 4 | Sistema | `core/` | Habla con Windows. **Ni un control de WPF.** Devuelve datos, nunca lanza. Dividido en `Registry/` y `Diagnostics/`. |
-| 5 | Datos | `ui/Data/` | `Categories/`, `Preferences/`, `Lang/`. Un archivo por sección/opción/idioma. Solo declaraciones. |
+| 4 | Sistema | `core/` | Habla con Windows. **Ni un control de WPF.** Devuelve datos, nunca lanza. Dividido en `Registry/`, `Commands/`, `Interop/`, `Shell/` y `Diagnostics/`. |
+| 5 | Datos | `ui/Data/` | `Categories/`, `Preferences/`, `Lang/` y `Guides/` (los `.md` de la sección Guías). Un archivo por sección/opción/idioma/guía. Solo declaraciones. |
 | 6 | Piezas | `ui/Components/` | Construyen controles. **No conocen las vistas.** Dividido en `Shell/`, `Cards/` y `Layout/`. |
 | 7 | Pantallas | `ui/Views/` | Solo ensamblan piezas. Sin `New-Object` de controles sueltos. |
 
 Dentro de `ui/Components/`: **`Shell/`** es el marco de la ventana (TitleBar, Sidebar,
-ViewMenu, LogPanel, ProgressStrip), **`Cards/`** las tarjetas (CategoryCard,
-SettingCard, PreferenceCard, TechnicalDetails) y **`Layout/`** las piezas de página
-(PageHeader, Banner, CategorySummary). Una pieza nueva va donde encaje por lo que
+ViewMenu, ChipMenu, SearchBar, LogPanel, LogWindow, ProgressStrip), **`Cards/`** las
+tarjetas (CategoryCard, SettingCard, PreferenceCard, TechnicalDetails, StepRow,
+DetailList, GuideCard) y **`Layout/`** las piezas de página (PageHeader, Banner,
+CategorySummary, StepRunPanel, MarkdownDocument, Toast). Una pieza nueva va donde encaje por lo que
 dibuja, no por quién la llama.
 
 **Dos olores que delatan una capa mal puesta:**
@@ -44,6 +45,8 @@ dibuja, no por quién la llama.
 | Añadir una pantalla | `.ps1` en `ui/Views/` + entrada en `NavigationIndex.ps1`. Se muestra con `Show-View`. |
 | Añadir un control reutilizable | `ui/Components/`, o `UiKit.ps1` si es genérico y no sabe de nada. |
 | Leer algo del sistema | `core/`. Siempre. |
+| Añadir una sección de comandos | Un `.ps1` en `ui/Data/Categories/` que declare `Steps` con `New-CommandStep`. Lo que ejecute o borre tiene que estar en la lista blanca de `core/Commands/` (`SECURITY.md` §12). |
+| Añadir una guía | Soltar el `.md` en `ui/Data/Guides/`. Entra al `.exe` en Base64 por `@@EMBED_GUIDES@@` (hay que recompilar). |
 
 **Las siete carpetas de capa se cargan enteras, subcarpetas incluidas** (bloques
 `# @@EMBED_DIR:...@@` de `main.ps1`). Un archivo nuevo dentro de cualquiera entra

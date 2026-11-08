@@ -33,8 +33,8 @@ ejecutar sin tener que volver a decidir nada.
 | 1 | Base | `ui/Design/` | `Theme` y `UiKit`. Por debajo de todo; no usan a nadie. |
 | 2 | Mecanismo | `ui/Engine/` | Registran, traducen, guardan, enrutan. |
 | 3 | Política | `ui/Index/` | Qué se ve y en qué orden. Cero contenido. |
-| 4 | Sistema | `core/` | Habla con Windows. Ni un control de WPF. **Nunca lanza hacia arriba.** `Registry/` y `Diagnostics/`. |
-| 5 | Datos | `ui/Data/` | `Categories/`, `Preferences/`, `Lang/`. Solo declaraciones. |
+| 4 | Sistema | `core/` | Habla con Windows. Ni un control de WPF. **Nunca lanza hacia arriba.** `Registry/`, `Commands/`, `Interop/`, `Shell/` y `Diagnostics/`. |
+| 5 | Datos | `ui/Data/` | `Categories/`, `Preferences/`, `Lang/` y `Guides/` (los `.md`). Solo declaraciones. |
 | 6 | Piezas | `ui/Components/` | `Shell/`, `Cards/`, `Layout/`. Construyen controles; no conocen las vistas. |
 | 7 | Pantallas | `ui/Views/` | Solo ensamblan piezas. |
 

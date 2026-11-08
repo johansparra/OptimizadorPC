@@ -47,13 +47,15 @@ Escribir archivos con acentos, correctamente:
 [System.IO.File]::WriteAllText($ruta, $texto, (New-Object System.Text.UTF8Encoding($true)))
 ```
 
-Desde Bash, `sed -i` y `perl -i` conservan el BOM y son seguros. Comprueba siempre
-después: `file ui/Archivo.ps1` debe decir *UTF-8 (with BOM)*.
+Desde Bash, `sed -i` y `perl -i` conservan el BOM, pero **el `sed` de Git Bash deja
+LF**: si lo usas, renormaliza a CRLF. Comprueba siempre después:
+`file ui/Archivo.ps1` debe decir *UTF-8 (with BOM) ... with CRLF line terminators*.
 
 ## Que el archivo nuevo entre al `.exe`
 
-`build.ps1` solo entiende dos marcadores de `main.ps1`: `@@EMBED_DIR@@` (una capa
-entera, **recursiva**) y `@@EMBED_XAML@@`. De ahí salen dos reglas:
+`build.ps1` solo entiende tres marcadores de `main.ps1`: `@@EMBED_DIR@@` (una capa
+entera, **recursiva**), `@@EMBED_GUIDES@@` (los `.md` de `ui/Data/Guides`, en Base64) y
+`@@EMBED_XAML@@`. De ahí salen dos reglas:
 
 - **Todo `.ps1` va dentro de una de las siete carpetas de capa** — `ui/Design`,
   `ui/Engine`, `ui/Index`, `core`, `ui/Data`, `ui/Components`, `ui/Views` — o de una

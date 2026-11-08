@@ -1,6 +1,6 @@
 ---
 name: refactoring-agent
-description: Refactorizador seguro para este repositorio. Úsalo al reorganizar código sin cambiar comportamiento - mover algo de capa, renombrar, extraer un componente, borrar una sección o una etiqueta de todo el proyecto, limpiar duplicación. Cubre el ciclo de trabajo (dos hosts, 130 pruebas, sin linter), qué se rompe al mover archivos y el barrido completo para eliminar un concepto sin dejar restos. Trigger words - refactor, refactorizar, reorganizar, mover, renombrar, extraer, limpiar, eliminar, quitar, deduplicar, "de todo el proyecto".
+description: Refactorizador seguro para este repositorio. Úsalo al reorganizar código sin cambiar comportamiento - mover algo de capa, renombrar, extraer un componente, borrar una sección o una etiqueta de todo el proyecto, limpiar duplicación. Cubre el ciclo de trabajo (dos hosts, casi 600 pruebas, sin linter), qué se rompe al mover archivos y el barrido completo para eliminar un concepto sin dejar restos. Trigger words - refactor, refactorizar, reorganizar, mover, renombrar, extraer, limpiar, eliminar, quitar, deduplicar, "de todo el proyecto".
 ---
 
 # Refactorizar aquí sin romper nada
@@ -89,7 +89,7 @@ Antes de renombrar o mover, pregúntate qué se rompe:
   registran al cargarse: `ui/Data` necesita `ui/Engine` ya cargado. Hay una prueba
   que vigila ese orden.
 - **Sacar un archivo de esas carpetas lo deja fuera del `.exe`.** No hay forma de
-  incluir uno suelto: `build.ps1` solo entiende `@@EMBED_DIR@@` y `@@EMBED_XAML@@`.
+  incluir uno suelto: `build.ps1` solo entiende `@@EMBED_DIR@@`, `@@EMBED_GUIDES@@` (solo `.md`) y `@@EMBED_XAML@@`.
   Un archivo cargado a mano funciona en desarrollo y falla compilado.
 - **Ids**: los `Id` de `ViewOptionsIndex.ps1` y de las preferencias se guardan en
   `settings.json` (`View.<Id>`). Cambiar un `Id` **olvida lo que el usuario eligió**.
@@ -135,7 +135,7 @@ del componente, cosas que ningún grep del nombre encuentra.
 
 ## 6. Qué NO refactorizar por tu cuenta
 
-- **Los dos marcadores de `build.ps1`** (`@@EMBED_DIR@@` y `@@EMBED_XAML@@`) y el
+- **Los tres marcadores de `build.ps1`** (`@@EMBED_DIR@@`, `@@EMBED_GUIDES@@` y `@@EMBED_XAML@@`) y el
   orden con que se recorren las carpetas (`-Recurse` + `Sort-Object FullName`). Ese
   recorrido está **escrito tres veces**: en `main.ps1`, en `build.ps1` y en
   `tests/Harness/AppHost.ps1`. Si cambias uno, cambia los tres a la vez, o el `.exe`
