@@ -9,19 +9,22 @@ App de escritorio **WPF construida en PowerShell 5.1**, compilada a un `.exe` po
 **Estado actual: interfaz completa + cambios reales acotados.** Tres mecanismos tocan
 el equipo, cada uno con su lista blanca:
 
-- **Registro.** Al pulsar el toggle de un ajuste con `-Registry` (hoy los 47 de
-  *Regedit*, **uno por clave**: nunca se agrupan varias claves en un ajuste),
-  `core/Registry/SettingApply.ps1` escribe la clave por una **lista blanca** de ramas y
-  de valores concretos (`core/Registry/Writer.ps1`), respetando el tipo, guardando
-  copia del valor previo en memoria y verificando por relectura.
+- **Registro.** Al pulsar el toggle de un ajuste con `-Registry` (hoy 49: los 47 de
+  *Regedit* y los 2 de *Actualizaciones*, **uno por clave**: nunca se agrupan varias
+  claves en un ajuste), `core/Registry/SettingApply.ps1` escribe la clave por una
+  **lista blanca** de ramas y de valores concretos (`core/Registry/Writer.ps1`),
+  respetando el tipo, guardando copia del valor previo en memoria y verificando por
+  relectura. `OFF` escribe el `Default`, o **borra el valor** si de fábrica no existe
+  (`DefaultAbsent`, ver "Al implementar tweaks reales").
 - **Comandos.** Las secciones *Internet*, *Limpieza* y *Energía* ejecutan programas de
   Windows sin shell y por lista blanca (`core/Commands/CommandRunner.ps1`).
 - **Borrado.** *Limpieza* vacía carpetas de temporales del perfil y la papelera
   (`core/Commands/FolderCleanup.ps1`, el único sitio que borra archivos).
 
-*Actualizaciones* sigue con datos estáticos en `ui/Data/Categories/` y sus `-Tags` a
-mano. La sección **Guías** enseña los `.md` de `ui/Data/Guides/`. **El `.exe` corre
-elevado.** Modelo de amenaza y contratos completos en `SECURITY.md`.
+Ya no queda ninguna sección con datos estáticos ni `-Tags` a mano: las de ajustes
+(*Regedit*, *Actualizaciones*) leen el registro y las píldoras se cuentan. La sección
+**Guías** enseña los `.md` de `ui/Data/Guides/`. **El `.exe` corre elevado.** Modelo
+de amenaza y contratos completos en `SECURITY.md`.
 
 **Auditorías de seguridad y calidad:** cada pasada deja su informe fechado en
 `auditoria/` y una fila en `auditoria/README.md` (para dejar constancia de qué se
@@ -88,16 +91,20 @@ pwsh -ExecutionPolicy Bypass -File .\tests\Run-Tests.ps1 -BothHosts
 powershell -ExecutionPolicy Bypass -File .\tests\Run-Tests.ps1 -File 'Core*'
 ```
 
-**Hay pruebas y no hay linter.** Viven en `tests/`, no usan Pester (Windows solo trae
-la 3.4, incompatible con la sintaxis moderna) y no necesitan instalar nada. Se
-reparten en cuatro carpetas:
+**Hay pruebas, y el linter corre en la CI.** Las pruebas viven en `tests/`, no usan
+Pester (Windows solo trae la 3.4, incompatible con la sintaxis moderna) y no necesitan
+instalar nada. `.github/workflows/ci.yml` pasa en cada push **PSScriptAnalyzer
+1.25.0** (con `PSScriptAnalyzerSettings.psd1`; un aviso que no esté en
+`.github/pssa-baseline.txt` la tumba) y la suite en **5.1 y en 7**; Semgrep va en
+`semgrep.yml`. La CI no sustituye a `-BothHosts` en local. Se reparten en cuatro
+carpetas (más `tests/Smoke/`, la prueba de humo, que no recoge `Run-Tests.ps1`):
 
 | Carpeta | Qué prueba |
 | ------- | ---------- |
 | `tests/Harness/` | El arnés, no la aplicación: `TestKit` (`Describe`/`It`), `AppHost` (carga el programa sin abrir la ventana) y `Fixtures`. |
 | `tests/Core/` | `core/` contra el registro de verdad. |
 | `tests/Ui/` | La interfaz, construyendo controles de WPF sin enseñar la ventana. |
-| `tests/Source/` | Las reglas de este archivo que se ven leyendo el código: BOM, closures, glifos, qué entra en el `.exe`. |
+| `tests/Source/` | Las reglas de este archivo que se ven leyendo el código: BOM, closures, glifos, qué entra en el `.exe`. Y las invariantes de `SECURITY.md` (`Security.Tests.ps1`). |
 
 Ver `tests/README.md`, que además explica por qué Playwright no sirve para esto y qué
 haría falta para llegar a pruebas de extremo a extremo.
@@ -354,11 +361,16 @@ quedaría clavada en cero — que es lo que verían las pruebas.
 por **lista blanca de rutas** (`$RegistryWriteAllowlist`), respeta el tipo declarado,
 guarda copia del valor previo (`$RegistrySnapshots`, **solo en memoria** hoy), verifica
 por relectura y soporta `-WhatIf` (`SupportsShouldProcess`). El toggle la dispara vía
-`core/Registry/SettingApply.ps1`: `ON`→`Recommended`, `OFF`→`Default`. **Antes de tocar
-esto lee `SECURITY.md`** — la app corre elevada y ampliar la lista blanca es una
-decisión de seguridad, no un detalle. La red y la limpieza ya tienen su mecanismo
-(`core/Commands/`, ver "Las secciones de comandos" más abajo). Servicios y energía **todavía no**: cada
-uno será una subcarpeta nueva de `core/` con su propio contrato.
+`core/Registry/SettingApply.ps1`: `ON`→`Recommended`, `OFF`→`Default`, **o borrar el
+valor** (`Remove-RegistryValue`, estado `deleted`) cuando la clave declara
+`DefaultAbsent = $true` o la primera copia de la sesión (`Get-RegistrySnapshotOrigin`)
+la vio ausente (`Test-RegistryRestoreByDelete`). Se borra el valor, **nunca la clave**,
+por la misma lista blanca, desarmado, `-WhatIf`, copia previa y relectura. **Antes de
+tocar esto lee `SECURITY.md`** — la app corre elevada y ampliar la lista blanca es una
+decisión de seguridad, no un detalle. La red, la limpieza y la energía ya tienen su
+mecanismo (`core/Commands/`, ver "Las secciones de comandos" más abajo). Servicios y
+tareas programadas **todavía no**: cada uno será una subcarpeta nueva de `core/` con su
+propio contrato.
 
 - La lógica de sistema vive en `core/`, nunca dentro de las vistas ni de los componentes.
 - **`core/` está dividido por lo que toca de Windows**, no por tamaño: `core/Registry/` (leer y escribir el registro), `core/Interop/` (llamadas a la API de Windows: Mica y Acrílico, y maximizar al área de trabajo), `core/Shell/` (abrir enlaces por el shell, solo `http`/`https`), `core/Commands/` (ejecutar los pasos de las secciones de comandos, sin shell y por lista blanca, y vaciar carpetas de temporales: `FolderCleanup.ps1` es el único sitio que borra archivos) y `core/Diagnostics/` (el registro de actividad y `SystemInfo.ps1`, sobre qué corre el programa). Un mecanismo nuevo — red, servicios, energía — es una subcarpeta nueva ahí dentro, y entra al `.exe` sola.
@@ -366,7 +378,7 @@ uno será una subcarpeta nueva de `core/` con su propio contrato.
 - **Un DWord llega como `Int32` con signo.** `0xFFFFFFFF` se lee como `-1`. Hay que reinterpretarlo sin signo (`Format-RegistryValue`) o los valores altos salen negativos y no cuadran con lo declarado.
 - **Se abre siempre `RegistryView::Registry64`.** Si el `.exe` se compilara a 32 bits, `HKLM\SOFTWARE` se redirigiría a `Wow6432Node` en silencio.
 - El estado real se lee al entrar en la sección y se vuelca en las claves de `-Registry`; el `Current` **no se declara** en `ui/Data/Categories/`.
-- **La etiqueta de un ajuste que lee el registro se calcula, no se declara.** `core/Registry/SettingStatus.ps1` compara lo leído con el `Recommended` y el `Default` de cada clave y deja un `Status`: `optimized`, `factory`, `custom` o `unknown`. Un ajuste con `-Registry` **no lleva `-Tags`** — serían la versión inventada de lo mismo. Se compara por valor y no por escritura (`0x0000000A` = `10` = `0XA`, y `-1` = `0xFFFFFFFF`), un valor ausente es `factory` (Windows usa el suyo), y sin nada declarado con lo que comparar es `unknown`, nunca `custom`.
+- **La etiqueta de un ajuste que lee el registro se calcula, no se declara.** `core/Registry/SettingStatus.ps1` compara lo leído con el `Recommended` y el `Default` de cada clave y deja un `Status`: `optimized`, `factory`, `custom` o `unknown`. Un ajuste con `-Registry` **no lleva `-Tags`** — serían la versión inventada de lo mismo. Se compara por valor y no por escritura (`0x0000000A` = `10` = `0XA`, y `-1` = `0xFFFFFFFF`), un valor ausente es `factory` (Windows usa el suyo), y sin nada declarado con lo que comparar es `unknown`, nunca `custom`. Cada clave lleva `Default` **o** `DefaultAbsent = $true` (directivas: de fábrica el valor no existe), nunca los dos; con `DefaultAbsent`, ausente es `factory` y cualquier valor puesto es `optimized` o `custom`.
 - **Las píldoras del resumen de una sección son un FILTRO.** Pulsar una enseña solo los
   ajustes en ese estado; se combinan; sin ninguna marcada se ve todo; con filtro sale
   "Mostrar todos". Vive en `ui/Components/Layout/CategorySummary.ps1`
@@ -374,8 +386,8 @@ uno será una subcarpeta nueva de `core/` con su propio contrato.
   ya construidas mirando su `Tag` (el ajuste). Tocar un interruptor NO reaplica el
   filtro: la tarjeta no desaparece bajo el ratón. Llegar desde la búsqueda lo quita.
 - **El estado se calcula donde se lee, no donde se pinta.** Cuelga de `Update-CategoryRegistryState`, así que entrar en la sección y pulsar *Refrescar* lo dejan al día por el mismo camino. La interfaz solo lee `$Setting.Status` y `$Key.Status`; los colores y los nombres salen todos de `Get-StatusStyle` (`ui/Design/UiKit.ps1`), que es el único sitio donde se escriben.
-- Todo cambio de registro/servicio debe ser reversible y tener su valor de restauración documentado. Para el registro, ese contrato es el `Default` de cada clave (a dónde vuelve `OFF`) más el snapshot en memoria de `Writer.ps1` (el valor que había, aunque fuera personalizado). **Pendiente**: persistir ese snapshot y exponer "deshacer" en la UI; hoy se pierde al cerrar.
-- **Un ajuste que baja la postura de seguridad del equipo** (UAC, Defender, SmartScreen, Windows Update, BitLocker…) no puede llamarse "Recommended" sin más, su descripción tiene que decir qué protección se pierde, y no puede venir activo por defecto. `tests/Source/Security.Tests.ps1` vigila que ningún `-Registry` toque esos nombres de valor sin declararlo. Ver `SECURITY.md` §4.
+- Todo cambio de registro/servicio debe ser reversible y tener su valor de restauración documentado. Para el registro, ese contrato es el `Default` de cada clave (a dónde vuelve `OFF`) **o**, con `DefaultAbsent`, la ausencia del valor (`OFF` lo borra), más el snapshot en memoria de `Writer.ps1` (el valor que había, aunque fuera personalizado). Una directiva (rama `Policies`) se declara con `DefaultAbsent`: con un `Default`, `OFF` la deja puesta en vez de "sin configurar". Ver `SECURITY.md` §4. **Pendiente**: persistir ese snapshot y exponer "deshacer" en la UI (hoy se pierde al cerrar), y pasar a `DefaultAbsent` los ajustes de *Regedit* que aún escriben en ramas `Policies` con `Default` (entre ellos "Delivery Optimization (Policy)", que toca el mismo valor que "Delivery Optimization (P2P)" de *Actualizaciones*).
+- **Un ajuste que baja la postura de seguridad del equipo** (UAC, Defender, SmartScreen, Windows Update, BitLocker…) no puede llamarse "Recommended" sin más, su descripción tiene que decir qué protección se pierde, no puede venir activo por defecto y lleva `-AllowsSecurityTradeoff` en su `New-Setting`. `tests/Source/Security.Tests.ps1` vigila que ningún `-Registry` toque esos nombres de valor sin esa marca. Ver `SECURITY.md` §3.4.
 
 ## Las secciones de comandos (hoy Internet, Limpieza y Energía)
 
@@ -402,7 +414,12 @@ de comandos para marcar y un botón para correrlos. Cada una sale de un script s
 - **Lo marcado se recuerda entre sesiones**: `Save-StepChoices` guarda en
   `settings.json` (`StepChoices.<sección>`) solo los pasos que el usuario CAMBIÓ respecto
   a su `-Checked`, y `Restore-StepChoices` los vuelve a poner al arrancar (`main.ps1`,
-  tras `Import-AppSettings`). Un paso nuevo sale como venga declarado.
+  tras `Import-AppSettings`). Un paso nuevo sale como venga declarado. **Un paso con
+  `-Warning` nunca se restaura**: empieza siempre como viene declarado, porque
+  `settings.json` lo puede escribir cualquier programa sin ser administrador y la cola
+  corre elevada. En *Internet* llevan aviso, y vienen desmarcados, restablecer el
+  firewall, el DNS fijo de Google y su vuelta a DHCP (`dns-dhcp`, que va detrás y los
+  anula si se marcan juntos).
 - **`-WhatIf` es de verdad**: `Start-CommandStep -WhatIf` no arranca nada; un `-Clean` se
   recorre en simulacro (`DryRun`) y dice lo que borraría, y la papelera, cuánto tiene.
 - **El orden de ejecución es el del archivo**, marque el usuario lo que marque. Los

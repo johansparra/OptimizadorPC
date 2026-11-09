@@ -53,16 +53,20 @@ Preguntas que respondes en cada plan:
 
 ## El dominio: optimizaciones de PC
 
-Cada optimización, sea de red o de lo que sea, se declara igual: un `New-Setting` con
-sus claves en `-Registry`, `Recommended` y `Default`. Al diseñar una sección nueva:
+Cada optimización del registro se declara igual: un `New-Setting` con **una** clave en
+`-Registry`, `Recommended` y `Default` (o `DefaultAbsent = $true` si de fábrica el
+valor no existe, como en las directivas: entonces `OFF` lo borra). Lo que se ejecuta
+—red, limpieza, energía— es una sección de comandos (`Steps` con `New-CommandStep`).
+Al diseñar una sección nueva:
 
 - **El estado real se lee al entrar en la sección** (`core/Registry/CategoryState.ps1`) y se
   vuelca en los datos. El `Current` **no se declara** en `ui/Data/Categories/`.
 - Un ajuste **sin valor de restauración real no se puede aplicar.** Si no sabes el
   valor de fábrica, el plan tiene que decir cómo averiguarlo, no inventarlo.
-- Cuando la optimización no vive en el registro (adaptador de red, servicios, energía,
-  tareas programadas), el plan debe decir **qué mecanismo nuevo necesita `core/`** y
-  qué forma tiene su respuesta. No lo metas a la fuerza en el lector de registro.
+- Cuando la optimización no vive en el registro ni cabe en un comando de la lista
+  blanca de `core/Commands/` (servicios, tareas programadas), el plan debe decir **qué
+  mecanismo nuevo necesita `core/`** y qué forma tiene su respuesta. No lo metas a la
+  fuerza en el lector de registro.
 - Referencia útil para portar tweaks reales: `..\Programa\OptimizadorPC.ps1`, la
   versión monolítica anterior, que sí tenía `Apply`/`Revert` y helpers `Set-Reg` /
   `Set-SvcState`.

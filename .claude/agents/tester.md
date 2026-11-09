@@ -32,7 +32,7 @@ solo host **no es una verificación**.
 Para acotar mientras investigas:
 
 ```bash
-./tests/Run-Tests.ps1 -File 'Core.*'
+./tests/Run-Tests.ps1 -File 'Core*'          # -File se compara con la ruta relativa (Core/Log.Tests.ps1)
 ./tests/Run-Tests.ps1 -Filter '*registro*'
 ```
 
@@ -66,8 +66,9 @@ Y las trampas que se ven leyendo:
   un componente, lo normal es que **no haya que escribir nada**: casi todo se recorre
   solo desde los índices. Comprueba que de verdad queda cubierto antes de dar por
   bueno el "ya está cubierto".
-- Cada archivo tiene su sitio: `Core.*` para `core/`, `Ui.*` para la interfaz,
-  `Source/Rules.Tests.ps1` para las reglas de `CLAUDE.md` que se ven leyendo el código.
+- Cada archivo tiene su sitio: `tests/Core/` para `core/`, `tests/Ui/` para la interfaz,
+  `Source/Rules.Tests.ps1` para las reglas de `CLAUDE.md` que se ven leyendo el código
+  y `Source/Security.Tests.ps1` para las invariantes de `SECURITY.md`.
 - `tests/Harness/AppHost.ps1` **no repite la lista de archivos**: lee `main.ps1` con las mismas
   regex que `build.ps1`, así que las pruebas validan de paso el contrato de
   empaquetado. Si alguien toca esos patrones, tú te enteras antes que el `.exe`.
@@ -83,7 +84,9 @@ Dilo siempre en el informe, para que nadie confunda "verde" con "correcto":
 - **El aspecto.** Una tarjeta torcida, un color ilegible en tema oscuro o un glifo
   equivocado no se detectan. Hay que abrir la aplicación y mirar.
 - **El `.exe` funcionando.** Se comprueba que el paquete parsea y lleva todo dentro,
-  pero no se ejecuta el binario.
+  pero la suite no ejecuta el binario. La prueba de humo
+  (`tests/Smoke/Invoke-Smoke.ps1`, `-Exe` para el binario, con UAC a mano) solo mira
+  que la ventana salga; no pulsa nada.
 - **El ratón de verdad.** Se disparan eventos; no se mueve un cursor. El hit-testing
   real y `IsHitTestVisible` quedan fuera.
 - **Las animaciones**, que no avanzan sin una ventana pintándose.

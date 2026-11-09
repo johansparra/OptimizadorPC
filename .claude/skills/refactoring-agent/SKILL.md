@@ -72,8 +72,9 @@ y que el componente lo lea sin saber de quién viene.
 - No puede volver ni un control de WPF ni una cadena traducida.
 - **No puede lanzar hacia arriba.** Devuelve un estado (`read` / `missing` / `denied` /
   `badpath`), nunca una excepción.
-- `core/` está dividido por lo que toca de Windows: `core/Registry/` y
-  `core/Diagnostics/`. Un mecanismo nuevo (red, servicios, energía) es una
+- `core/` está dividido por lo que toca de Windows: `core/Registry/`,
+  `core/Commands/`, `core/Interop/`, `core/Shell/` y `core/Diagnostics/`. Un
+  mecanismo nuevo (servicios, tareas programadas) es una
   **subcarpeta nueva** ahí dentro, y entra al `.exe` sola porque el bloque
   `# @@EMBED_DIR:core@@` es recursivo.
 

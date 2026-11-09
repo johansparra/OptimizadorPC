@@ -10,9 +10,8 @@ Aplicación de escritorio para optimizar Windows 11 Pro. Interfaz **WPF** escrit
 > (`core/Registry/Writer.ps1`), respetando el tipo, con copia del valor previo y
 > verificación por relectura. Apagarlo vuelve al valor de fábrica, y si de fábrica el
 > valor **no existía** (una directiva sin configurar) lo **borra** —solo el valor, nunca
-> la clave—. Las
-> secciones de **comandos** —*Internet*, *Limpieza* y *Energía*— ejecutan programas
-> de Windows y vacían carpetas de temporales, también por lista blanca
+> la clave—. Las secciones de **comandos** —*Internet*, *Limpieza* y *Energía*—
+> ejecutan programas de Windows y vacían carpetas de temporales, también por lista blanca
 > (`core/Commands/`). La sección **Guías** enseña las notas `.md` de `ui/Data/Guides/`.
 > **El `.exe` corre elevado.** Ver [`SECURITY.md`](SECURITY.md) para el modelo de
 > amenaza y los contratos.
@@ -455,7 +454,7 @@ estados está:
 | Lo que hay en el registro | Estado | Lo que se ve |
 | ------------------------- | ------ | ------------ |
 | Igual que `Recommended` | `optimized` | **Optimizado** — estrella verde |
-| Igual que `Default`, **o el valor no existe** | `factory` | **Recomendado de fábrica** |
+| Igual que `Default`, **o el valor no existe** (con `DefaultAbsent`, solo esto) | `factory` | **Recomendado de fábrica** |
 | Cualquier otra cosa | `custom` | **Personalizado** |
 | No se pudo leer (sin permiso, raíz mala) | `unknown` | **Desconocido** |
 
@@ -470,14 +469,25 @@ Detalles que importan al declarar una clave:
   aplicado que apuntarse.
 - **Un ajuste con varias claves** sale `optimized` o `factory` solo si TODAS lo están;
   a medias es `custom`, y con una sola clave ilegible es `unknown`.
-- **Sin `Recommended` ni `Default` declarados** el estado es `unknown`: sin nada con lo
-  que comparar, decir "personalizado" sería una acusación sin pruebas.
+- **Sin `Recommended` ni `Default` declarados** (ni `DefaultAbsent`) el estado es
+  `unknown`: sin nada con lo que comparar, decir "personalizado" sería una acusación
+  sin pruebas.
+- **`DefaultAbsent = $true` en vez de `Default`** es para las directivas, cuyo estado de
+  fábrica es "sin configurar": ausente es `factory`, y cualquier valor puesto es
+  `optimized` o `custom`.
+
+**Apagar (`OFF`) no siempre escribe.** `SettingApply.ps1` escribe el `Default` de cada
+clave, salvo que la clave declare `DefaultAbsent` o que la primera copia de la sesión
+(`Get-RegistrySnapshotOrigin`) la viera ausente: entonces **borra el valor**
+(`Remove-RegistryValue`, estado `deleted`) por la misma lista blanca, con copia previa
+y relectura. Solo el valor: ninguna clave del registro se borra nunca.
 
 Se recalcula **en cada lectura** —al entrar en la sección y al pulsar *Refrescar*—,
 porque cuelga de `Update-CategoryRegistryState` y no de la interfaz. La fila de
 píldoras de la cabecera cuenta lo mismo (`Get-CategoryStatusCounts`), así que tarjetas
-y resumen no pueden contradecirse. Las secciones que todavía no leen el registro
-siguen enseñando sus `-Tags` escritas a mano.
+y resumen no pueden contradecirse. Hoy **todas** las secciones de ajustes leen el
+registro; las `-Tags` escritas a mano (`Get-CategoryCounts`) quedan solo de respaldo
+para una sección sin `-Registry`.
 
 ### Diagrama de módulos
 
@@ -569,11 +579,11 @@ flowchart LR
 
 `MainWindow.xaml` define un shell fijo (barra de título sin bordes, sidebar de navegación y cabecera). Las vistas **no** son archivos XAML: se construyen en código y se inyectan en tres contenedores nombrados.
 
-| Contenedor XAML      | Qué recibe                                    |
-| -------------------- | --------------------------------------------- |
-| `HeaderTitleArea`    | Título grande o breadcrumb                     |
-| `HeaderActionsArea`  | Buscador, "Quick Actions", "View"              |
-| `MainContent`        | El cuerpo de la vista (lista de tarjetas)      |
+| Contenedor XAML      | Qué recibe                                |
+| -------------------- | ----------------------------------------- |
+| `HeaderTitleArea`    | Título grande o breadcrumb                |
+| `HeaderActionsArea`  | Buscador, "Quick Actions", "View"         |
+| `MainContent`        | El cuerpo de la vista (lista de tarjetas) |
 
 Las vistas no tocan esas zonas directamente: pasan por `ui/Components/Layout/PageHeader.ps1`, que las limpia y las repuebla. Así **cambiar de pantalla no recrea la ventana** y todas las pantallas comparten el mismo aspecto de cabecera.
 
@@ -627,7 +637,7 @@ momento la ventana no tiene descriptor al que pedirle nada.
 ```mermaid
 flowchart LR
     START([main.ps1]) --> SHELL[Cargar MainWindow.xaml<br/>conectar title bar + sidebar]
-    SHELL --> LISTV["<b>Show-OptimizationsListView</b><br/>6 tarjetas de categoría<br/>con pills de estadísticas"]
+    SHELL --> LISTV["<b>Show-OptimizationsListView</b><br/>5 tarjetas de categoría<br/>con pills de estadísticas"]
     LISTV -->|click en tarjeta| DETV["<b>Show-CategoryDetailView</b><br/>ítems con toggles,<br/>dropdowns y tags"]
     DETV -->|breadcrumb 'Optimizations'| LISTV
 
@@ -647,16 +657,15 @@ Una fila por archivo de `ui/Data/Categories/`. El orden mostrado es el de `ui/In
 
 | Archivo | Id | Categoría | Icono | Badge | Ajustes |
 | ------- | -- | --------- | ----- | ----- | ------- |
-| `Regedit.ps1` | `regedit` | Regedit | `Shield` | NEW 41 *(contado)* | 47 |
-| `Internet.ps1` | `internet` | Internet | `Globe` | NEW *(a mano)* | 27 pasos |
-| `Cleanup.ps1` | `cleanup` | Cleanup | `Broom` | NEW *(a mano)* | 15 pasos |
+| `Regedit.ps1` | `regedit` | Regedit | `Shield` | NEW 41 *(contado)* | 47 con `-Registry` |
+| `Internet.ps1` | `internet` | Internet | `Globe` | NEW *(a mano)* | 28 pasos |
+| `Cleanup.ps1` | `cleanup` | Cleanup | `Broom` | NEW *(a mano)* | 16 pasos |
 | `Power.ps1` | `power` | Power | `Power` | NEW *(a mano)* | 2 pasos |
-| `Update.ps1` | `update` | Update | `Sync` | NEW 1 *(a mano)* | 2 |
+| `Update.ps1` | `update` | Update | `Sync` | NEW 1 *(a mano)* | 2 con `-Registry` |
 
-> **El badge se cuenta solo** a partir de los ajustes que llevan su propio `-Badge 'NEW'`: una categoría que no declare `Badge` sale con `NEW <n>`, o sin badge si no hay ninguno marcado. `Update.ps1` todavía lo declara a mano; borrar esa línea los pasa al recuento automático.
+> **El badge se cuenta solo** a partir de los ajustes que llevan su propio `-Badge 'NEW'`: una categoría que no declare `Badge` sale con `NEW <n>`, o sin badge si no hay ninguno marcado. `Update.ps1` todavía lo declara a mano (sus ajustes no llevan `-Badge`); borrar esa línea los pasa al recuento automático.
 >
-> Los contadores de las píldoras de la LISTA (`29/88`, etc.) siguen siendo **valores fijos declarados a mano**, no cuentan los ajustes reales del archivo. La fila de la pantalla de detalle sí es de verdad: cuenta por el estado leído del registro (ver *El estado de cada ajuste*).
-
+> **Las píldoras ya no llevan números escritos a mano**, ni en la lista ni en el detalle. En una sección de ajustes cuentan por el estado leído del registro (`Get-CategoryStatusCounts`, ver *El estado de cada ajuste*): la lista lee todas las secciones la primera vez que se abre. En una sección de comandos dicen cuántos pasos hay marcados de cuántos.
 
 ---
 
@@ -710,21 +719,23 @@ powershell -ExecutionPolicy Bypass -File .\build.ps1 -CombineOnly
 ## Pruebas
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\tests\Run-Tests.ps1   # Windows PowerShell 5.1
-pwsh       -ExecutionPolicy Bypass -File .\tests\Run-Tests.ps1   # PowerShell 7
+pwsh       -ExecutionPolicy Bypass -File .\tests\Run-Tests.ps1 -BothHosts   # 5.1 y 7 a la vez
+powershell -ExecutionPolicy Bypass -File .\tests\Run-Tests.ps1              # solo Windows PowerShell 5.1
 ```
 
 Sin dependencias: no usan Pester ni hay nada que instalar. Pásalas en **los dos hosts**, por el mismo motivo de la convención 6.
 
 Cubren cinco cosas:
 
-- **`core/`** contra el registro de Windows de verdad — los cuatro estados de lectura, el DWord con signo, la **escritura** (lista blanca, tipado, snapshot, relectura, `-WhatIf`) contra una rama de pruebas en `HKCU`, y que nada suba una excepción hacia la ventana.
+- **`core/`** contra el registro de Windows de verdad — los cuatro estados de lectura, el DWord con signo, la **escritura** y el **borrado de un valor** (lista blanca, tipado, snapshot, relectura, `-WhatIf`) contra una rama de pruebas en `HKCU`, y que nada suba una excepción hacia la ventana.
 - **La interfaz**, construyendo controles de WPF reales pero sin enseñar la ventana: que estén los nombres que busca `FindName`, que cada vista se pinte, que el cambio de tema repinte los pinceles y que no quede ni un texto sin traducir.
 - **El cableado de `main.ps1`**: levantan la ventana y pulsan los botones. Es la única forma de cazar la convención 4, porque un manejador con closure falla *al hacer clic* y solo ejecutando `main.ps1`.
 - **Las reglas del proyecto** que se comprueban leyendo el código: el BOM, los `.GetNewClosure()`, los glifos inventados, y que ningún archivo se quede fuera del `.exe`.
-- **Invariantes de seguridad** (`tests/Source/Security.Tests.ps1`): que toda ruta de `-Registry` está en la lista blanca, que no hay ejecución dinámica de código ni llamadas de red en `ui/`/`core/`, que ningún ajuste toca un nombre de valor que degrada la seguridad del equipo sin declararlo, y que `ExternalLink` solo abre `http`/`https`. Ver `SECURITY.md`.
+- **Invariantes de seguridad** (`tests/Source/Security.Tests.ps1`): que toda ruta de `-Registry` está en la lista blanca, que cada clave lleva `Default` o `DefaultAbsent` (no los dos), que no se borra ninguna clave del registro y solo `Writer.ps1` borra valores, que no hay ejecución dinámica de código ni llamadas de red en `ui/`/`core/`, que ningún ajuste toca un nombre de valor que degrada la seguridad del equipo sin declararlo (`-AllowsSecurityTradeoff`), y que `ExternalLink` solo abre `http`/`https`. Ver `SECURITY.md`.
 
 Detalles en [`tests/README.md`](tests/README.md), que además explica **por qué Playwright no sirve aquí** (automatiza navegadores; esto es WPF) y qué haría falta para llegar a pruebas de extremo a extremo con UI Automation.
+
+**La CI** (`.github/workflows/ci.yml`, en `windows-latest`) pasa en cada push y pull request **PSScriptAnalyzer 1.25.0** con `PSScriptAnalyzerSettings.psd1` —falla con cualquier error y con cualquier aviso que no esté en `.github/pssa-baseline.txt`— y la suite entera en **5.1 y en 7**, un runner por host. Semgrep va aparte (`.github/workflows/semgrep.yml`), con la imagen fijada por digest.
 
 ---
 
@@ -784,6 +795,24 @@ Detalles en [`tests/README.md`](tests/README.md), que además explica **por qué
   botones que se combinan
 - [x] Panel **Acerca de** (botón ?) y la versión en una sola fuente (`ui/Data/AppInfo.ps1`)
 - [x] Maximizar sin tapar la barra de tareas (`core/Interop/WorkArea.ps1`)
+- [x] **`-Registry` en *Actualizaciones***: dos directivas de Windows Update, una por
+  clave (`DODownloadMode` y `NoAutoRebootWithLoggedOnUsers`, esta marcada con
+  `-AllowsSecurityTradeoff`). Ya no queda ninguna sección con `-Tags` a mano
+- [x] **`OFF` vuelve a "no configurado"**: si de fábrica el valor no existe
+  (`DefaultAbsent = $true`) o la primera copia de la sesión lo vio ausente, se borra el
+  valor (`Remove-RegistryValue`) en vez de escribir un `Default`
+- [x] **Contadores de las píldoras calculados**: la lista y el detalle cuentan por el
+  estado leído (`Get-CategoryStatusCounts`) o por los pasos marcados; ninguna sección
+  declara ya `Recommended` / `Default` / `Custom` / `Total`
+- [x] **Paso "volver a DHCP"** en *Internet* (`dns-dhcp`), desmarcado y con aviso:
+  deshace el DNS fijo de Google
+- [x] Un paso con aviso (`-Warning`) nunca se restaura marcado desde `settings.json`
+  (`Restore-StepChoices`): se decide cada vez, a la vista
+- [x] **CI** en GitHub Actions: PSScriptAnalyzer contra una línea base y la suite en 5.1
+  y en 7 (`.github/workflows/ci.yml`); Semgrep con la imagen fijada por digest
+- [x] ~~Que el control de la tarjeta de un ajuste **sin** `-Registry` refleje un valor
+  real~~: **ya no aplica**, no queda ninguna sección de ajustes sin `-Registry`. Si
+  vuelve a haber una, vuelve a ser pendiente
 
 ## Pendiente
 
@@ -791,15 +820,18 @@ Detalles en [`tests/README.md`](tests/README.md), que además explica **por qué
   guarda el valor previo solo en memoria (`$RegistrySnapshots`): se pierde al cerrar
 - [ ] **Aviso de punto de restauración** (o `reg export` de la rama) antes de la primera
   escritura elevada
-- [ ] Llevar `-Registry` a *Actualizaciones*, la única sección de ajustes que queda sin
-  claves: muestra sus `-Tags` escritas a mano y no hay estado que calcular
-- [ ] Lógica real de otros mecanismos (servicios, tareas programadas, directivas) como
-  subcarpetas nuevas de `core/`. Los planes de energía ya van por comandos (*Energía*)
-- [ ] Que el control de la tarjeta de un ajuste **sin** `-Registry` refleje un valor real
-  y no el `Value` estático del archivo de la sección
-- [ ] "Quick Actions" y "Reset" de la lista (hoy decorativos; el "Refrescar" del detalle
-  sí funciona)
-- [ ] Contadores de las píldoras de la lista calculados en vez de fijos
+- [ ] Lógica real de otros mecanismos (servicios, tareas programadas, directivas que no
+  sean un valor del registro) como subcarpetas nuevas de `core/`. Los planes de energía
+  ya van por comandos (*Energía*)
+- [ ] **Pasar a `DefaultAbsent` los ajustes de *Regedit* en ramas `Policies`.** Hoy
+  declaran un `Default` y `OFF` deja la directiva puesta con ese número en vez de
+  volver a "sin configurar" (salvo que la primera copia de la sesión la viera ausente)
+- [ ] **"Delivery Optimization" está duplicado**: *Regedit* ("Delivery Optimization
+  (Policy)") y *Actualizaciones* ("Delivery Optimization (P2P)") escriben el mismo
+  valor (`HKLM\SOFTWARE\Policies\Microsoft\Windows\DeliveryOptimization\DODownloadMode`),
+  y el de *Regedit* con `Default` en vez de `DefaultAbsent`: apagar uno u otro no deja
+  lo mismo
+- [ ] "Quick Actions" de la lista (hoy decorativo; el "Refrescar" del detalle sí
+  funciona). El botón "Reset" ya no existe
 - [ ] Prueba de humo del `.exe` **elevado** sin intervención (la de hoy arranca el script
   empaquetado sin elevar; con `-Exe` hace falta aceptar el UAC a mano)
-- [ ] Un paso "volver a DHCP" para deshacer el DNS fijo de Google

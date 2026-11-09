@@ -10,6 +10,10 @@ powershell -ExecutionPolicy Bypass -File ./tests/Run-Tests.ps1         # solo 5.
 `main.ps1` sobre pwsh 7 en ámbito de script: hay fallos que solo salen en uno de los
 dos (regla 8 de `CLAUDE.md`). Devuelve 0 si todo pasa y 1 si algo falla.
 
+La CI (`.github/workflows/ci.yml`) las pasa en cada push y pull request, un runner
+`windows-latest` por host. Ese runner es un **Windows Server**: lo que dependa de la
+edición del sistema tiene que valer también ahí (ver `Core/SystemInfo.Tests.ps1`).
+
 ```powershell
 .\tests\Run-Tests.ps1 -Timing                 # al final, los 10 archivos más lentos
 .\tests\Run-Tests.ps1 -File 'Core*'           # solo una carpeta
@@ -28,13 +32,14 @@ de comprobaciones, y hace el mismo trabajo.
 
 ## Qué hay dentro
 
-```
+```text
 tests/
 ├── Run-Tests.ps1        El lanzador. Comprueba STA, carga todo y resume.
 ├── Harness/             EL ARNÉS. No prueba nada; hace que se pueda probar.
 ├── Core/                Pruebas de core/  — el sistema de verdad
 ├── Ui/                  Pruebas de ui/    — controles de WPF sin ventana
-└── Source/              Pruebas del CÓDIGO FUENTE, sin ejecutarlo
+├── Source/              Pruebas del CÓDIGO FUENTE, sin ejecutarlo
+└── Smoke/               La prueba de humo: no es un *.Tests.ps1 (ver más abajo)
 ```
 
 | Archivo | Cubre |
@@ -52,7 +57,7 @@ tests/
 | `Core/ExternalLink.Tests.ps1` | Que solo se abran URLs `http`/`https` absolutas y que un esquema no permitido ni llegue al shell. |
 | `Core/CommandRunner.Tests.ps1` | Ejecutar los pasos de las secciones de comandos: lista blanca de ejecutables y servicios, rutas e intérpretes rechazados, carpetas de `-Clean` solo de la lista, desarmado, `blocked`, `-SkipIf`, el detalle de un programa, el apartado del log de cada sección, un proceso **real** de solo lectura (`netsh interface show interface`) y la salida con tildes en UTF-8 y en OEM. |
 | `Core/FolderCleanup.Tests.ps1` | Vaciar carpetas, sobre una carpeta de mentira en `%TEMP%`: lista blanca, `%TEMP%` fuera del perfil, los dos modos de borrado, que una unión no se siga, por trozos, y el detalle de lo borrado y lo saltado (con su motivo). La papelera de verdad no se toca. |
-| `Core/SystemInfo.Tests.ps1` | Sobre qué corre el programa: Windows (sin el "Windows 10" falso), PowerShell, exe/script, arquitectura. |
+| `Core/SystemInfo.Tests.ps1` | Sobre qué corre el programa: Windows (sin el "Windows 10" falso: desde la compilación 22000 tiene que decir "Windows 11", pero solo en un equipo cliente, `InstallationType = Client`; un Windows Server de la misma compilación, como el runner de la CI, no se renombra), PowerShell, exe/script, arquitectura. |
 | `Core/WorkArea.Tests.ps1` | Maximizar al área de trabajo, con una ventana Win32 invisible y `WM_GETMINMAXINFO` a mano. |
 | `Ui/Window.Tests.ps1` | La ventana, los temas, la barra de título, el menú lateral, las vistas. |
 | `Ui/LogPanel.Tests.ps1` | El cajón del log: abrir, cerrar, las filas, el idioma. |
@@ -119,7 +124,7 @@ Ninguno hacía falta para lo que hay hoy. Estas pruebas construyen los controles
 WPF **de verdad** —la misma clase `Button`, el mismo `Grid`, el XAML real— y miran el
 árbol resultante, solo que sin enseñar la ventana. Eso ya contesta a casi todo lo que
 querrías preguntar (¿está el botón?, ¿se llenó la lista?, ¿se tradujo el título?) y
-tarda un par de minutos por host —587 pruebas— en vez de mucho más, sin ventanas abriéndose por delante de
+tarda un par de minutos por host —631 pruebas— en vez de mucho más, sin ventanas abriéndose por delante de
 lo que estés haciendo.
 
 Los manejadores de `main.ps1` sí se prueban, y sin UIA: `Ui/Wiring.Tests.ps1` levanta
@@ -137,12 +142,14 @@ existen con la ventana pintada y un ratón de verdad. Por ejemplo:
   dispara: para poder probar el cierre del cajón sin depender de eso);
 - una prueba de humo sobre el `.exe` compilado, que es el artefacto que se entrega.
 
-Ese último caso es el que más valdría la pena, y se haría con
-`System.Windows.Automation` sobre `build/OptimizadorPC.exe` — sin instalar nada. Ahora
-que un clic **escribe en `HKLM` con privilegios de administrador**, una prueba de humo
-del binario entregado importa más que antes; sigue pendiente porque cuesta bastante más
-de mantener y la escritura ya está cubierta a nivel de `core/` contra una rama de
-pruebas en `HKCU` (`Core/RegistryWriter.Tests.ps1`, `Core/SettingApply.Tests.ps1`).
+Ese último caso es el que más valdría la pena, y ya existe a medias con
+`System.Windows.Automation` —sin instalar nada—: `Smoke/Invoke-Smoke.ps1` (abajo)
+arranca el programa empaquetado y lo mira desde fuera. Ahora que un clic **escribe y
+borra valores en `HKLM` con privilegios de administrador**, lo que falta importa más
+que antes: que corra sobre el `.exe` **elevado** sin intervención y que **pulse** algo.
+Sigue pendiente porque cuesta bastante más de mantener y la escritura y el borrado ya
+están cubiertos a nivel de `core/` contra una rama de pruebas en `HKCU`
+(`Core/RegistryWriter.Tests.ps1`, `Core/SettingApply.Tests.ps1`).
 
 ## La prueba de humo (`Smoke/Invoke-Smoke.ps1`)
 
@@ -163,7 +170,8 @@ lo que estés haciendo, así que `Run-Tests.ps1` no la recoge. Hay que compilar 
   oscuro o si un glifo es el equivocado, esto no se entera. Para eso hay que abrir la
   aplicación y mirarla.
 - **El `.exe` funcionando.** Se comprueba que el paquete que arma `build.ps1` parsea
-  y lleva todo dentro, pero no se ejecuta el binario.
+  y lleva todo dentro, pero `Run-Tests.ps1` no ejecuta el binario. La prueba de humo
+  con `-Exe` sí lo arranca, a mano (hay que aceptar el UAC) y sin pulsar nada.
 - **El ratón de verdad.** Se disparan los eventos, no se mueve un cursor.
 - **La escritura al registro EN EL EQUIPO REAL.** El arnés la desarma
   (`Set-RegistryWriteArmed $false` en `AppHost.ps1`); las pruebas de `core/` la rearman

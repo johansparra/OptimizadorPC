@@ -53,8 +53,8 @@ function Get-NewBadgeText {
     Steps        (array)  Pasos que se EJECUTAN, creados con New-CommandStep.
                           Una sección con Steps no enseña ajustes sino una
                           lista para marcar y un botón para correrla (ver
-                          ui/Views/CategoryStepsView.ps1). Hoy: Internet
-                          y Limpieza. Cada paso queda apuntado con el Id
+                          ui/Views/CategoryStepsView.ps1). Hoy: Internet,
+                          Limpieza y Energía. Cada paso queda apuntado con el Id
                           de su sección (Source): es el apartado del log
                           en el que caen sus líneas.
 #>

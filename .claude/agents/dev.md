@@ -70,21 +70,26 @@ la capa que le toque, no una carpeta nueva al lado.
 ## Al implementar optimizaciones
 
 - La lógica de sistema va en **`core/`**, nunca en vistas ni componentes.
-- Cada ajuste se declara en `ui/Data/Categories/` con `New-Setting` y sus claves en
-  `-Registry`, con `Recommended` y `Default`. El **`Current` no se declara**: lo
-  rellena `core/Registry/CategoryState.ps1` leyendo el equipo.
+- Cada ajuste se declara en `ui/Data/Categories/` con `New-Setting` y **una** clave en
+  `-Registry`, con `Recommended` y `Default` —o `DefaultAbsent = $true` en vez de
+  `Default` si de fábrica el valor no existe, como en toda directiva de una rama
+  `Policies`—. El **`Current` no se declara**: lo rellena
+  `core/Registry/CategoryState.ps1` leyendo el equipo.
 - Un `DWord` llega como `Int32` **con signo**: `0xFFFFFFFF` se lee como `-1`.
   Reinterprétalo sin signo o los valores altos salen negativos.
 - Se abre siempre `RegistryView::Registry64`.
 - **Escribir en el registro ya existe** (`core/Registry/Writer.ps1`,
   `SettingApply.ps1`), por lista blanca de rutas, con el tipo declarado, snapshot del
-  valor previo y verificación por relectura, envuelto en `SupportsShouldProcess`. Al
-  añadir un ajuste con `-Registry` o ampliar `$RegistryWriteAllowlist`: lee
-  `SECURITY.md`, mantén el `Default` como valor de restauración real, y si el ajuste
-  baja la seguridad del equipo, dilo en su descripción, no lo llames "Recommended" a
-  secas y marca `AllowsSecurityTradeoff = $true` (lo exige `Security.Tests.ps1`).
-  Servicios, energía y red **todavía no se escriben**: cada uno es una subcarpeta nueva
-  de `core/`.
+  valor previo y verificación por relectura, envuelto en `SupportsShouldProcess`. `OFF`
+  escribe el `Default`, o **borra el valor** (`Remove-RegistryValue`, nunca la clave)
+  si la clave declara `DefaultAbsent` o la primera copia de la sesión lo vio ausente.
+  Al añadir un ajuste con `-Registry` o ampliar `$RegistryWriteAllowlist`: lee
+  `SECURITY.md`, mantén el `Default` (o `DefaultAbsent`) como valor de restauración
+  real, y si el ajuste baja la seguridad del equipo, dilo en su descripción, no lo
+  llames "Recommended" a secas y añade el switch `-AllowsSecurityTradeoff` a su
+  `New-Setting` (lo exige `Security.Tests.ps1`). Red, limpieza y energía van por
+  comandos (`core/Commands/`); servicios y tareas programadas **todavía no se
+  escriben**: cada uno es una subcarpeta nueva de `core/`.
 
 ## Antes de decir que has terminado
 
