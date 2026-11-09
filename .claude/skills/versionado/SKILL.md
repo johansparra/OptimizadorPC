@@ -89,6 +89,26 @@ cuenta como renombrado (no comparte bytes con el anterior): es normal, dilo en e
 cuerpo si viene al caso. Para código, si un mismo commit mueve y reescribe mucho,
 separa el movimiento del cambio y se conserva el historial del archivo.
 
+## Releases
+
+**Los decide el usuario: solo se hace uno cuando lo pide**, y él dice el número
+(versionado semántico, `MAYOR.MENOR.PARCHE`). El primero fue `v1.0.0` (2026-11-08).
+
+1. `Version` en `ui/Data/AppInfo.ps1` (la única fuente; `build.ps1` la escribe en
+   los metadatos del `.exe` con un cuarto `.0`).
+2. `build.ps1`, y comprobar que el `.exe` dice esa versión
+   (`[Diagnostics.FileVersionInfo]::GetVersionInfo(...)`).
+3. Suite en los dos hosts y `tests/Smoke/Invoke-Smoke.ps1`. Rojo → no hay release.
+4. Commit con `ui/Data/AppInfo.ps1` **y** `build/OptimizadorPC.exe` (aquí sí entra el
+   binario: el tag tiene que llevar el `.exe` que se publica). Push a `master`.
+5. Tag anotado `vX.Y.Z` sobre ese commit y `git push origin vX.Y.Z`.
+6. `gh release create vX.Y.Z build/OptimizadorPC.exe --title "Optimizador PC X.Y.Z"
+   --notes-file <notas>`: qué trae, que pide UAC y no está firmado (SmartScreen
+   avisará), y el **SHA-256** del `.exe` (`Get-FileHash`).
+
+Nunca se mueve ni se borra un tag publicado: si un release sale mal, se publica el
+siguiente parche.
+
 ## Nunca
 
 - `push` por tu cuenta — se sube cuando lo piden.

@@ -19,7 +19,7 @@
 
 $AppInfo = @{
     Name        = 'Optimizador PC'
-    Version     = '1.1.0'
+    Version     = '1.0.0'
     Description = 'Windows 11 tweaks for performance, gaming and privacy. Every change shows the registry key it touches and can be turned back off.'
     Repository  = 'https://github.com/johansparra/OptimizadorPC'
 }
