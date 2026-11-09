@@ -182,6 +182,14 @@ Describe 'core/Registry/Writer.ps1 - desarmada en las pruebas' {
         Assert-Equal 'missing' (Read-RegistryValueRaw (Get-TestRegFullPath) 'NoDeberiaExistir').State
         Assert-Equal 'disarmed' @(Get-AppLog -Source 'registry')[0].Status
     }
+
+    It 'desarmada tampoco borra' {
+        Clear-AppLog
+        $r = Remove-RegistryValue -Path (Get-TestRegFullPath) -Name 'DwordCinco' -Type 'DWord'
+        Assert-Equal 'disarmed' $r.State
+        Assert-Equal 5 (Read-RegistryValueRaw (Get-TestRegFullPath) 'DwordCinco').Value
+        Assert-Equal 'disarmed' @(Get-AppLog -Source 'registry')[0].Status
+    }
 }
 
 Describe 'core/Registry/Writer.ps1 - escribir de verdad' {
@@ -339,6 +347,122 @@ Describe 'core/Registry/Writer.ps1 - escribir de verdad' {
     }
 
     Set-RegistryWriteArmed $false
+}
+
+# Pone un valor a mano en la rama de prueba, sin pasar por Writer.ps1.
+function Set-TestRegValue {
+    param([string]$Name, $Value, [Microsoft.Win32.RegistryValueKind]$Kind = 'DWord')
+    $key = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey((Get-TestRegPath))
+    try { $key.SetValue($Name, $Value, $Kind) } finally { $key.Close() }
+}
+
+Describe 'core/Registry/Writer.ps1 - borrar un valor' {
+
+    Set-RegistryWriteArmed $true
+
+    It 'borra el valor, lo confirma por relectura y deja la clave y lo demás' {
+        Set-TestRegValue 'BorrarMe' 9
+        $r = Remove-RegistryValue -Path (Get-TestRegFullPath) -Name 'BorrarMe' -Type 'DWord' -Requested 'OFF'
+
+        Assert-Equal 'deleted' $r.State
+        Assert-True  $r.Verified
+        Assert-Equal 'missing' (Read-RegistryValueRaw (Get-TestRegFullPath) 'BorrarMe').State
+        # Solo el valor: la clave sigue, y su vecino también.
+        Assert-True  (Test-RegistryKeyExists (Get-TestRegFullPath))
+        Assert-Equal 5 (Read-RegistryValueRaw (Get-TestRegFullPath) 'DwordCinco').Value
+    }
+
+    It 'si ya no existe no hace nada (nochange)' {
+        Assert-Equal 'nochange' (Remove-RegistryValue -Path (Get-TestRegFullPath) -Name 'NoExisteNunca' -Type 'DWord').State
+    }
+
+    It 'rechaza una ruta fuera de la lista blanca, una raíz inventada y un nombre vacío' {
+        Assert-Equal 'blocked' (Remove-RegistryValue -Path 'HKEY_CURRENT_USER\Software\FueraDeLista' -Name 'X').State
+        Assert-Equal 'badpath' (Remove-RegistryValue -Path 'HKEY_LO_QUE_SEA\x' -Name 'X').State
+        # Sin nombre se borraría el "(Predeterminado)" de la clave.
+        Assert-Equal 'blocked' (Remove-RegistryValue -Path (Get-TestRegFullPath) -Name '').State
+    }
+
+    It 'la lista de valores también manda al borrar: otro nombre de la misma clave, no' {
+        # SysMain\Start está permitido; ImagePath no. Se rechaza ANTES
+        # de tocar nada, así que no hace falta administrador.
+        Assert-Equal 'blocked' (Remove-RegistryValue -Path 'HKLM\SYSTEM\CurrentControlSet\Services\SysMain' -Name 'ImagePath').State
+    }
+
+    It 'no borra un valor que existe con OTRO tipo' {
+        Set-TestRegValue 'BorrarTipo' 'texto' 'String'
+        $r = Remove-RegistryValue -Path (Get-TestRegFullPath) -Name 'BorrarTipo' -Type 'DWord'
+        Assert-Equal 'typemismatch' $r.State
+        Assert-Equal 'texto' (Read-RegistryValueRaw (Get-TestRegFullPath) 'BorrarTipo').Value
+    }
+
+    It 'un -Type desconocido no borra' {
+        Set-TestRegValue 'BorrarRaro' 1
+        Assert-Equal 'typefail' (Remove-RegistryValue -Path (Get-TestRegFullPath) -Name 'BorrarRaro' -Type 'Loquesea').State
+        Assert-Equal 'read' (Read-RegistryValueRaw (Get-TestRegFullPath) 'BorrarRaro').State
+    }
+
+    It '-WhatIf no borra' {
+        Set-TestRegValue 'BorrarWhatIf' 3
+        $r = Remove-RegistryValue -Path (Get-TestRegFullPath) -Name 'BorrarWhatIf' -Type 'DWord' -WhatIf
+        Assert-Equal 'nochange' $r.State
+        Assert-Equal 3 (Read-RegistryValueRaw (Get-TestRegFullPath) 'BorrarWhatIf').Value
+    }
+
+    It 'guarda copia del valor antes de borrarlo, con su estado' {
+        Clear-RegistrySnapshots
+        Set-TestRegValue 'BorrarCopia' 4
+        Remove-RegistryValue -Path (Get-TestRegFullPath) -Name 'BorrarCopia' -Type 'DWord' | Out-Null
+
+        $snap = @(Get-RegistrySnapshots)[0]
+        Assert-True  $snap.Existed
+        Assert-Equal 'read' $snap.State
+        Assert-Equal 4 $snap.Value
+    }
+
+    It 'deja en el log intento, verificación y borrado' {
+        Set-TestRegValue 'BorrarLog' 8
+        Clear-AppLog
+        Remove-RegistryValue -Path (Get-TestRegFullPath) -Name 'BorrarLog' -Type 'DWord' -Requested 'OFF' -Action 'RestoreAbsent' | Out-Null
+
+        $lineas = @(Get-AppLog -Source 'registry')
+        $intento = $lineas | Where-Object { $_.Status -eq 'write attempt' }
+        Assert-NotNull $intento 'falta la línea [write attempt]'
+        Assert-Match 'action=RestoreAbsent' $intento.Detail
+        Assert-Match 'newvalue=\(absent\)' $intento.Detail
+
+        $post = $lineas | Where-Object { $_.Status -eq 'post write' }
+        Assert-NotNull $post 'falta la línea [post write]'
+        Assert-Match 'actual=\(absent\)' $post.Detail
+        Assert-Match 'result=SUCCESS' $post.Detail
+
+        $ok = $lineas | Where-Object { $_.Status -eq 'deleted' }
+        Assert-NotNull $ok 'falta la línea [deleted]'
+        Assert-Match 'old=8' $ok.Detail
+    }
+
+    It 'nunca lanza, le eches lo que le eches' {
+        foreach ($ruta in @('', '\', 'HKCU\', (Get-TestRegFullPath))) {
+            Assert-NoThrow { Remove-RegistryValue -Path $ruta -Name 'X' -Type 'x' } "con la ruta '$ruta'"
+        }
+    }
+
+    Set-RegistryWriteArmed $false
+}
+
+Describe 'core/Registry/Writer.ps1 - la primera copia de la sesión' {
+
+    It 'Get-RegistrySnapshotOrigin devuelve la PRIMERA copia, sin distinguir raíz abreviada ni mayúsculas' {
+        Clear-RegistrySnapshots
+        Add-RegistrySnapshot -Path 'HKEY_CURRENT_USER\Software\OptimizadorPC\Origen' -Name 'V' -Existed $false -State 'missing'
+        Add-RegistrySnapshot -Path 'HKEY_CURRENT_USER\Software\OptimizadorPC\Origen' -Name 'V' -Kind 'DWord' -Value 1 -Existed $true -State 'read'
+
+        $o = Get-RegistrySnapshotOrigin -Path 'hkcu\software\optimizadorpc\origen' -Name 'v'
+        Assert-NotNull $o
+        Assert-Equal 'missing' $o.State
+        Assert-Null (Get-RegistrySnapshotOrigin -Path 'HKCU\Software\OptimizadorPC\Otra' -Name 'V')
+        Clear-RegistrySnapshots
+    }
 }
 
 Set-RegistryWriteArmed $false

@@ -22,7 +22,13 @@ jobs:
     env:
       SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
     container:
-      image: semgrep/semgrep
+      # Fijada por digest, por lo mismo que checkout: `semgrep/semgrep`
+      # a secas es `latest`, que cambia con cada versión y lo puede
+      # repuntar quien publica la imagen. El digest es el del índice
+      # multiarquitectura de 1.183.0 (el que tenía `latest` el
+      # 2026-11-08, según la API de Docker Hub). Subir de versión =
+      # cambiar tag y digest a conciencia (SECURITY.md §8).
+      image: semgrep/semgrep:1.183.0@sha256:2e45517a85e13a9cca14a2a00df6bb48affd66b8ebfae1b0991cd57578362fb0
     steps:
     # Fijado por SHA: una etiqueta (`@v6`) la puede repuntar el dueño
     # de la acción en silencio -cadena de suministro-. Subir de

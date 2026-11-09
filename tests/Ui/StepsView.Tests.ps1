@@ -38,12 +38,33 @@ Describe 'ui/Data/Categories/Internet.ps1 - los pasos' {
         Assert-Equal $ids.Count @($ids | Select-Object -Unique).Count
     }
 
-    It 'lo que borra reglas o fija DNS viene desmarcado y con aviso' {
-        foreach ($id in 'firewall-reset', 'dns-primary', 'dns-secondary') {
+    It 'lo que borra reglas o toca el DNS viene desmarcado y con aviso' {
+        foreach ($id in 'firewall-reset', 'dns-primary', 'dns-secondary', 'dns-dhcp') {
             $step = @((Get-InternetCategory).Steps) | Where-Object { $_.Id -eq $id }
             Assert-False $step.Checked "$id no debería venir marcado"
             Assert-True ([bool]$step.Warning) "$id tiene que avisar"
         }
+    }
+
+    It 'el DNS fijo de Google tiene su paso de vuelta a DHCP, detrás de ellos y antes del vaciado final' {
+        # SECURITY.md §11, riesgo 8. Va en la fase 3, después de los dos
+        # de Google (marcado junto a ellos los anula: de ahí el aviso) y
+        # antes de 'dns-flush-final', que limpia con el DNS ya devuelto.
+        $pasos = @((Get-InternetCategory).Steps)
+        $ids = @($pasos | ForEach-Object { $_.Id })
+        $i = [array]::IndexOf($ids, 'dns-dhcp')
+        Assert-True ($i -ge 0) 'falta el paso dns-dhcp'
+        $paso = $pasos[$i]
+
+        Assert-Equal 'exe' $paso.Kind
+        Assert-Equal 'netsh.exe' $paso.Exe
+        Assert-Equal 'interface ip set dns name=Ethernet source=dhcp' (@($paso.Arguments) -join ' ')
+        Assert-True $paso.RequiresAdmin 'cambiar el DNS del adaptador pide administrador'
+        Assert-True (Test-CommandStepAllowed $paso) 'tiene que pasar la lista blanca tal como está'
+        Assert-Equal $pasos[[array]::IndexOf($ids, 'dns-primary')].Group $paso.Group 'misma fase que los de Google'
+        Assert-True ($i -gt [array]::IndexOf($ids, 'dns-secondary')) 'tiene que ir detrás de los de Google'
+        Assert-True ($i -lt [array]::IndexOf($ids, 'dns-flush-final')) 'tiene que ir antes del vaciado final de la caché'
+        Assert-Match 'Google' $paso.Warning 'el aviso tiene que decir que anula los de Google'
     }
 
     It 'los reset de la pila piden reiniciar' {
@@ -199,7 +220,7 @@ Describe 'ui/Components/Layout/StepRunPanel.ps1 - ejecutar' {
     }
 
     It 'corre SOLO lo marcado y SIEMPRE en el orden del archivo' {
-        $ventana = New-AppWindow -Language 'en'
+        $null = New-AppWindow -Language 'en'
         $cat = Get-InternetCategory
         Show-View -Name 'Show-CategoryDetailView' -Arguments @{ Category = $cat }
 
@@ -377,18 +398,42 @@ Describe 'ui/Engine/CategoryRegistry.ps1 - los pasos marcados se recuerdan' {
         $cat = Get-CategoryById 'cleanup'
         try {
             Set-StepSelection -Category $cat -Mode 'default'
-            $papelera = @($cat.Steps) | Where-Object { $_.Id -eq 'recycle-bin' }
+            $dism = @($cat.Steps) | Where-Object { $_.Id -eq 'trim-on' }
             $temp = @($cat.Steps) | Where-Object { $_.Id -eq 'temp-user' }
-            $papelera.Selected = $true
+            $dism.Selected = $false
             $temp.Selected = $false
             Save-StepChoices $cat
-            Assert-Equal 'temp-user | recycle-bin' ((@(Get-AppSetting 'StepChoices.cleanup') | Sort-Object -Descending) -join ' | ')
+            Assert-Equal 'trim-on | temp-user' ((@(Get-AppSetting 'StepChoices.cleanup') | Sort-Object -Descending) -join ' | ')
 
             # "Arrancar": todo como viene de serie, y luego restaurar.
             foreach ($s in @($cat.Steps)) { $s.Selected = $s.Checked }
             Restore-StepChoices
-            Assert-True $papelera.Selected 'la papelera debería volver marcada'
+            Assert-False $dism.Selected 'TRIM debería volver desmarcado'
             Assert-False $temp.Selected 'los temporales deberían volver desmarcados'
+        }
+        finally { Set-StepSelection -Category $cat -Mode 'default' }
+    }
+
+    It 'un paso con aviso nunca se restaura marcado: empieza como viene declarado' {
+        # settings.json lo escribe cualquier programa del usuario sin ser
+        # administrador: no puede dejar marcado el reset del firewall.
+        $cat = Get-CategoryById 'internet'
+        try {
+            Set-AppSetting 'StepChoices.internet' @('firewall-reset')
+            Restore-StepChoices
+            Assert-False (@($cat.Steps) | Where-Object { $_.Id -eq 'firewall-reset' }).Selected
+        }
+        finally { Set-StepSelection -Category $cat -Mode 'default' }
+    }
+
+    It 'volver a DHCP tampoco se restaura marcado: no puede colarse junto a los de Google' {
+        $cat = Get-CategoryById 'internet'
+        try {
+            Set-AppSetting 'StepChoices.internet' @('dns-primary', 'dns-secondary', 'dns-dhcp')
+            Restore-StepChoices
+            foreach ($id in 'dns-primary', 'dns-secondary', 'dns-dhcp') {
+                Assert-False (@($cat.Steps) | Where-Object { $_.Id -eq $id }).Selected "$id no debería volver marcado"
+            }
         }
         finally { Set-StepSelection -Category $cat -Mode 'default' }
     }

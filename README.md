@@ -5,9 +5,12 @@ Aplicación de escritorio para optimizar Windows 11 Pro. Interfaz **WPF** escrit
 > **Estado: interfaz completa + cambios reales acotados, en expansión.**
 > La navegación, las tarjetas, los toggles, los dropdowns, el buscador y el registro
 > de actividad funcionan. `core/` **lee y escribe** el registro de Windows: al pulsar
-> el toggle de un ajuste con `-Registry` (hoy los 47 de *Regedit*, uno por clave) se
-> escribe cada clave por una **lista blanca de rutas** (`core/Registry/Writer.ps1`),
-> respetando el tipo, con copia del valor previo y verificación por relectura. Las
+> el toggle de un ajuste con `-Registry` (hoy 49, uno por clave: los 47 de *Regedit* y
+> los 2 de *Actualizaciones*) se escribe cada clave por una **lista blanca de rutas**
+> (`core/Registry/Writer.ps1`), respetando el tipo, con copia del valor previo y
+> verificación por relectura. Apagarlo vuelve al valor de fábrica, y si de fábrica el
+> valor **no existía** (una directiva sin configurar) lo **borra** —solo el valor, nunca
+> la clave—. Las
 > secciones de **comandos** —*Internet*, *Limpieza* y *Energía*— ejecutan programas
 > de Windows y vacían carpetas de temporales, también por lista blanca
 > (`core/Commands/`). La sección **Guías** enseña las notas `.md` de `ui/Data/Guides/`.
@@ -15,8 +18,8 @@ Aplicación de escritorio para optimizar Windows 11 Pro. Interfaz **WPF** escrit
 > amenaza y los contratos.
 >
 > **Pendiente:** persistir el rollback entre sesiones y exponer "deshacer" en la UI,
-> aviso de punto de restauración antes de escribir, y dar lógica real a
-> *Actualizaciones* (hoy declara datos estáticos y sus `-Tags` escritas a mano).
+> aviso de punto de restauración antes de escribir, y servicios, tareas programadas y
+> directivas que no sean un valor del registro. Ver [Pendiente](#pendiente).
 
 ---
 
@@ -25,16 +28,25 @@ Aplicación de escritorio para optimizar Windows 11 Pro. Interfaz **WPF** escrit
 Cada archivo tiene **una sola responsabilidad**. La regla general: para cambiar algo,
 solo deberías tener que abrir un archivo.
 
-```
+```text
 OptimizadorPC/
 ├── main.ps1                 Arranque: carga todo, aplica preferencias, conecta la ventana
 ├── build.ps1                Empaquetador (inline) + compilador a .exe
+├── SECURITY.md              Modelo de amenaza y contratos de lo que toca el equipo
+├── PSScriptAnalyzerSettings.psd1   Reglas de PSScriptAnalyzer del proyecto
+│
+├── .github/                 LA CI (GitHub Actions)
+│   ├── workflows/
+│   │   ├── ci.yml               PSScriptAnalyzer 1.25.0 + la suite en 5.1 y en 7
+│   │   └── semgrep.yml          Semgrep, con la imagen fijada por digest
+│   └── pssa-baseline.txt    Avisos de PSScriptAnalyzer ya conocidos (uno nuevo tumba la CI)
 │
 ├── core/                    EL SISTEMA. Habla con Windows, no con la pantalla.
 │   ├── Registry/            Todo lo del registro de Windows
 │   │   ├── Reader.ps1           Lectura del registro (los 4 estados, DWord con signo)
-│   │   ├── Writer.ps1           Escritura: lista blanca de rutas, tipo, snapshot, relectura
-│   │   ├── SettingApply.ps1     Toggle ON/OFF -> escribe Recommended/Default de cada clave
+│   │   ├── Writer.ps1           Escribir y borrar UN valor: lista blanca, tipo, snapshot, relectura
+│   │   ├── SettingApply.ps1     Toggle ON/OFF -> Recommended / Default de cada clave
+│   │   │                        (OFF borra el valor si de fábrica no existe)
 │   │   ├── SettingStatus.ps1    optimized / factory / custom / unknown por comparación
 │   │   └── CategoryState.ps1    Vuelca en los ajustes lo que hay en el equipo
 │   ├── Interop/
@@ -84,10 +96,12 @@ OptimizadorPC/
 │   │   ├── AppInfo.ps1          Nombre, VERSIÓN (única fuente; la lee build.ps1),
 │   │   │                        descripción y repositorio
 │   │   ├── Categories/          Un archivo por sección
-│   │   │   ├── Regedit.ps1          Power.ps1          Update.ps1
+│   │   │   ├── Regedit.ps1          AJUSTES con -Registry (47)
+│   │   │   ├── Update.ps1           AJUSTES con -Registry (2 directivas de Windows Update)
 │   │   │   ├── Internet.ps1         COMANDOS, no ajustes: los pasos de
 │   │   │   │                        Reiniciar_Red_v3.cmd, en orden de ejecución
-│   │   │   └── Cleanup.ps1          COMANDOS: los de EliminarTemporales.v1.cmd
+│   │   │   ├── Cleanup.ps1          COMANDOS: los de EliminarTemporales.v1.cmd
+│   │   │   └── Power.ps1            COMANDOS: los de maximo rendimiento de enerigia.bat
 │   │   ├── Guides/              Las guías de la sección Guías: un .md por guía,
 │   │   │                        se leen tal cual (entran al .exe en Base64)
 │   │   ├── Preferences/         Un archivo por opción de Settings
@@ -151,6 +165,7 @@ OptimizadorPC/
 │   ├── Core/                Pruebas de core/, contra el registro de verdad
 │   ├── Ui/                  Pruebas de ui/, con controles de WPF sin ventana
 │   ├── Source/              Pruebas del código fuente, sin ejecutarlo
+│   ├── Smoke/               Prueba de humo del programa empaquetado (UI Automation)
 │   └── README.md            Cómo lanzarlas y qué cubren
 │
 └── build/                   Todo lo que produce build.ps1
@@ -212,6 +227,7 @@ $CategoryIndex = @(
     #  Id                    Visible          Bloqueada
     @{ Id = 'regedit';       Visible = $true;  Locked = $false }
     @{ Id = 'internet';      Visible = $true;  Locked = $false }
+    @{ Id = 'cleanup';       Visible = $true;  Locked = $false }
     @{ Id = 'power';         Visible = $true;  Locked = $false }
     @{ Id = 'update';        Visible = $true;  Locked = $false }
 
@@ -231,7 +247,7 @@ intacto y la sección vuelve en cuanto la reactivas.
 
 **Qué hace `Locked = $true`:** la sección aparece en la lista con un candado, se puede
 abrir y consultar, pero dentro sale un aviso, los interruptores y desplegables quedan
-deshabilitados en gris y el botón *Reset* se apaga. No es solo un efecto visual —
+deshabilitados en gris. No es solo un efecto visual —
 los controles llevan `IsEnabled = $false`, así que WPF no les entrega el ratón.
 
 **Y si creo un archivo y no lo pongo en el índice:** aparece igualmente, al final de
@@ -251,6 +267,7 @@ $NavigationIndex = @(
     #  Id             Icono        Etiqueta       Grupo      Visible  Bloqueado   Vista
     @{ Id = 'search';    Icon = 'Search';  Label = 'Search';    Group = 'Top';    Visible = $true; Locked = $false; View = 'Show-SearchResultsView' }
     @{ Id = 'optimize';  Icon = 'Gauge';   Label = 'Optimize';  Group = 'Top';    Visible = $true; Locked = $false; View = 'Show-OptimizationsListView'; Default = $true }
+    @{ Id = 'guides';    Icon = 'Book';    Label = 'Guides';    Group = 'Top';    Visible = $true; Locked = $false; View = 'Show-GuidesView' }
 
     @{ Id = 'settings';  Icon = 'Gear';    Label = 'Settings';  Group = 'Bottom'; Visible = $true; Locked = $false; View = 'Show-SettingsView' }
 
@@ -390,30 +407,43 @@ Register-Category @{
     Icon        = 'Bolt'                # glifo del catálogo de Theme.ps1
     Accent      = 'Accent'              # color del icono (clave del tema)
     AccentSoft  = 'AccentSoft'          # fondo del icono
-    Badge       = 'NEW 3'               # distintivo rojo ($null para ocultarlo)
     Description = 'TCP tuning, Nagle, DNS, adapter power'
-
-    Recommended = 11; Default = 14; Custom = 1; Total = 26
+    # Sin Badge: se cuenta solo a partir de los ajustes con -Badge 'NEW'.
+    # Sin Recommended/Default/Custom/Total: las píldoras salen del estado leído.
 
     Items = @(
-        New-Setting -Name 'Nagle Algorithm' `
-            -Description 'Disable packet coalescing to reduce input latency' `
-            -Tags 'Recommended' `
-            -Value $false
+        # UNA clave por ajuste. Valor de fábrica conocido: Default.
+        New-Setting -Name 'Network Throttling' `
+            -Description 'Stop Windows from throttling network traffic during media playback' `
+            -Badge 'NEW' `
+            -Registry @(
+                @{ Path = 'HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile'
+                   Name = 'NetworkThrottlingIndex'; Type = 'DWord'; Display = 'hex'
+                   Recommended = '0xFFFFFFFF'; Default = '0x0000000A' }
+            )
 
-        New-Setting -Name 'DNS Provider' `
-            -Description 'Choose which resolver Windows uses' `
-            -Tags 'Custom' `
-            -Options 'Automatic (DHCP)', 'Cloudflare 1.1.1.1', 'Google 8.8.8.8' `
-            -Value 'Cloudflare 1.1.1.1'
+        # Una directiva: de fábrica el valor NO existe. OFF lo borra.
+        New-Setting -Name 'Delivery Optimization (P2P)' `
+            -Description 'Download updates only from Microsoft' `
+            -Registry @(
+                @{ Path = 'HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Windows\DeliveryOptimization'
+                   Name = 'DODownloadMode'; Type = 'DWord'; Display = 'hex'
+                   Recommended = '0x00000000'; DefaultAbsent = $true }
+            )
     )
 }
 ```
 
 `New-Setting` deduce el control solo: **con `-Options` es un desplegable, sin
-`-Options` es un interruptor** (y entonces `-Value` debe ser `$true` / `$false`).
+`-Options` es un interruptor**. Un interruptor con `-Registry` no lleva `-Value` ni
+`-Tags`: su posición y su etiqueta salen del estado leído del equipo. Cada clave lleva
+`Default` **o** `DefaultAbsent = $true`, nunca los dos (lo vigila
+`tests/Source/Security.Tests.ps1`). Un ajuste que baja la seguridad del equipo lleva
+además `-AllowsSecurityTradeoff` y lo dice en su descripción (`SECURITY.md` §3.4).
 Solo `Id`, `Name`, `Icon`, `Description` e `Items` son obligatorios; el resto tiene
-valores por defecto.
+valores por defecto. `-Tags`, `-Value` y los contadores `Recommended` / `Default` /
+`Custom` / `Total` de `Register-Category` siguen existiendo para una sección **sin**
+`-Registry`, pero hoy ninguna los usa.
 
 ### El estado de cada ajuste
 

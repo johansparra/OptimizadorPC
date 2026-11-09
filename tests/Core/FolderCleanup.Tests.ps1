@@ -244,7 +244,10 @@ Describe 'core/Commands/FolderCleanup.ps1 - el detalle de lo que hizo' {
     It 'pasado el tope se sigue contando, pero ya no se apunta la ruta' {
         $root = New-CleanupFixture
         try {
-            $CleanupListMax = 2
+            # Sombra LOCAL de la variable de core/: la ve New-CleanupJobAt por
+            # ámbito dinámico y se va al salir del It. Set-Variable en vez de
+            # "=" para que PSScriptAnalyzer no la tome por variable muerta.
+            Set-Variable -Name CleanupListMax -Value 2
             $job = New-CleanupJobAt -Path $root
             Invoke-TestCleanupJob $job | Out-Null
             Assert-Equal 6 $job.Deleted

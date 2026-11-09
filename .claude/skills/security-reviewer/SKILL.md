@@ -30,7 +30,9 @@ De ahí salen los tres riesgos reales, por orden de gravedad:
 **El estado hoy:** tres mecanismos tocan el equipo, cada uno con su lista blanca.
 `core/` **lee y escribe** el registro: la escritura vive en `core/Registry/Writer.ps1`
 (una clave) y `core/Registry/SettingApply.ps1` (el toggle ON/OFF de un ajuste), y hoy
-son **47** ajustes con `-Registry`, todos en *Regedit* y uno por clave. Las secciones
+son **49** ajustes con `-Registry` (47 en *Regedit* y 2 en *Actualizaciones*), uno por
+clave. `OFF` escribe el `Default` o **borra** el valor si de fábrica no existe
+(`Remove-RegistryValue`, nunca borra claves). Las secciones
 de comandos **ejecutan programas** (`core/Commands/CommandRunner.ps1`: `netsh`,
 `ipconfig`, `nbtstat`, `arp`, `Dism`, `cleanmgr`, `fsutil`, `defrag`, `powercfg`, sin
 shell) y **borran archivos** (`core/Commands/FolderCleanup.ps1`: carpetas de una lista
@@ -65,13 +67,16 @@ revisar un ajuste nuevo o una rama nueva de la lista blanca, comprueba que se si
 cumpliendo:
 
 1. **Valor de restauración documentado.** El `Default` declarado en
-   `ui/Data/Categories/*.ps1` es ese contrato: `OFF` escribe ese valor. Un ajuste sin
-   `Default` real no se puede revertir: no se aplica. `Writer.ps1` guarda además el
-   valor previo en `$RegistrySnapshots` (**solo en memoria** — pendiente persistirlo).
+   `ui/Data/Categories/*.ps1` es ese contrato: `OFF` escribe ese valor, o lo **borra**
+   si la clave declara `DefaultAbsent = $true` (de fábrica no existe). Cada clave lleva
+   uno de los dos, nunca ambos (lo vigila `Security.Tests.ps1`). Un ajuste sin ninguno
+   no se puede revertir: no se aplica. `Writer.ps1` guarda además el valor previo en
+   `$RegistrySnapshots` (**solo en memoria** — pendiente persistirlo).
 2. **Distinguir "no existía" de "valía otra cosa".** `Writer.ps1` lo hace vía
    `Get-RegistryStoredValue` (`missing` vs `read`) y lo apunta en el snapshot
-   (`Existed`). *Pendiente:* revertir un valor que no existía debería **borrarlo**, no
-   escribir el `Default` — hoy escribe el `Default`.
+   (`Existed`, `State`). Si la primera copia de la sesión lo vio `missing`, `OFF` lo
+   borra con `Remove-RegistryValue` (estado `deleted`): solo el valor, misma lista
+   blanca de ruta y nombre, `-WhatIf`, relectura. Un `denied` no cuenta como ausente.
 3. **Ruta validada contra `$RegistryWriteAllowlist`** (`Test-RegistryWriteAllowed`),
    nunca concatenada con entrada libre. Se abre siempre `RegistryView::Registry64`.
    Fuera de la lista → estado `blocked`, no se escribe. **Ampliar esa lista es una
@@ -108,14 +113,26 @@ Revisa `ui/Data/Categories/*.ps1` contra esta lista. Todo lo que toque:
 Windows Update / `NoAutoUpdate` · ejecución de macros · directivas de contraseña ·
 UAC remoto
 
-**Estado vivo en este repositorio** (verificado leyendo `ui/Data/Categories/Regedit.ps1`):
+**Estado vivo en este repositorio** (verificado leyendo `ui/Data/Categories/Regedit.ps1`
+y `Update.ps1`):
 
-| Ajuste | Qué hace | Riesgo |
+| Grupo (49 ajustes, uno por clave) | Ejemplos | Riesgo |
 | --- | --- | --- |
-| *Network Throttling Mechanism* (`NetworkThrottlingIndex = 0xFFFFFFFF`) | Quita el límite de 10 paquetes/ciclo que Windows impone mientras hay audio/vídeo activo. | Ninguno de seguridad. Reversible (`Default = 0x0000000A`). Rama permitida: `…\Multimedia\SystemProfile`. |
+| Rendimiento | MMCSS (`NetworkThrottlingIndex`, `SystemResponsiveness`, prioridades de *Games*), TCP/IP (`DefaultTTL`, `Tcp1323Opts`...), SMB de `LanmanServer`, Prefetcher, QoS | Ninguno de seguridad. Reversibles por su `Default`. |
+| Privacidad | Telemetría (`AllowTelemetry`), historial de actividad, ID de publicidad, escritura a mano, voz en línea | Ninguno: reducen lo que sale del equipo. |
+| Servicios (`Start`) | SysMain, DiagTrack, lfsvc, MapsBroker, CscService, StorSvc, SharedAccess | Ninguno de seguridad; ICS rompe la zona con cobertura (lo dice su nota). |
+| Sube la seguridad | *Block WPBT Executables* (`DisableWpbtExecution`) | — |
+| *Actualizaciones* | Delivery Optimization (`DODownloadMode` = 0, solo HTTP) | Ninguno: reduce lo que sale del equipo. |
+| *Actualizaciones* — **baja la seguridad** | *Auto-Restart With Active Sessions* (`NoAutoRebootWithLoggedOnUsers` = 1) | Los parches que piden reiniciar esperan al usuario. Lleva `-AllowsSecurityTradeoff`, lo dice en su descripción y no viene activo (de fábrica el valor no existe). |
 
-Los ajustes de UAC, BitLocker y Automatic Maintenance que antes vivían aquí **fueron
-retirados**. Hoy no hay ningún ajuste que degrade la seguridad.
+Repasado el 2026-11-08: solo `NoAutoRebootWithLoggedOnUsers` toca la denylist de
+arriba, y lo declara. Los ajustes de UAC, BitLocker y Automatic Maintenance que
+antes vivían en *Regedit* **fueron retirados**.
+
+Fuera del registro, las secciones de comandos tienen **dos pasos que bajan la postura**,
+los dos desmarcados de serie y con aviso: restablecer el firewall (borra las reglas
+propias) y fijar el DNS de Google (sustituye el del router). Un paso con aviso **nunca**
+se restaura marcado desde `settings.json` (§5).
 
 **Control automático:** `tests/Source/Security.Tests.ps1` recorre todos los `-Registry`
 de `ui/Data/Categories/*` y **falla la suite** si alguno apunta a un nombre de valor de
@@ -129,8 +146,12 @@ ajuste. El nombre lo escribimos nosotros; el número es lo que ejecuta Windows.
 
 - `settings.json` vive en `%APPDATA%\OptimizadorPC\`: correcto (no junto al `.exe`,
   que puede estar en una carpeta sin permisos).
-- **No debe guardar nada sensible.** Preferencias de interfaz, nada más. Ni rutas de
-  otros usuarios, ni credenciales, ni identificadores de máquina.
+- **No debe guardar nada sensible.** Preferencias de interfaz y qué pasos marcó el
+  usuario, nada más. Ni rutas de otros usuarios, ni credenciales, ni identificadores de
+  máquina.
+- **Y no es de fiar**: lo escribe cualquier programa del usuario sin privilegios, y el
+  `.exe` lo lee elevado. Nada que salga de ahí puede elegir qué se ejecuta ni dejar
+  preparado un paso peligroso (por eso los pasos con aviso no se restauran).
 - El **registro de actividad** (`core/Diagnostics/Log.ps1`) guarda rutas y valores del
   registro del equipo (y ahora también las escrituras: valor viejo → valor nuevo). Ya
   se puede **exportar a un archivo** que elige el usuario ("Save to file" del cajón del
@@ -157,8 +178,10 @@ subir de versión sea un cambio consciente con recompilación y prueba. `-Force
 
 **Sin resolver:** el `.exe` **no está firmado** (Authenticode). Un binario sin firma
 que pide UAC es justo lo que Windows enseña a no ejecutar. Bloquea distribuir a
-terceros hasta que haya firma. El contenedor `semgrep/semgrep` y `actions/checkout` de
-la CI van sin fijar por digest — mismo tipo de riesgo, menor impacto.
+terceros hasta que haya firma. En la CI, `actions/checkout` va fijado por SHA y la
+imagen `semgrep/semgrep` por digest (2026-11-08); PSScriptAnalyzer se instala con
+`-RequiredVersion 1.25.0` (`.github/workflows/ci.yml`). Subir cualquiera de los tres es
+un cambio consciente, como ps2exe.
 
 ## 7. Cómo revisar y cómo reportar
 

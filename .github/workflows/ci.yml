@@ -1,0 +1,191 @@
+# ============================================================
+# .github/workflows/ci.yml
+#
+# PSScriptAnalyzer y la suite de pruebas en un runner de Windows
+# (riesgo 5 de SECURITY.md §11). Semgrep va aparte, en
+# semgrep.yml, porque corre en un contenedor de Linux.
+#
+# Todo en Windows: la aplicación es WPF sobre .NET Framework y
+# las pruebas construyen controles de verdad y leen/escriben el
+# registro; no hay forma de correrlas en Linux.
+# ============================================================
+name: CI
+
+on:
+  workflow_dispatch: {}
+  pull_request: {}
+  # Mismos disparadores que semgrep.yml y sin filtro `paths`: el
+  # repo commitea directo a master, así que cada push tiene que
+  # pasar por aquí, no solo los que tocan este archivo.
+  push:
+    branches:
+    - main
+    - master
+
+# Solo lectura: ningún job escribe en el repo ni publica nada.
+permissions:
+  contents: read
+
+jobs:
+  # ----------------------------------------------------------
+  # PSScriptAnalyzer contra una línea base
+  # ----------------------------------------------------------
+  # Falla con CUALQUIER hallazgo de severidad Error, y con
+  # cualquier aviso que no esté en .github/pssa-baseline.txt. Los
+  # avisos ya conocidos (hoy uno, un falso positivo) no tumban la
+  # CI; uno nuevo, sí.
+  pssa:
+    name: PSScriptAnalyzer
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+    # Fijado por SHA, el mismo que semgrep.yml: una etiqueta (`@v6`)
+    # la puede repuntar el dueño de la acción en silencio -cadena de
+    # suministro-. Subir de versión = cambiar el SHA en los dos.
+    # Sin credenciales persistidas: nada aquí hace push.
+    - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      with:
+        persist-credentials: false
+
+    # Versión FIJA, como ps2exe en build.ps1 (SECURITY.md §8): la
+    # imagen del runner trae la que toque ese mes y una versión
+    # nueva puede añadir reglas y poner la CI en rojo sin que nadie
+    # haya tocado el código. 1.25.0 es la de la máquina de
+    # desarrollo. Subir de versión = cambiar el número aquí,
+    # pasarla en local y revisar la línea base.
+    - name: Instalar PSScriptAnalyzer 1.25.0
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = 'Stop'
+        Install-Module PSScriptAnalyzer -RequiredVersion 1.25.0 -Repository PSGallery `
+                       -Scope CurrentUser -Force
+        Import-Module PSScriptAnalyzer -RequiredVersion 1.25.0 -Force
+        Write-Host ('PSScriptAnalyzer ' + (Get-Module PSScriptAnalyzer).Version)
+
+    - name: Analizar contra la línea base
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = 'Stop'
+        Import-Module PSScriptAnalyzer -RequiredVersion 1.25.0 -Force
+
+        $raiz = (Get-Location).Path
+
+        # La misma orden que SECURITY.md §9, con la configuración del
+        # proyecto. build/ se descarta: es generado (build.ps1) y
+        # build/_combined.ps1 ni siquiera está en el repo.
+        $hallazgos = @(
+            Invoke-ScriptAnalyzer -Path . -Recurse -Settings ./PSScriptAnalyzerSettings.psd1 |
+            ForEach-Object {
+                $rel = [System.IO.Path]::GetRelativePath($raiz, $_.ScriptPath) -replace '\\', '/'
+                $_ | Add-Member -NotePropertyName Rel -NotePropertyValue $rel -PassThru
+            } |
+            Where-Object { $_.Rel -notmatch '^build/' }
+        )
+
+        if ($hallazgos.Count -gt 0) {
+            $hallazgos | Sort-Object Rel, Line |
+                Format-Table Severity, RuleName, Rel, Line, Message -AutoSize -Wrap |
+                Out-String -Width 300 | Write-Host
+        }
+
+        # Errores: siempre fallan, estén o no en la línea base.
+        $errores = @($hallazgos | Where-Object { [string]$_.Severity -in 'Error', 'ParseError' })
+
+        # Línea base: "<Regla> <ruta>" por línea; la misma línea
+        # repetida cuenta dos veces. Se compara por regla + archivo
+        # (no por número de línea), para que mover código no la rompa.
+        $base = @{}
+        foreach ($linea in Get-Content -Path ./.github/pssa-baseline.txt -Encoding utf8) {
+            $linea = $linea.Trim()
+            if (-not $linea -or $linea.StartsWith('#')) { continue }
+            $partes = $linea -split '\s+', 2
+            $clave = $partes[0] + ' ' + ($partes[1] -replace '\\', '/')
+            $base[$clave] = 1 + [int]$base[$clave]
+        }
+
+        $nuevos = New-Object System.Collections.Generic.List[object]
+        $avisos = @($hallazgos | Where-Object { [string]$_.Severity -notin 'Error', 'ParseError' })
+        foreach ($grupo in ($avisos | Group-Object { $_.RuleName + ' ' + $_.Rel })) {
+            $permitidos = [int]$base[$grupo.Name]
+            if ($grupo.Count -gt $permitidos) {
+                # Se marcan todos los del grupo: sin número de línea en
+                # la base no hay forma de saber cuál es el nuevo.
+                foreach ($h in $grupo.Group) { $nuevos.Add($h) }
+            }
+        }
+
+        foreach ($h in @($errores) + @($nuevos.ToArray())) {
+            Write-Host ('::error file={0},line={1}::{2}: {3}' -f $h.Rel, $h.Line, $h.RuleName, $h.Message)
+        }
+
+        # Lo que ya no aparece: la línea base se puede bajar. Avisa,
+        # no falla.
+        $actuales = @{}
+        foreach ($grupo in ($avisos | Group-Object { $_.RuleName + ' ' + $_.Rel })) {
+            $actuales[$grupo.Name] = $grupo.Count
+        }
+        foreach ($clave in $base.Keys) {
+            if ([int]$actuales[$clave] -lt $base[$clave]) {
+                Write-Host ('::notice::Ya no aparece en PSScriptAnalyzer y se puede quitar de .github/pssa-baseline.txt: ' + $clave)
+            }
+        }
+
+        Write-Host ('{0} hallazgo(s): {1} error(es), {2} aviso(s) fuera de la línea base.' -f `
+                    $hallazgos.Count, $errores.Count, $nuevos.Count)
+        if ($errores.Count -gt 0 -or $nuevos.Count -gt 0) { exit 1 }
+        exit 0
+
+  # ----------------------------------------------------------
+  # La suite, en los DOS hosts
+  # ----------------------------------------------------------
+  # Regla 8 de CLAUDE.md: el .exe corre sobre 5.1 con todo en
+  # ámbito global y main.ps1 sobre pwsh 7 en ámbito de script, y
+  # hay fallos que solo salen en uno. En local se hace con
+  # -BothHosts (los dos en paralelo en la misma máquina); aquí, una
+  # entrada de la matriz por host: cada uno en su runner, en
+  # paralelo, con su log y su verde/rojo por separado.
+  #
+  # Las pruebas escriben en HKCU\Software\OptimizadorPC\Tests\<PID>
+  # (se borra al terminar) y crean ventanas de WPF sin enseñarlas;
+  # el runner de Windows tiene sesión de escritorio, así que WPF
+  # funciona. El arnés DESARMA la escritura al registro de la app y
+  # la ejecución de comandos (tests/Harness/AppHost.ps1): ni red ni
+  # borrados ni cambios en el equipo, también aquí.
+  pruebas:
+    name: Pruebas (${{ matrix.nombre }})
+    runs-on: windows-latest
+    timeout-minutes: 30
+    strategy:
+      # Que un host en rojo no cancele el otro: interesa saber si
+      # falla en uno o en los dos.
+      fail-fast: false
+      matrix:
+        include:
+        - nombre: Windows PowerShell 5.1
+          exe: powershell
+        - nombre: PowerShell 7
+          exe: pwsh
+    steps:
+    # Los .ps1 están en el repo con LF y en la máquina de
+    # desarrollo salen con CRLF (core.autocrlf=true). Se fija aquí
+    # para no depender de la configuración de git de la imagen del
+    # runner y probar los mismos bytes que se compilan en local.
+    - name: Finales de línea como en desarrollo
+      run: git config --global core.autocrlf true
+
+    - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      with:
+        persist-credentials: false
+
+    # WPF exige STA y Run-Tests.ps1 lo comprueba antes de nada
+    # (GetApartmentState). Los dos hosts ya arrancan en STA en
+    # Windows, pero se pide explícito con -STA para no depender de
+    # ello. El host va por variable de entorno, no interpolado en el
+    # script. El código de salida (0 / 1) es el de Run-Tests.ps1.
+    - name: Run-Tests.ps1
+      shell: pwsh
+      env:
+        HOST_EXE: ${{ matrix.exe }}
+      run: |
+        & $env:HOST_EXE -STA -NoProfile -ExecutionPolicy Bypass -File ./tests/Run-Tests.ps1 -Timing
+        exit $LASTEXITCODE

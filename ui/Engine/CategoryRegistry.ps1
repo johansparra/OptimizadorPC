@@ -277,7 +277,17 @@ function Get-CategoryStatusCounts {
         Type         Tipo del valor: 'DWord', 'String'...
         Display      'hex' para enseñarlo como 0xFFFFFFFF.
         Recommended  Valor que propone el programa.
-        Default      Valor de fábrica de Windows.
+        Default      Valor de fábrica de Windows. Es lo que escribe OFF.
+        DefaultAbsent  $true EN VEZ DE Default: de fábrica el valor
+                     NO existe (una directiva sin configurar). OFF lo
+                     borra -solo el valor- en vez de escribir nada, y
+                     ausente cuenta como de fábrica. Una clave lleva
+                     uno de los dos, nunca ambos (Security.Tests.ps1).
+
+    -AllowsSecurityTradeoff marca un ajuste que BAJA la seguridad del
+    equipo (SECURITY.md §3.4): su -Description tiene que decir qué se
+    pierde. Sin la marca, Security.Tests.ps1 falla si el ajuste toca
+    uno de los valores vigilados (NoAutoRebootWithLoggedOnUsers...).
 
     Current y Status NO se declaran: los rellena core/ al leer el
     equipo (ver core/Registry/CategoryState.ps1). Recommended y Default sí
@@ -315,7 +325,10 @@ function New-Setting {
         [string]$Values,
         [ValidateSet('yes', 'no', 'na')][string]$GamingOptimal = 'na',
         [string]$GamingNote,
-        [string]$Link
+        [string]$Link,
+
+        # Baja la seguridad del equipo y lo declara (SECURITY.md §3.4).
+        [switch]$AllowsSecurityTradeoff
     )
 
     if ($Options) { $type = 'Dropdown' } else { $type = 'Toggle' }
@@ -337,6 +350,8 @@ function New-Setting {
         GamingOptimal = $GamingOptimal
         GamingNote    = $GamingNote
         Link          = $Link
+
+        AllowsSecurityTradeoff = [bool]$AllowsSecurityTradeoff
 
         # NO se declara: lo rellena core/Registry/SettingStatus.ps1 al leer
         # el equipo, igual que el Current de cada clave. Se reserva
@@ -493,7 +508,16 @@ function Save-StepChoices {
     Set-AppSetting ('StepChoices.' + $Category.Id) $changed
 }
 
-# Lo contrario, al arrancar: deja cada paso como lo dejó el usuario.
+<#
+    Lo contrario, al arrancar: deja cada paso como lo dejó el usuario.
+
+    SALVO LOS QUE LLEVAN AVISO (-Warning): esos empiezan siempre como
+    vienen declarados. settings.json lo puede escribir cualquier
+    programa del usuario SIN ser administrador; si se restaurara todo,
+    uno malicioso podría dejar marcado "Restablecer el firewall" y
+    esperar a que el usuario pulse Ejecutar, que corre elevado. Lo que
+    tiene aviso se decide cada vez, a la vista.
+#>
 function Restore-StepChoices {
     foreach ($category in $CategoryList) {
         if (-not (Test-CategoryHasSteps $category)) { continue }
@@ -501,6 +525,7 @@ function Restore-StepChoices {
         if ($null -eq $saved) { continue }
         $changed = @(@($saved) | ForEach-Object { [string]$_ })
         foreach ($step in @($category.Steps | Where-Object { $_ })) {
+            if ($step.Warning) { $step.Selected = [bool]$step.Checked; continue }
             $step.Selected = if ($changed -contains [string]$step.Id) { -not $step.Checked } else { [bool]$step.Checked }
         }
     }

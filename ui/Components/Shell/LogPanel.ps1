@@ -888,6 +888,7 @@ function New-LogPill {
         # Escritura en el registro (core/Registry/Writer.ps1).
         'applied'          = @{ Fg = 'Success';   Bg = 'SuccessSoft' }
         'restored'         = @{ Fg = 'Success';   Bg = 'SuccessSoft' }
+        'deleted'          = @{ Fg = 'Success';   Bg = 'SuccessSoft' }
         'applying'         = @{ Fg = 'Accent';    Bg = 'AccentSoft' }
         'write attempt'    = @{ Fg = 'Accent';    Bg = 'AccentSoft' }
         'post write'       = @{ Fg = 'Success';   Bg = 'SuccessSoft' }

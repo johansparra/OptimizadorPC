@@ -19,7 +19,8 @@
 #
 # Lo que tiene efectos que conviene decidir a conciencia -borrar las
 # reglas del firewall, fijar DNS de Google- viene DESMARCADO y con
-# aviso. Los reset de la pila piden reiniciar el equipo.
+# aviso. Los reset de la pila piden reiniciar el equipo. El DNS fijo
+# tiene su paso de vuelta ('dns-dhcp'), desmarcado también.
 # ============================================================
 
 $InternetPhase1 = 'Phase 1 · Clean up and reset the network stack'
@@ -164,6 +165,19 @@ Register-Category @{
             -Warning 'Run it together with the previous step: on its own it adds a server to whatever DNS is set.' `
             -Checked $false `
             -Exe 'netsh.exe' -Arguments 'interface', 'ip', 'add', 'dns', 'name=Ethernet', '8.8.4.4', 'index=2'
+
+        # El camino de vuelta de los dos de arriba: el DNS del adaptador
+        # vuelve a ser el que da el router (DHCP). Va DETRÁS de ellos y
+        # antes de vaciar la caché final, así que marcado junto a los de
+        # Google los anula: por eso viene desmarcado y lo dice el aviso.
+        # No hay forma de impedirlo en la cola (-SkipIf solo mira el
+        # registro, no qué más está marcado).
+        New-CommandStep -Id 'dns-dhcp' -Group $InternetPhase3 `
+            -Name 'DNS: back to automatic (DHCP)' `
+            -Description 'Undoes the two Google steps: the adapter named "Ethernet" goes back to the DNS your router provides.' `
+            -Warning 'Only to undo the Google DNS. Do not tick it together with them: it runs after them and cancels them.' `
+            -Checked $false `
+            -Exe 'netsh.exe' -Arguments 'interface', 'ip', 'set', 'dns', 'name=Ethernet', 'source=dhcp'
 
         New-CommandStep -Id 'service-dhcp' -Group $InternetPhase3 `
             -Name 'Make sure the DHCP Client service is running' `

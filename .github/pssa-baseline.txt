@@ -1,0 +1,25 @@
+# ============================================================
+# .github/pssa-baseline.txt
+#
+# Avisos de PSScriptAnalyzer YA CONOCIDOS y aceptados. El job
+# `pssa` de .github/workflows/ci.yml falla si aparece cualquier
+# aviso que no esté aquí (y siempre, con cualquier Error).
+#
+# Una línea por aviso:   <Regla> <ruta relativa con />
+# Se compara por regla + archivo, NO por línea: mover código no
+# rompe la CI, pero un segundo aviso de la misma regla en el
+# mismo archivo sí (repite la línea si de verdad hay dos).
+#
+# build/ no cuenta: es generado y build/_combined.ps1 está en
+# .gitignore. La configuración que se aplica es la de
+# PSScriptAnalyzerSettings.psd1 (ver SECURITY.md §9).
+#
+# Para BAJAR la línea base basta con borrar la línea cuando el
+# aviso desaparezca (la CI lo avisa, sin fallar). Para SUBIRLA,
+# que sea a conciencia y con el motivo en un comentario.
+# ============================================================
+
+# Falso positivo: $CategoryIndex se consume por dot-source en el
+# mismo ámbito (lo lee ui/Engine/CategoryRegistry.ps1), algo que
+# PSSA no ve archivo por archivo.
+PSUseDeclaredVarsMoreThanAssignments ui/Index/CategoryIndex.ps1

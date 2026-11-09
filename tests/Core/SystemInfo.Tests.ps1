@@ -22,8 +22,14 @@ Describe 'core/Diagnostics/SystemInfo.ps1 - sobre qué corre' {
         $texto = Get-WindowsSummary
         Assert-Match '^Windows ' $texto
         if ([Environment]::OSVersion.Version.Build -ge 22000) {
-            Assert-Match '^Windows 11' $texto 'en Windows 11 tiene que decir Windows 11'
             Assert-Match '\(build \d+' $texto 'tiene que llevar la compilación'
+            # Solo en equipos cliente: un Windows Server de la misma
+            # compilación (el runner de la CI, Server 2025 = 26100) se
+            # llama "Windows Server ..." y así debe seguir.
+            if ([string](Get-WindowsVersionValue 'InstallationType') -eq 'Client') {
+                Assert-Match '^Windows 11' $texto 'en Windows 11 tiene que decir Windows 11'
+            }
+            else { Assert-False ($texto -match '^Windows 1[01]') 'un Server no se renombra' }
         }
     }
 

@@ -8,6 +8,13 @@
 #
 #     ON   -> cada clave = su Recommended  (el que propone el programa)
 #     OFF  -> cada clave = su Default      (el de fábrica de Windows)
+#             o SE BORRA el valor, si de fábrica no existe:
+#               - la clave declara DefaultAbsent = $true (una
+#                 directiva: su estado de fábrica es "no configurada"), o
+#               - la copia de Writer.ps1 dice que, la primera vez que
+#                 el programa lo tocó en esta sesión, no existía.
+#             Borrar es Remove-RegistryValue: solo el valor, nunca la
+#             clave, y por la misma lista blanca que escribir.
 #
 # Después vuelve a leer esas claves por el camino de siempre
 # (deja su [read] en el log) y recalcula el Status del ajuste con
@@ -19,6 +26,25 @@
 #
 # Como todo core/: no sabe de interfaz y no lanza nunca.
 # ============================================================
+
+<#
+    ¿OFF tiene que BORRAR esta clave en vez de escribir su Default?
+
+      - Sí si la declaración lo dice (DefaultAbsent = $true).
+      - Sí si la primera copia de esta sesión la vio AUSENTE
+        ('missing'). Un 'denied' no cuenta: ahí no se sabe nada y se
+        escribe el Default, que es lo declarado.
+      - Si no, no.
+#>
+function Test-RegistryRestoreByDelete {
+    param($Key)
+
+    if (-not $Key) { return $false }
+    if ($Key.DefaultAbsent) { return $true }
+
+    $origin = Get-RegistrySnapshotOrigin -Path ([string]$Key.Path) -Name ([string]$Key.Name)
+    [bool]($origin -and $origin.State -eq 'missing')
+}
 
 <#
     Escribe todas las claves de un ajuste según el estado pedido y
@@ -52,6 +78,11 @@ function Set-SettingOptimization {
     # estado se hacen igual, para devolver el estado actual.
     if ($PSCmdlet.ShouldProcess($Setting.Name, "$action ($requested)")) {
         foreach ($key in $keys) {
+            if (-not $Enabled -and (Test-RegistryRestoreByDelete $key)) {
+                Remove-RegistryValue -Path $key.Path -Name $key.Name -Type $key.Type `
+                    -Requested $requested -Action 'RestoreAbsent' | Out-Null
+                continue
+            }
             $target = if ($Enabled) { [string]$key.Recommended } else { [string]$key.Default }
             Write-RegistryValue -Path $key.Path -Name $key.Name -Type $key.Type `
                 -Text $target -Requested $requested -Action $action | Out-Null

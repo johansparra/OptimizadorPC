@@ -8,6 +8,9 @@
 #     Recommended   el que propone el programa   ->  'optimized'
 #     Default       el de fábrica de Windows     ->  'factory'
 #
+# o, en vez de Default, DefaultAbsent = $true: de fábrica el valor no
+# existe (directivas). Ausente -> 'factory'; OFF lo borra.
+#
 # y core/Registry/CategoryState.ps1 le añade el que acaba de leer del
 # equipo (Current). Comparar los tres da el estado del ajuste:
 #
@@ -94,10 +97,16 @@ function Get-RegistryKeyStatus {
 
     if (-not $Key) { return 'unknown' }
 
+    # DefaultAbsent = $true: de fábrica el valor NO existe (una
+    # directiva sin configurar). Entonces no hay Default con el que
+    # comparar: ausente es 'factory' y cualquier valor puesto es el
+    # recomendado o uno a medida.
+    $absent = [bool]$Key.DefaultAbsent
+
     # Sin nada declarado con lo que comparar no se puede decir en qué
     # estado está: 'custom' sería una acusación sin pruebas.
     if ([string]::IsNullOrEmpty([string]$Key.Recommended) -and
-        [string]::IsNullOrEmpty([string]$Key.Default)) { return 'unknown' }
+        [string]::IsNullOrEmpty([string]$Key.Default) -and -not $absent) { return 'unknown' }
 
     # El valor no está puesto: Windows usa el suyo interno, así que el
     # equipo ESTÁ como salió de fábrica para este ajuste. No se compara
@@ -111,7 +120,7 @@ function Get-RegistryKeyStatus {
 
     # De fábrica se mira primero: si lo recomendado ya es lo de
     # fábrica, no hay nada aplicado y lo honesto es decir eso.
-    if (Test-RegistryValueMatch $Key.Current $Key.Default)     { return 'factory' }
+    if (-not $absent -and (Test-RegistryValueMatch $Key.Current $Key.Default)) { return 'factory' }
     if (Test-RegistryValueMatch $Key.Current $Key.Recommended) { return 'optimized' }
     'custom'
 }
@@ -194,8 +203,9 @@ function Write-SettingEvalLog {
 
     foreach ($key in @($Setting.Registry)) {
         $current = if ($null -ne $key.Current) { [string]$key.Current } else { "($($key.State))" }
+        $default = if ($key.DefaultAbsent) { '(absent)' } else { $key.Default }
         $detail = 'type={0} | current={1} | recommended={2} | default={3} | status={4}' -f `
-            $key.Type, $current, $key.Recommended, $key.Default, $key.Status
+            $key.Type, $current, $key.Recommended, $default, $key.Status
         Write-AppLog -Source 'registry' -Level 'info' -Status 'checked' `
             -Message "$($key.Path)\$($key.Name)" -Detail $detail
     }

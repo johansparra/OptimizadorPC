@@ -18,24 +18,51 @@ la cadena `'24'`/`'12'` de la preferencia, por `Set-AppSetting` como el resto. P
 Semgrep, ya instalables en la máquina de desarrollo, se ejecutaron (resultados en §9).
 Se corrigió la CI de Semgrep (§8, §11 riesgo 4).
 
-**Repaso 2026-11-08** (rama `visual/fluent-cards`, sin confirmar todavía). Superficie
-nueva desde el repaso anterior, toda con su lista blanca y sus invariantes en §10:
+**Repaso 2026-11-08** (commit `f750d5f`, rama `visual/fluent-cards`; repasado otra vez
+con la skill `security-reviewer` el mismo día). Superficie nueva desde el repaso
+anterior, toda con su lista blanca y sus invariantes en §10:
 
 - **Más comandos.** Secciones *Limpieza* (`Dism`, `cleanmgr`, `fsutil`, `defrag`) y
   *Energía* (`powercfg`), por el mismo `core/Commands/CommandRunner.ps1` (antes
   `core/Network/`). `-SkipIf` solo **lee** el registro para saltar un paso ya hecho.
 - **Borrado de archivos.** `core/Commands/FolderCleanup.ps1`, el único sitio que borra:
-  carpetas de una lista blanca, siempre dentro del perfil, sin seguir enlaces (§12).
+  carpetas de una lista blanca, dentro del perfil salvo dos excepciones contadas, sin
+  seguir enlaces (§12).
 - **Datos del usuario en el log.** El detalle de una limpieza lleva rutas de archivos
   del perfil y nombres de lo que había en la papelera; solo sale a disco si el usuario
   guarda el log "con detalle" (§7).
-
-Revisión formal de esa superficie: [`auditoria/2026-11-08-seguridad-calidad.html`](auditoria/2026-11-08-seguridad-calidad.html).
-Tres cambios de endurecimiento: `-WhatIf` real en ejecutar y borrar (§9), volver a mirar
-el atributo de enlace antes de entrar en una carpeta (§11 nº 10) y la regla de carpetas
-fuera del perfil (§12).
+- **Pasos recordados.** Qué pasos dejó marcados el usuario va a `settings.json` (§7).
 - **Guías.** Los `.md` de `ui/Data/Guides/` se enseñan como texto. Van dentro del `.exe`
   en Base64 y nunca se ejecutan; sus enlaces pasan por `Invoke-ExternalLink` (§6).
+
+Revisión formal de esa superficie: [`auditoria/2026-11-08-seguridad-calidad.html`](auditoria/2026-11-08-seguridad-calidad.html).
+Cuatro cambios de endurecimiento: `-WhatIf` real en ejecutar y borrar (§9), volver a
+mirar el atributo de enlace antes de entrar en una carpeta (§11 nº 10), la regla de
+carpetas fuera del perfil (§12) y que un paso con aviso nunca se restaure marcado desde
+`settings.json` (§7, §11 nº 11). Ningún ajuste de *Regedit* baja la seguridad del equipo
+(§3.4).
+
+**Tercera pasada 2026-11-08** (sobre `f750d5f` + cambios sin commitear del día). Superficie
+nueva y su revisión:
+
+- **Borrar valores del registro.** `Remove-RegistryValue` (`core/Registry/Writer.ps1`):
+  `OFF` devuelve a "no existe" lo que de fábrica no existe (`DefaultAbsent`) o lo que la
+  primera copia de la sesión vio ausente. Mismas garantías que la escritura —desarmado,
+  lista blanca de ruta **y** nombre, copia previa, tipo, `-WhatIf`, relectura— y nunca
+  borra claves (§3.2, §3.3; invariante en §10; riesgo aceptado §11 nº 13).
+- ***Actualizaciones* con `-Registry`.** Dos ajustes en `HKLM\SOFTWARE\Policies\Microsoft`
+  (rama ya permitida, sin ampliar la lista blanca). `NoAutoRebootWithLoggedOnUsers` está
+  en la denylist: lleva `-AllowsSecurityTradeoff`, dice qué se pierde y no viene activo
+  (§3.4).
+- **Paso `dns-dhcp`** en *Internet* (deshace el DNS de Google): `netsh.exe` ya permitido,
+  desmarcado y con aviso (§11 nº 8, invariante en §10).
+- **CI** de PSScriptAnalyzer y de la suite en Windows, e imagen de Semgrep fijada por
+  digest (§8, §9, §11 nº 4 y 5).
+
+Resultado: Semgrep (`p/security-audit` + `p/secrets`, `--oss-only`) **0 hallazgos en 112
+archivos**; PSScriptAnalyzer sin avisos nuevos (1 de línea base; 12 falsos positivos por
+verbo en el pase estricto de `core/`). Informe:
+[`auditoria/2026-11-08-seguridad-calidad.html`](auditoria/2026-11-08-seguridad-calidad.html).
 
 ---
 
@@ -65,18 +92,19 @@ Los tres riesgos reales, por gravedad:
 ## 2. Superficie de ataque
 
 La aplicación **no habla con la red** (no descarga ni envía nada; la sección Internet
-**configura** la red local con `netsh` e `ipconfig`, y la de Limpieza **borra**
-temporales de la carpeta del usuario; ver §12), no abre puertos, no
+**configura** la red local con `netsh` e `ipconfig`, la de Limpieza **borra**
+temporales y la de Energía cambia el plan de energía con `powercfg`; ver §12), no abre
+puertos, no
 carga plugins y no lee archivos que le pase un tercero. Las únicas entradas externas
 son:
 
 | Entrada | Origen | Cómo se trata |
 | --- | --- | --- |
-| `%APPDATA%\OptimizadorPC\settings.json` | Disco, escrito por la propia app | Parseo defensivo: un JSON corrupto o ausente se **ignora** y se arranca con valores por defecto (`ui/Engine/AppSettings.ps1`). Solo guarda preferencias de interfaz (tema, idioma, opciones de vista, formato de hora, carpeta de guardado del log). Un valor desconocido en `TimeFormat` cae al de partida (`Get-AppTimeFormat`); el patrón `.ToString(...)` es un literal de `ui/Engine/TimeFormat.ps1`, nunca la cadena guardada. |
+| `%APPDATA%\OptimizadorPC\settings.json` | Disco, escrito por la propia app | Parseo defensivo: un JSON corrupto o ausente se **ignora** y se arranca con valores por defecto (`ui/Engine/AppSettings.ps1`). Guarda preferencias de interfaz (tema, idioma, material, opciones de vista, formato de hora, carpeta y casilla "con detalle" del log) y qué pasos dejó marcados el usuario en las secciones de comandos. **Lo puede escribir cualquier programa del usuario sin privilegios**: por eso un paso con aviso nunca se restaura marcado desde aquí (§7). Un valor desconocido en `TimeFormat` cae al de partida (`Get-AppTimeFormat`); el patrón `.ToString(...)` es un literal de `ui/Engine/TimeFormat.ps1`, nunca la cadena guardada. |
 | El **registro de Windows** que se lee | El equipo | Se abre siempre `RegistryView::Registry64`. Un `DWord` llega como `Int32` con signo y se reinterpreta sin signo (`Format-RegistryValue`). `core/` **nunca lanza**: devuelve un estado (`read`/`missing`/`denied`/`badpath`). |
 | URLs de referencia (`-Link` de cada ajuste) | **Escritas en el propio repositorio** (`ui/Data/Categories/*.ps1`) | Antes de llegar al shell se validan: tiene que ser una URI absoluta con esquema `http` o `https` (`core/Shell/ExternalLink.ps1`). Cualquier otra cosa se rechaza sin tocar el shell. |
 | `-Recommended` / `-Default` de cada clave de registro | **Escritas en el propio repositorio** | Es el contrato de aplicación y de reversión. No proviene de entrada del usuario. |
-| Pasos de las secciones de comandos (`-Exe`, `-Arguments`, `-Service`, `-Clean` de cada `New-CommandStep`) | **Escritos en el propio repositorio** (`ui/Data/Categories/Internet.ps1`, `Cleanup.ps1`) | Se ejecutan **sin shell**, solo ejecutables, servicios y carpetas de una lista blanca; los ejecutables por ruta completa de la carpeta de sistema, las carpetas siempre dentro de la del usuario. Ver §12. El usuario solo elige **cuáles** correr, no **qué** se ejecuta. |
+| Pasos de las secciones de comandos (`-Exe`, `-Arguments`, `-Service`, `-Clean` de cada `New-CommandStep`) | **Escritos en el propio repositorio** (`ui/Data/Categories/Internet.ps1`, `Cleanup.ps1`, `Power.ps1`) | Se ejecutan **sin shell**, solo ejecutables, servicios y carpetas de una lista blanca; los ejecutables por ruta completa de la carpeta de sistema, las carpetas dentro de la del usuario (con las dos excepciones de §12). Ver §12. El usuario solo elige **cuáles** correr, no **qué** se ejecuta. |
 | Salida de esos comandos | El equipo | Solo se **muestra** y se apunta en el log. Nunca se ejecuta ni se usa para construir otro comando. |
 | Guías (`ui/Data/Guides/*.md`) | **Escritas en el propio repositorio**, dentro del `.exe` en Base64 | Se **leen** como texto (`ui/Engine/Markdown.ps1`) y se pintan en un `RichTextBox` de solo lectura. Nunca se ejecutan; sus enlaces pasan por `Invoke-ExternalLink` (solo `http`/`https`, §6). |
 
@@ -93,9 +121,11 @@ descargas. Lo vigila `tests/Source/Security.Tests.ps1`.
 
 La escritura vive en **`core/Registry/Writer.ps1`** (una clave por llamada) y se
 dispara desde **`core/Registry/SettingApply.ps1`** (el toggle ON/OFF de un ajuste con
-`-Registry`). Nada más escribe en el registro. Hoy son **47** ajustes con `-Registry`,
-todos en la sección *Regedit* y **uno por clave**; el primero que se cableó fue
-`NetworkThrottlingIndex` —benigno, reversible, en una rama permitida—.
+`-Registry`). Nada más escribe (ni borra) en el registro. Hoy son **49** ajustes con
+`-Registry`, **uno por clave**: 47 en *Regedit* y 2 en *Actualizaciones* (dos
+directivas de `HKLM\SOFTWARE\Policies\Microsoft\Windows`, dentro de la rama ya
+permitida); el primero que se cableó fue `NetworkThrottlingIndex` —benigno,
+reversible, en una rama permitida—.
 
 ### 3.1 Lista blanca de rutas
 
@@ -128,8 +158,9 @@ BF6. `Test-RegistryWriteAllowed` sin `-Name` nunca acepta esta lista.
 > **Riesgo conocido [Media].** `HKLM\SOFTWARE\Policies\Microsoft` es un prefijo
 > **amplio**: por debajo cuelgan las claves GPO de Windows Defender
 > (`...\Windows Defender`), Windows Update (`...\Windows\WindowsUpdate`) y SmartScreen.
-> La lista blanca gatea **rutas, no semántica**: hoy no hay ningún ajuste que abuse de
-> esto, pero el gate por sí solo no lo impediría. La mitigación es la denylist de
+> La lista blanca gatea **rutas, no semántica**: hoy el único ajuste que escribe bajo
+> `...\Windows\WindowsUpdate` es *Auto-Restart With Active Sessions*, declarado como
+> rebaja de seguridad (§3.4), pero el gate por sí solo no lo impediría. La mitigación es la denylist de
 > nombres de valor del §3.4 + la revisión manual de cada ajuste nuevo.
 > **Antes de estrechar este prefijo** hay que saber qué claves concretas se querrán
 > escribir (política de energía, telemetría, etc.).
@@ -140,11 +171,28 @@ BF6. `Test-RegistryWriteAllowed` sin `-Name` nunca acepta esta lista.
 blanca, comprueba que se siguen cumpliendo:
 
 1. **Valor de restauración documentado.** El `Default` de cada clave: `OFF` lo escribe.
-   Un ajuste sin `Default` real no se puede revertir → no se aplica.
+   O, en su lugar, `DefaultAbsent = $true`: de fábrica el valor **no existe** (una
+   directiva sin configurar) y `OFF` lo **borra**. Una clave declara uno de los dos,
+   nunca ambos; sin ninguno no se puede revertir → no se aplica (lo vigila
+   `Security.Tests.ps1`).
 2. **Distinguir "no existía" de "valía otra cosa".** `Get-RegistryStoredValue`
-   distingue `missing` de `read` y lo guarda en el snapshot (`Existed`).
-   *Pendiente:* revertir un valor que **no existía** debería borrarlo, no escribir el
-   `Default` — hoy escribe el `Default`.
+   distingue `missing` de `read` y lo guarda en el snapshot (`Existed` y `State`).
+   **Revertir lo que no existía lo borra** (2026-11-08): `OFF` llama a
+   `Remove-RegistryValue` en vez de escribir el `Default` si la clave declara
+   `DefaultAbsent`, o si la **primera** copia de la sesión de ese valor
+   (`Get-RegistrySnapshotOrigin`) lo vio `missing`. Un `denied` no cuenta como ausente
+   (no se sabe): ahí se escribe el `Default`. El borrado:
+   - quita **solo el valor** (`DeleteValue`); nunca una clave ni subclave. Si `ON` creó
+     la clave contenedora, se queda vacía (una clave de directiva vacía es "sin
+     configurar"),
+   - pasa por la **misma** lista blanca (ruta **y** nombre de valor) y rechaza un
+     nombre vacío (sería el "(Predeterminado)" de la clave),
+   - respeta el desarmado de las pruebas (`Set-RegistryWriteArmed`) y `-WhatIf`,
+   - no toca un valor que exista con **otro tipo** del declarado (`typemismatch`),
+   - guarda copia previa, verifica por relectura que ya no está y nunca lanza.
+   Es el único borrado del registro del programa: `Security.Tests.ps1` falla si
+   aparece un borrado de claves en `ui/`/`core/` o un borrado de valores fuera de
+   `Writer.ps1`.
 3. **Ruta validada** contra `$RegistryWriteAllowlist` (`Test-RegistryWriteAllowed`),
    nunca concatenada con entrada libre. `RegistryView::Registry64` explícito.
 4. **Tipo declarado.** `ConvertTo-RegistryData` respeta el `Type` (`DWord`/`QWord`/
@@ -157,24 +205,27 @@ Además, `Writer.ps1` hace **copia del valor previo** (`$RegistrySnapshots`, en 
 **verificación por relectura** tras escribir (si no cuadra → `denied`, fallo visible en
 el log), y soporta **`-WhatIf`** (`SupportsShouldProcess`).
 
-### 3.3 Estados que devuelve `Write-RegistryValue`
+### 3.3 Estados que devuelven `Write-RegistryValue` y `Remove-RegistryValue`
 
 | Estado | Qué pasó |
 | --- | --- |
 | `written` | Escrito y confirmado por relectura. |
-| `nochange` | Ya estaba en el valor destino; no se reescribe. |
-| `blocked` | La ruta no está en la lista blanca. |
+| `deleted` | **Solo `Remove-RegistryValue`.** Valor borrado y confirmado por relectura que ya no está. |
+| `nochange` | Ya estaba en el valor destino (o, al borrar, ya no existía); no se toca. También con `-WhatIf`. |
+| `blocked` | La ruta (o el nombre del valor) no está en la lista blanca. Al borrar, también un nombre vacío. |
 | `badpath` | La raíz de la ruta no se reconoce. |
-| `typefail` | El texto declarado no cuadra con el tipo. |
+| `typefail` | El texto declarado no cuadra con el tipo (al borrar: el `Type` no es un tipo conocido). |
 | `unsupported` | Tipo que aún no se sabe escribir (`MultiString`). |
-| `typemismatch` | El valor ya existe con OTRO tipo; no se pisa en silencio. |
-| `denied` | Sin permisos, o la relectura posterior no cuadra. |
-| `disarmed` | La escritura está desarmada (solo en las pruebas). |
+| `typemismatch` | El valor ya existe con OTRO tipo; no se pisa ni se borra en silencio. |
+| `denied` | Sin permisos, o la relectura posterior no cuadra (al borrar: el valor sigue ahí). |
+| `disarmed` | La escritura (y el borrado) está desarmada (solo en las pruebas). |
 
 Cada intento deja en el registro de actividad (`core/Diagnostics/Log.ps1`) tres bloques
 auditables: `write attempt` (con validación previa: clave existe, valor existe, tipo
 real, si el proceso está elevado), `post write` (esperado vs. leído) y el resultado
-(`applied`/`restored`/`write failed` con motivo accionable, excepción, HResult y traza).
+(`applied`/`restored`/`deleted`/`write failed` con motivo accionable, excepción, HResult
+y traza). Un borrado usa los mismos bloques con `action=RestoreAbsent` (o
+`DeleteValue`) y `newvalue=(absent)`, y antes deja su `snapshot` como una escritura.
 
 ### 3.4 Ajustes que degradan la seguridad del equipo
 
@@ -202,8 +253,24 @@ EnableFirewall  DoNotAllowExceptions
 La lista es la de `tests/Source/Security.Tests.ps1` (`$peligrosos`); si crece, crece en
 los dos sitios.
 
-Estado actual: **cero ajustes** tocan esta lista. Los ajustes de UAC, BitLocker y
-Automatic Maintenance que existieron en versiones anteriores fueron retirados.
+La marca se pone con el switch **`-AllowsSecurityTradeoff`** de `New-Setting`.
+
+Estado actual (2026-11-08): **un ajuste** toca esta lista y lleva la marca:
+*Auto-Restart With Active Sessions* de *Actualizaciones*
+(`HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU\NoAutoRebootWithLoggedOnUsers`
+= 1). Su descripción dice lo que se pierde (las correcciones de seguridad que piden
+reiniciar esperan a que reinicie el usuario; Microsoft avisa de que en un equipo del
+que nadie cierra sesión puede no reiniciar nunca), su nota de juego es `na`, no viene
+activo (de fábrica el valor no existe → `factory` → interruptor apagado) y `OFF` borra
+la directiva. Windows solo la respeta con *Configure Automatic Updates* en la opción 4;
+el ajuste lo dice y no escribe `AUOptions`.
+
+Los 47 ajustes de *Regedit* no tocan esta lista ni llevan la marca. Son de rendimiento
+(MMCSS, TCP/IP, SMB, Prefetcher, QoS), privacidad (telemetría, actividad, publicidad,
+escritura a mano) y servicios (`Start` de siete servicios concretos); uno **sube** la
+seguridad: *Block WPBT Executables* (`DisableWpbtExecution`). Los ajustes de UAC,
+BitLocker y Automatic Maintenance que existieron en versiones anteriores fueron
+retirados.
 
 ---
 
@@ -211,10 +278,15 @@ Automatic Maintenance que existieron en versiones anteriores fueron retirados.
 
 - **Contrato duro:** el `Default` de cada clave. `OFF` (o el botón de restaurar) lo
   escribe. Se compara por valor, no por escritura (`0x0000000A` = `10` = `-1` según el
-  tipo).
+  tipo). Si la clave declara `DefaultAbsent = $true`, el contrato es "valor ausente":
+  `OFF` lo **borra** y ausente cuenta como `factory`.
 - **Copia adicional:** `$RegistrySnapshots` en `Writer.ps1` guarda el valor y el tipo
-  **anteriores** a cada escritura (aunque estuvieran personalizados) y si la clave
-  **existía**. Es el "deshacer" real.
+  **anteriores** a cada escritura o borrado (aunque estuvieran personalizados), si el
+  valor **existía** y el estado de la lectura (`State`: `read`/`missing`/`denied`). Es
+  el "deshacer" real, y es lo que usa `OFF` para **borrar** un valor que no existía la
+  primera vez que el programa lo tocó en la sesión, en vez de escribir el `Default`.
+  Como la copia vive en memoria, eso solo vale dentro de la misma sesión: tras
+  reiniciar el programa, `OFF` vuelve a escribir el `Default` declarado.
 
 > **Riesgo conocido [Media].** `$RegistrySnapshots` vive **solo en memoria** y se pierde
 > al cerrar la aplicación. **No hay "deshacer" en la UI** ni exportación del snapshot.
@@ -265,9 +337,17 @@ cualquier cosa (otro `.exe`, un `.bat`, un archivo local), así que:
 ## 7. Datos del usuario y registro de actividad
 
 - `settings.json` en `%APPDATA%\OptimizadorPC\` (no junto al `.exe`, que puede estar en
-  una carpeta sin permisos de escritura). Solo preferencias de interfaz. **Nada
-  sensible**: ni credenciales, ni rutas de otros usuarios, ni identificadores de
-  máquina.
+  una carpeta sin permisos de escritura). Preferencias de interfaz y, desde el
+  2026-11-08, los pasos que el usuario cambió en las secciones de comandos
+  (`StepChoices.<sección>`: solo los `Id`). **Nada sensible**: ni credenciales, ni rutas
+  de otros usuarios, ni identificadores de máquina.
+- **`settings.json` no es de fiar**: lo escribe cualquier programa del usuario, sin
+  privilegios, y el `.exe` corre elevado. Lo que se lee de ahí no puede elegir qué se
+  ejecuta (los pasos siguen siendo los de la lista blanca), pero sí podría dejar
+  marcado uno peligroso a la espera de que el usuario pulse "Ejecutar". Por eso
+  `Restore-StepChoices` **nunca restaura un paso con aviso** (`-Warning`: el reset del
+  firewall, la papelera, el DNS fijo...): esos empiezan siempre como vienen declarados.
+  Lo vigila `Ui/StepsView.Tests.ps1`.
 - El **registro de actividad** (`core/Diagnostics/Log.ps1`) guarda las rutas y valores
   del registro leídos y escritos (viejo → nuevo). Se puede **exportar a un archivo** que
   elige el usuario ("Save to file" del cajón del log). Es divulgación de configuración
@@ -306,11 +386,31 @@ ps2exe. Puntos de seguridad:
   - **Quitado el filtro `paths`** del disparador `push`: ahora cada push a `main`/
     `master` ejecuta Semgrep, no solo los que tocan el propio workflow. Antes, como el
     repo commitea directo a `master`, la cobertura efectiva era el `schedule` nocturno
-    + `workflow_dispatch`.
-  - *Pendiente:* la imagen `container: semgrep/semgrep` sigue sin fijar por tag/digest
-    (es el analizador, no una dependencia del producto; `latest` suele ser lo deseado)
-    y no se sube SARIF a *code scanning* (los hallazgos solo salen en los logs de
-    Actions).
+    más `workflow_dispatch`.
+  - **Imagen de Semgrep fijada por digest** (2026-11-08):
+    `semgrep/semgrep:1.183.0@sha256:2e45517a…` (índice multiarquitectura de 1.183.0, que
+    era `latest` ese día según la API de Docker Hub). Antes era `semgrep/semgrep` a secas
+    = `latest`, que cambia en cada versión y lo puede repuntar quien publica. Subir de
+    versión es cambiar tag y digest a conciencia.
+  - *Pendiente:* no se sube SARIF a *code scanning* (los hallazgos solo salen en los
+    logs de Actions) y los `--config` no están versionados en el repo.
+- **CI de Windows (`.github/workflows/ci.yml`)** — nuevo el 2026-11-08, mismos
+  disparadores que Semgrep (push a `main`/`master`, `pull_request`, manual) y
+  `permissions: contents: read`:
+  - Job `pssa`: PSScriptAnalyzer **fijado a 1.25.0** (`Install-Module -RequiredVersion`
+    desde PSGallery, igual criterio que ps2exe) con `PSScriptAnalyzerSettings.psd1`,
+    sin `build/`. Falla con cualquier **Error** y con cualquier aviso que no esté en la
+    línea base `.github/pssa-baseline.txt` (comparación por regla + archivo, no por
+    línea). Detalle en §9.
+  - Job `pruebas`: `tests/Run-Tests.ps1` en **los dos hosts** (matriz `powershell` /
+    `pwsh`, cada uno en su runner, `-STA` explícito). El arnés desarma la escritura al
+    registro de la app y la ejecución de comandos; solo toca su rama de pruebas en
+    `HKCU`, que borra al terminar.
+  - `actions/checkout` con el mismo SHA que `semgrep.yml` y `persist-credentials: false`
+    (ningún job hace push).
+  - *Sin probar todavía en un runner* (se escribió sin poder hacer push). Riesgo
+    conocido: `windows-latest` es **Windows Server**, no Windows 11; ver riesgo 5 del
+    §11.
 
 ---
 
@@ -324,8 +424,18 @@ ps2exe. Puntos de seguridad:
   handlers, posicionales de la casa, `Write-Host` solo en runner/build, plurales de
   nombres públicos).
 - **Cómo correrlo**: `Invoke-ScriptAnalyzer -Path . -Recurse -ReportSummary`
-- **Instalado en la máquina de desarrollo** (v1.25.0, 2026-09-07); antes había que
-  esperar a la CI.
+- **Instalado en la máquina de desarrollo** (v1.25.0, 2026-09-07).
+- **En CI desde el 2026-11-08** (job `pssa` de `.github/workflows/ci.yml`, Windows
+  runner, PSScriptAnalyzer **fijado a 1.25.0**). Corre la misma orden con `-Settings
+  ./PSScriptAnalyzerSettings.psd1` y descarta `build/`. **Falla** si hay cualquier
+  hallazgo de severidad **Error** (esté o no en la base) o un aviso que no esté en
+  `.github/pssa-baseline.txt`. La base se compara por **regla + archivo** —contando
+  repeticiones—, no por número de línea: mover código no la rompe, pero un segundo aviso
+  de la misma regla en el mismo archivo sí. Si un aviso de la base desaparece, la CI lo
+  anuncia (`::notice`) sin fallar, para bajarla. **Línea base inicial: 1 aviso**,
+  `PSUseDeclaredVarsMoreThanAssignments` en `ui/Index/CategoryIndex.ps1` (el falso
+  positivo de `$CategoryIndex`). Comprobado en local con la base real (pasa) y con una
+  base vacía (falla y marca el aviso).
 - **Estado 2026-09-07**: **0 errores, 2 avisos**, los dos falsos positivos de la misma
   familia — `PSUseDeclaredVarsMoreThanAssignments` sobre `$CategoryIndex`
   (`ui/Index/CategoryIndex.ps1`) y `$ScriptRoot` (`build/_combined.ps1`, generado): la
@@ -365,6 +475,9 @@ ps2exe. Puntos de seguridad:
 - **Un hallazgo, ya corregido**: `actions/checkout@v6` era una etiqueta mutable
   (`github-actions-mutable-action-tag`). Fijado por SHA (§8). Repetido el escaneo:
   **0 hallazgos**.
+- **Ejecutado de nuevo el 2026-11-08** (`--oss-only`, que en Windows no hay motor Pro;
+  `p/security-audit` + `p/secrets`; 109 archivos, sin `build/`, `tests/` ni
+  `graphify-out/`): **0 hallazgos, 0 errores**.
 - **Mejora pendiente**: subir SARIF a *GitHub code scanning* para que los hallazgos
   aparezcan en la pestaña Security y no solo en los logs de Actions; versionar los
   `--config` en el propio workflow para que la config no dependa solo de la plataforma.
@@ -381,17 +494,17 @@ aportan**, por orden de valor:
 
 | Herramienta | Aporta | Límite |
 | --- | --- | --- |
-| **PSScriptAnalyzer** en CI (Windows runner) | Reglas específicas de PowerShell, gratis, sin token | Ya configurado; falta el workflow |
-| **Semgrep** con rulesets fijados + SARIF | Patrones de seguridad e inyección, dedupe entre ramas | Ya en CI; falta afinar disparador y config |
+| **PSScriptAnalyzer** en CI (Windows runner) | Reglas específicas de PowerShell, gratis, sin token | **Hecho (2026-11-08)**: job `pssa` de `ci.yml`, versión fijada, contra línea base |
+| **Semgrep** con rulesets fijados + SARIF | Patrones de seguridad e inyección, dedupe entre ramas | Ya en CI, disparador corregido e imagen fijada por digest; faltan `--config` versionados y SARIF |
 | **Gitleaks** / `trufflehog` en pre-commit y CI | Secretos filtrados en el historial | Complementa a `p/secrets` |
 | **Firma Authenticode del `.exe`** + hash publicado | Integridad del entregable | Necesita certificado |
-| `System.Windows.Automation` (prueba de humo del `.exe`) | Que el binario elevado arranca y no rompe | Coste de mantenimiento |
+| `System.Windows.Automation` (prueba de humo) | Que el programa empaquetado arranca y no rompe | **Hecho (2026-11-08)**: `tests/Smoke/Invoke-Smoke.ps1` arranca `build/_combined.ps1` sin elevar; el `.exe` elevado sigue a mano (`-Exe`, pide UAC) |
 
 ---
 
 ## 10. Invariantes verificadas por pruebas
 
-`tests/Source/Security.Tests.ps1` (nuevo en esta auditoría) fija en la suite lo que
+`tests/Source/Security.Tests.ps1` (desde la auditoría del 2026-09-06) fija en la suite lo que
 antes solo vivía en prosa. **Falla la suite** si:
 
 | Invariante | Riesgo que cubre |
@@ -402,24 +515,33 @@ antes solo vivía en prosa. **Falla la suite** si:
 | `core/Shell/ExternalLink.ps1` `$ExternalLinkSchemes` es exactamente `http`, `https` | Un proceso elevado abriendo `file:` / `ms-settings:` / un `.exe` local. |
 | Solo `core/Commands/CommandRunner.ps1` usa `ProcessStartInfo` / `Process::Start`, y solo `ExternalLink.ps1` usa `Start-Process` | Una tercera puerta para arrancar procesos con privilegios. |
 | Solo `core/Commands/FolderCleanup.ps1` borra archivos (`Remove-Item`, `.Delete(`, `Clear-RecycleBin`) | Una segunda puerta para borrar con privilegios, sin lista blanca. |
-| Toda entrada de `$CleanupAllowedFolders` tiene forma válida, resuelve **dentro de la carpeta del usuario** y, salvo `%TEMP%`, nombra una subcarpeta concreta | Vaciar `%LOCALAPPDATA%` entera, o algo del sistema, por una línea mal escrita. |
+| Toda entrada de `$CleanupAllowedFolders` tiene forma válida, resuelve **dentro de la carpeta del usuario** (o es `C:\Windows\Temp` exacto) y, salvo `%TEMP%`, nombra una subcarpeta concreta | Vaciar `%LOCALAPPDATA%` entera, o algo del sistema, por una línea mal escrita. |
 | Un paso que vacía la papelera nunca viene marcado de serie y lleva aviso | Borrar sin vuelta atrás lo que el usuario guardó ahí para poder recuperarlo. |
 | `$CommandAllowedExecutables` no tiene rutas ni intérpretes; `$CommandAllowedServices` no tiene servicios de seguridad (Defender, firewall, Update...) | Ampliar la lista hasta convertirla en una shell. |
 | Todo `New-CommandStep` de cualquier sección pasa `Test-CommandStepAllowed` | Un paso fuera de la lista acabaría en `blocked` al pulsar, en silencio. |
 | Un paso que toca `advfirewall` nunca viene marcado de serie y lleva aviso | Borrar las reglas del firewall sin que el usuario lo decida. |
+| Un paso que cambia el DNS de un adaptador (`dns` con `set`/`add`) nunca viene marcado de serie y lleva aviso | Sustituir el DNS del router, o devolverlo a DHCP, sin que el usuario lo decida. |
+| Cada clave de `-Registry` declara a dónde vuelve `OFF`: un `Default` **o** `DefaultAbsent`, nunca los dos | Un ajuste que no sabe volver a fábrica, o que vuelve a dos sitios distintos. |
+| Nada en `ui/`/`core/` borra **claves** del registro, y solo `core/Registry/Writer.ps1` borra **valores** | Una segunda puerta para borrar del registro con privilegios, sin lista blanca. |
 
 Cobertura de la ejecución de comandos: `tests/Core/CommandRunner.Tests.ps1` (lista
 blanca, rutas rechazadas, desarmado, `blocked`, un proceso real de solo lectura,
 decodificación de la salida), `tests/Core/FolderCleanup.Tests.ps1` (lista blanca de
-carpetas, `%TEMP%` fuera del perfil, los dos modos de borrado, que una unión no se
-sigue, por trozos; sobre una carpeta de mentira en `%TEMP%`) y
-`tests/Ui/StepsView.Tests.ps1` (solo lo marcado, siempre en el orden del archivo,
-detener, sección bloqueada, Limpieza entera desarmada).
+carpetas, `%TEMP%` fuera del perfil con rutas buenas y malas, `C:\Windows\Temp`, los
+dos modos de borrado, que una unión no se sigue —tampoco si aparece entre dos latidos—,
+el simulacro de `-WhatIf` que no borra nada, por trozos; sobre una carpeta de mentira en
+`%TEMP%`) y `tests/Ui/StepsView.Tests.ps1` (solo lo marcado, siempre en el orden del
+archivo, detener, sección bloqueada, Limpieza entera desarmada, y que un paso con aviso
+no se restaura marcado desde `settings.json`). Fuera de la suite, la prueba de humo
+`tests/Smoke/Invoke-Smoke.ps1` arranca el programa empaquetado de verdad.
 
 Cobertura de `core/` relacionada (ya existente):
 `tests/Core/RegistryWriter.Tests.ps1` (lista blanca, tipado, snapshot, relectura,
-`type mismatch`, `-WhatIf`, nunca lanza) y `tests/Core/SettingApply.Tests.ps1`
-(ON/OFF, recálculo de estado, rastro en el log).
+`type mismatch`, `-WhatIf`, nunca lanza; y el borrado: solo el valor, misma lista
+blanca, nombre vacío, otro tipo, `-WhatIf`, desarmado, copia previa, log) y
+`tests/Core/SettingApply.Tests.ps1` (ON/OFF, recálculo de estado, rastro en el log;
+`OFF` borra con `DefaultAbsent` o si la primera copia lo vio ausente, y escribe el
+`Default` si existía o si la copia fue `denied`).
 
 ---
 
@@ -430,13 +552,16 @@ Cobertura de `core/` relacionada (ya existente):
 | 1 | Lista blanca de escritura amplia (`SOFTWARE\Policies\Microsoft` alcanza Defender/Update/SmartScreen) | Media | **Mitigado en parte** por la denylist de nombres de valor (§3.4) + revisión manual. Estrechar el prefijo requiere saber qué claves se querrán escribir. |
 | 2 | Rollback solo en memoria; sin "deshacer" en UI; sin aviso de punto de restauración | Media | **Aceptado temporalmente** por decisión del propietario. Pendiente: persistir snapshot → botón deshacer → aviso de restauración. |
 | 3 | `.exe` sin firma Authenticode | Media | **Aceptado** mientras no se distribuya a terceros. Bloquea la distribución. |
-| 4 | CI de Semgrep incompleta | Baja | **Corregido en parte (2026-09-07):** `actions/checkout` fijado por SHA y quitado el filtro `paths` del `push` (cada push a master pasa por Semgrep). **Queda:** `container: semgrep/semgrep` sin fijar (es el analizador, no una dependencia), `--config` no versionados en el repo, sin subida de SARIF a *code scanning*. |
-| 5 | Sin CI de PSScriptAnalyzer ni de la suite de pruebas (solo Semgrep) | Baja | **Documentado, no corregido.** Recomendación: un workflow en Windows runner que corra `tests/Run-Tests.ps1 -BothHosts` y `Invoke-ScriptAnalyzer`. Ambas herramientas ya están instaladas y se corren a mano (§9); falta el workflow. |
+| 4 | CI de Semgrep incompleta | Baja | **Corregido en parte.** 2026-09-07: `actions/checkout` fijado por SHA y quitado el filtro `paths` del `push` (cada push a master pasa por Semgrep). 2026-11-08: imagen fijada por digest (`semgrep/semgrep:1.183.0@sha256:2e45517a…`, §8). **Queda:** `--config` no versionados en el repo (depende de la config de la plataforma) y sin subida de SARIF a *code scanning*. |
+| 5 | Sin CI de PSScriptAnalyzer ni de la suite de pruebas (solo Semgrep) | Baja | **Corregido, pendiente de verlo en verde (2026-11-08).** `.github/workflows/ci.yml` en `windows-latest`: PSScriptAnalyzer 1.25.0 contra línea base (§9) y la suite en los dos hosts (§8). Escrito sin poder hacer push: **no se ha ejecutado aún en un runner**. `windows-latest` es **Windows Server** (build ≥ 26100): `tests/Core/SystemInfo.Tests.ps1` ya distingue cliente de servidor (`InstallationType` = `Client`) y solo exige `^Windows 11` en un cliente. Solo se dispara en `master`/`main` y en PR: la rama de trabajo no lo ejecuta hasta abrir el PR. No hay runner x64 de Windows 11 alojado por GitHub. |
 | 6 | `Add-Type` en `SystemBackdrop.ps1` y `WorkArea.ps1` compila una cadena de C# | Info | **Aceptado.** Las cadenas son literales fijos y revisados; no se construyen en runtime. `WorkArea.ps1` (2026-10-03) subclasifica la ventana propia con `SetWindowLongPtr` solo para corregir `WM_GETMINMAXINFO`; no toca otras ventanas ni otros procesos. |
-| 7 | Contadores de las píldoras de la lista son fijos, no calculados | Info | Sin impacto de seguridad; cosmético. Ya documentado en `README.md`. |
-| 8 | Los pasos de Internet **no se deshacen** desde la app (reset de Winsock, TCP/IP, firewall, DNS fijo) | Media | **Aceptado (2026-10-03).** Son los comandos del `.cmd` que el usuario ya usaba. Mitigado: lo que borra configuración propia (firewall, DNS) viene desmarcado y con aviso, se ejecuta paso a paso con registro de cada uno, y los reset piden reiniciar. Pendiente si se quiere: un paso "volver a DHCP" para el DNS. |
-| 10 | **Carrera al vaciar una carpeta (TOCTOU).** Entre comprobar que una subcarpeta no es un enlace y entrar en ella, otro proceso del mismo usuario podría cambiarla por una unión; corriendo elevado, el borrado la seguiría | Media | **Mitigado y aceptado (2026-11-08).** `Open-CleanupFolder` vuelve a mirar el atributo justo antes de entrar (prueba: `FolderCleanup.Tests.ps1`), lo que reduce la ventana a un instante. Cerrarla del todo exigiría borrar por descriptor con la API nativa (`FILE_FLAG_OPEN_REPARSE_POINT`). |
+| 7 | Contadores de las píldoras de la lista son fijos, no calculados | Info | **Cerrado (2026-11-08).** Con *Actualizaciones* leyendo el registro ya ninguna sección de ajustes cuenta por etiquetas: todas las píldoras salen del estado real. |
+| 8 | Los pasos de Internet **no se deshacen** desde la app (reset de Winsock, TCP/IP, firewall) | Media | **Aceptado (2026-10-03).** Son los comandos del `.cmd` que el usuario ya usaba. Mitigado: lo que borra configuración propia (firewall, DNS) viene desmarcado y con aviso, se ejecuta paso a paso con registro de cada uno, y los reset piden reiniciar. **El DNS fijo ya tiene vuelta (2026-11-08):** el paso `dns-dhcp` (`netsh interface ip set dns name=Ethernet source=dhcp`, mismo ejecutable y misma lista blanca) devuelve el adaptador "Ethernet" al DNS del router. Viene desmarcado y con aviso, y nunca se restaura marcado desde `settings.json`: va detrás de los de Google y, marcado con ellos, los anularía (no hay forma de excluirlo en la cola; `-SkipIf` solo mira el registro). Pruebas: `Ui/StepsView.Tests.ps1` y `Source/Security.Tests.ps1`. El reset del firewall sigue sin vuelta. |
 | 9 | Lo que borra Limpieza **no pasa por la papelera** y no se recupera | Media | **Aceptado (2026-11-08).** Es lo que hacía `EliminarTemporales.v1.cmd` con `del /q`. Mitigado: solo carpetas de una lista blanca y dentro de la del usuario; lo que se puede echar de menos (papelera, recientes, cookies, registros de WebCache) viene desmarcado y con aviso; los archivos en uso se saltan; cada paso deja en el log cuánto borró. |
+| 10 | **Carrera al vaciar una carpeta (TOCTOU).** Entre comprobar que una subcarpeta no es un enlace y entrar en ella, otro proceso del mismo usuario podría cambiarla por una unión; corriendo elevado, el borrado la seguiría | Media | **Mitigado y aceptado (2026-11-08).** `Open-CleanupFolder` vuelve a mirar el atributo justo antes de entrar (prueba: `FolderCleanup.Tests.ps1`), lo que reduce la ventana a un instante. Cerrarla del todo exigiría borrar por descriptor con la API nativa (`FILE_FLAG_OPEN_REPARSE_POINT`). |
+| 11 | `settings.json` lo puede escribir cualquier programa del usuario sin privilegios, y el `.exe` lo lee corriendo elevado | Baja | **Mitigado (2026-11-08).** De ahí solo salen preferencias de interfaz y qué pasos marcó el usuario; ningún paso fuera de la lista blanca puede entrar por ese camino, y un paso con aviso (firewall, papelera, DNS) **nunca** se restaura marcado (§7). |
+| 12 | Un `%TEMP%` movido fuera del perfil (`R:\Temp`) se vacía aunque lo compartan otros usuarios | Baja | **Aceptado (2026-11-08).** Solo si la carpeta se llama `Temp`/`Tmp` y no cuelga de Windows, Archivos de programa, ProgramData ni de otro perfil (§12); la variable la fija el propio usuario. |
+| 13 | Con `DefaultAbsent`, `OFF` **borra** el valor aunque lo hubiera puesto otro (una GPO de la organización, otra herramienta) | Baja | **Aceptado (2026-11-08).** Antes `OFF` lo pisaba con el `Default`, así que no es superficie nueva; ahora deja la directiva "sin configurar", que es el estado de fábrica. Una GPO de dominio la vuelve a aplicar en el siguiente refresco. Solo afecta a valores de la lista blanca y por acción explícita del usuario. |
 
 ---
 
@@ -464,19 +589,22 @@ pasa por **`core/Commands/CommandRunner.ps1`**, y estas son sus reglas:
    arriba abajo. Muchos dependen de los anteriores (limpiar la pila antes de
    ajustar TCP).
 6. **Nada lanza**: un paso fuera de la lista es `blocked`, uno que no arranca es
-   `error`, uno colgado se mata al pasar su tiempo (`timed out`, 60 s por defecto).
+   `error`, uno colgado se mata al pasar su tiempo (`timed out`, 60 s por defecto y
+   600 s para vaciar una carpeta).
 7. **Rastro**: cada paso deja en el log su inicio (`running`) y su resultado con
    código de salida, duración y la salida recortada.
-8. **Desarmable**: las pruebas lo desarman (`Set-CommandRunArmed $false`) y cada
-   paso acaba en `disarmed` sin arrancar nada ni borrar nada.
+8. **Desarmable y simulable**: las pruebas lo desarman (`Set-CommandRunArmed $false`)
+   y cada paso acaba en `disarmed` sin arrancar nada ni borrar nada. Con
+   `Start-CommandStep -WhatIf` tampoco se arranca nada (`disarmed`, "WhatIf: not run"),
+   salvo que un `-Clean` se recorre en simulacro y la papelera cuenta lo que tiene.
 9. **Borrar carpetas** (`-Clean`) no arranca `cmd /c del`: lo hace
    **`core/Commands/FolderCleanup.ps1`** con .NET, y es el único sitio del programa que
    borra archivos.
    - **Lista blanca de carpetas** (`$CleanupAllowedFolders`), escritas como en el
      `.cmd` (`%TEMP%`, `%LOCALAPPDATA%\...`). El paso tiene que nombrar una **tal
      cual**: ni una subcarpeta ni otro patrón.
-   - Solo tres variables (`%TEMP%`, `%LOCALAPPDATA%`, `%APPDATA%`), y las resuelve la
-     app: las dos últimas con `GetFolderPath`, no leyendo el entorno.
+   - Solo cuatro variables (`%TEMP%`, `%LOCALAPPDATA%`, `%APPDATA%`, `%WINDIR%`), y las
+     resuelve la app: las tres últimas con `GetFolderPath`, no leyendo el entorno.
    - **Dentro de la carpeta del usuario, con dos excepciones contadas**
      (`Get-CleanupPathProblem`): `C:\Windows\Temp` exacto (su paso pide administrador), y
      un `%TEMP%` movido fuera del perfil si la carpeta se llama `Temp` o `Tmp`, no es la
@@ -495,7 +623,9 @@ pasa por **`core/Commands/CommandRunner.ps1`**, y estas son sus reglas:
    - **Por trozos** de 80 ms en cada latido del temporizador: `%TEMP%` con decenas de
      miles de archivos no congela la ventana.
 10. **La papelera** (`-EmptyRecycleBin`) se vacía con `Clear-RecycleBin`, solo la del
-    usuario, y nunca viene marcada de serie.
+    usuario, y nunca viene marcada de serie. Antes de vaciarla apunta qué había.
+11. **Lo marcado se recuerda** entre sesiones (`settings.json`, `StepChoices`), **salvo
+    los pasos con aviso**, que empiezan siempre como vienen declarados (§7).
 
 **Añadir un ejecutable, un servicio o una carpeta a la lista es una decisión de
 seguridad**, igual que una rama de la lista blanca del registro: se revisa a mano, se

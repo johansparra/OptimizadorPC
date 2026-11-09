@@ -436,7 +436,19 @@ Describe 'ui/Views - las pantallas se pintan' {
         # hay estado que calcular, y la fila cuenta por etiquetas.
         $ventana = New-AppWindow
         $cat = Get-OptimizationCategories | Where-Object { (Get-CategoryRegistryKeyCount $_) -eq 0 -and -not (Test-CategoryHasSteps $_) } | Select-Object -First 1
-        if (-not $cat) { Skip-Test 'todas las secciones leen ya el registro' }
+        if (-not $cat) {
+            # Desde que Actualizaciones lee el registro ya no queda
+            # ninguna de verdad: se monta una con etiquetas a mano, con
+            # los mismos campos que deja Register-Category, pero SIN
+            # darla de alta (el resto de pruebas no la verá).
+            $cat = [PSCustomObject]@{
+                Id = 'prueba-etiquetas'; Name = 'Update'; Icon = 'Sync'; Description = 'Update Policy, Delivery & Store, Update Behavior'
+                Accent = 'Accent'; AccentSoft = 'AccentSoft'; Badge = $null; Locked = $false
+                Recommended = 1; Default = 1; Custom = 0; Total = 1; Steps = @()
+                Items = @(New-Setting -Name 'Delivery Optimization (P2P)' -Description 'Download updates only from Microsoft, never from or to other PCs' `
+                              -Tags 'Recommended', 'Default' -Value $false)
+            }
+        }
 
         Show-View -Name 'Show-CategoryDetailView' -Arguments @{ Category = $cat }
 

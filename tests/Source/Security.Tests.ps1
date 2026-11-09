@@ -101,14 +101,35 @@ Describe 'seguridad - escritura al registro' {
         }
     }
 
-    It 'cada clave de -Registry declara un Default con el que revertir' {
+    It 'cada clave de -Registry declara a dónde vuelve OFF: un Default o DefaultAbsent, no los dos' {
         # SECURITY.md §3.2 condición 1: un ajuste sin valor de
         # restauración real no se puede deshacer. OFF escribe el
-        # Default; si no hay Default, el ajuste no debería aplicarse.
+        # Default, o BORRA el valor si la clave declara que de fábrica
+        # no existe (DefaultAbsent = $true). Sin ninguno de los dos no
+        # habría a dónde volver; con los dos, no se sabría cuál vale.
         foreach ($entry in Get-AllRegistryKeys) {
             $default = [string]$entry.Key.Default
-            Assert-True (-not [string]::IsNullOrWhiteSpace($default)) `
-                ("la clave '$($entry.Key.Name)' de '$($entry.Setting)' ($($entry.Category)) no declara Default: no habría a dónde volver con OFF")
+            $hasDefault = -not [string]::IsNullOrWhiteSpace($default)
+            $absent = ($entry.Key.DefaultAbsent -eq $true)
+            $donde = "la clave '$($entry.Key.Name)' de '$($entry.Setting)' ($($entry.Category))"
+            Assert-True ($hasDefault -or $absent) "$donde no declara Default ni DefaultAbsent: no habría a dónde volver con OFF"
+            Assert-False ($hasDefault -and $absent) "$donde declara Default Y DefaultAbsent: OFF no sabría si escribir o borrar"
+        }
+    }
+
+    It 'core/ nunca borra claves del registro, y solo Writer.ps1 borra valores' {
+        # SECURITY.md §3.2. Volver a "no configurado" es quitar UN
+        # valor (Remove-RegistryValue), por la lista blanca. Borrar una
+        # clave se llevaría por delante todo lo que cuelga de ella.
+        foreach ($archivo in Get-GuardedSourceFiles) {
+            $texto = Get-Content -Path $archivo.FullName -Raw
+            $rel = Get-GuardedRelPath $archivo
+            Assert-True ($texto -notmatch '\.DeleteSubKey|\.DeleteTree\(|Remove-Item\s+[^\r\n]*(HK(LM|CU|EY_)|Registry::)|reg(\.exe)?\s+delete') `
+                "borrado de claves del registro en ${rel} (ver SECURITY.md §3.2)"
+            if ($rel -ne 'core/Registry/Writer.ps1') {
+                Assert-True ($texto -notmatch '\.DeleteValue\(|Remove-ItemProperty') `
+                    "borrado de valores del registro fuera de core/Registry/Writer.ps1 en ${rel}"
+            }
         }
     }
 }
@@ -212,6 +233,25 @@ Describe 'seguridad - ejecución de comandos (SECURITY.md §12)' {
                 }
             }
         }
+    }
+
+    It 'lo que cambia el DNS de un adaptador nunca viene marcado de serie, y avisa' {
+        # §11, riesgo 8. Fijar el de Google sustituye el del router, y
+        # volver a DHCP anula lo anterior: los dos se deciden a la vista.
+        # Un paso con aviso, además, nunca se restaura marcado desde
+        # settings.json (Restore-StepChoices).
+        $revisados = 0
+        foreach ($cat in $CategoryList) {
+            foreach ($step in @($cat.Steps)) {
+                $a = @($step.Arguments)
+                if ($step.Kind -eq 'exe' -and $a -contains 'dns' -and ($a -contains 'set' -or $a -contains 'add')) {
+                    Assert-False $step.Checked "'$($step.Id)' cambia el DNS y viene marcado"
+                    Assert-True ([bool]$step.Warning) "'$($step.Id)' cambia el DNS y no avisa"
+                    $revisados++
+                }
+            }
+        }
+        Assert-True ($revisados -ge 3) "se esperaban los dos pasos de Google y el de vuelta a DHCP; hay $revisados"
     }
 
     It 'solo core/Commands/FolderCleanup.ps1 borra archivos' {

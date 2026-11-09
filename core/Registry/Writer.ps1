@@ -37,6 +37,13 @@
 #   6. CONFIRMACIÓN POR RELECTURA: después de escribir se vuelve a
 #      leer y se comprueba que el valor es el que se pidió.
 #
+#   7. BORRAR ES QUITAR UN VALOR, NUNCA UNA CLAVE. Remove-RegistryValue
+#      existe para volver a "no configurado" lo que de fábrica no
+#      existía (una directiva, sobre todo). Pasa por la MISMA lista
+#      blanca, el mismo desarmado, -WhatIf, copia previa y relectura.
+#      Aquí no se borra ninguna clave: solo DeleteValue, y solo en
+#      Remove-RegistryValue (lo vigila tests/Source/Security.Tests.ps1).
+#
 # Todos los textos aquí están en inglés o son comentarios: core/
 # no traduce (regla 15).
 # ============================================================
@@ -264,10 +271,15 @@ function ConvertTo-RegistryData {
 # El valor y el tipo anteriores a cada escritura, en memoria. Es
 # el "deshacer" de verdad: OFF restaura el Default declarado, pero
 # si el valor estaba personalizado, aquí queda lo que había.
+#
+# State es lo que dijo la lectura previa ('read' / 'missing' /
+# 'denied'). Existed solo es $true con 'read'; para saber que el
+# valor NO existía hay que mirar State -eq 'missing': un 'denied'
+# también deja Existed en $false y ahí no se sabe nada.
 $RegistrySnapshots = New-Object System.Collections.Generic.List[object]
 
 function Add-RegistrySnapshot {
-    param([string]$Path, [string]$Name, $Kind, $Value, [bool]$Existed)
+    param([string]$Path, [string]$Name, $Kind, $Value, [bool]$Existed, [string]$State = '')
     $script:RegistrySnapshots.Add([PSCustomObject]@{
         Time    = [DateTime]::Now
         Path    = $Path
@@ -275,11 +287,30 @@ function Add-RegistrySnapshot {
         Kind    = $Kind
         Value   = $Value
         Existed = $Existed
+        State   = $State
     })
 }
 
 function Get-RegistrySnapshots  { $script:RegistrySnapshots.ToArray() }
 function Clear-RegistrySnapshots { $script:RegistrySnapshots.Clear() }
+
+<#
+    La PRIMERA copia de un valor en esta sesión: cómo estaba antes de
+    que el programa lo tocara por primera vez. $null si no lo ha
+    tocado. Es lo que permite a OFF saber que un valor no existía y
+    borrarlo en vez de escribir el Default (core/Registry/SettingApply.ps1).
+#>
+function Get-RegistrySnapshotOrigin {
+    param([string]$Path, [string]$Name)
+
+    $norm = Get-NormalizedRegistryPath $Path
+    if (-not $norm) { return $null }
+    foreach ($snap in $script:RegistrySnapshots) {
+        if (-not [string]::Equals((Get-NormalizedRegistryPath $snap.Path), $norm, [System.StringComparison]::OrdinalIgnoreCase)) { continue }
+        if ([string]::Equals([string]$snap.Name, $Name, [System.StringComparison]::OrdinalIgnoreCase)) { return $snap }
+    }
+    $null
+}
 
 # ---- diagnóstico de la escritura --------------------------
 
@@ -569,7 +600,7 @@ function Write-RegistryValue {
     $info.ExistingType = if ($before.State -eq 'read') { [string]$before.Kind } else { '(none)' }
     $info.TypeMatch    = if ($before.State -ne 'read') { 'n/a' } else { [string]($before.Kind -eq $conv.Kind) }
 
-    Add-RegistrySnapshot -Path $Path -Name $Name -Kind $before.Kind -Value $before.Value -Existed ($before.State -eq 'read')
+    Add-RegistrySnapshot -Path $Path -Name $Name -Kind $before.Kind -Value $before.Value -Existed ($before.State -eq 'read') -State $before.State
     Write-AppLog -Source 'registry' -Level 'info' -Status 'snapshot' `
         -Message "$Path\$Name" -Detail ('old={0} | type={1} | existed={2}' -f $info.Old, $info.ExistingType, ($before.State -eq 'read'))
 
@@ -638,4 +669,183 @@ function Write-RegistryValue {
     # silencioso, ahora visible.
     Write-RegistryWriteFailure $info 'WRITE_NOT_PERSISTED' $null $watch.Elapsed.TotalMilliseconds
     New-RegistryWriteResult 'denied' $info.Old $afterText $after.Kind $false $after.Value
+}
+
+# ---- el borrado -------------------------------------------
+
+<#
+    BORRA un valor del registro: solo ese valor, la clave se queda.
+
+        $r = Remove-RegistryValue -Path '...' -Name 'X' -Type 'DWord' -Requested 'OFF'
+
+    Para qué: volver a "no configurado" un valor que de fábrica NO
+    existe. Escribir el Default en su lugar deja una directiva puesta
+    (Configuración la enseña "administrada por tu organización") aunque
+    el número sea el mismo que usa Windows.
+
+    Mismas garantías que Write-RegistryValue, en el mismo orden:
+    desarmado, raíz, lista blanca (ruta Y nombre), copia previa, tipo,
+    -WhatIf, relectura. Si se da -Type y el valor existe con OTRO tipo,
+    no se toca (typemismatch): no es el valor que declara el ajuste.
+    Sin nombre no se borra nada: el "(Predeterminado)" de una clave no
+    lo declara ningún ajuste.
+
+    Devuelve { State; Old; New; Kind; Verified; RawValue }.
+
+        State  'deleted'      -> borrado y comprobado por relectura
+               'nochange'     -> ya no existía, o -WhatIf
+               'blocked'      -> ruta fuera de la lista blanca, o sin nombre
+               'badpath'      -> la raíz no se reconoce
+               'typefail'     -> el -Type no es un tipo conocido
+               'typemismatch' -> existe con otro tipo; no se borra
+               'denied'       -> sin permisos, o la relectura lo sigue viendo
+               'disarmed'     -> el borrado está desarmado (pruebas)
+
+    No lanza nunca.
+#>
+function Remove-RegistryValue {
+    [CmdletBinding(SupportsShouldProcess)]
+    param(
+        [Parameter(Mandatory)][AllowEmptyString()][string]$Path,
+        [Parameter(Mandatory)][AllowEmptyString()][string]$Name,
+        [string]$Type = '',
+        [ValidateSet('ON', 'OFF', '')][string]$Requested = '',
+        [string]$Action = 'DeleteValue'
+    )
+
+    $watch = [System.Diagnostics.Stopwatch]::StartNew()
+    $info = @{
+        Path = $Path; Name = $Name; Type = $Type; Action = $Action; Requested = $Requested
+        Old = '(not read)'; New = '(absent)'
+        KeyExists = '?'; ValueExists = '?'; ExistingType = '?'; TypeMatch = '?'
+        Convertible = 'n/a'; Elevated = (Test-ProcessElevated)
+    }
+
+    try {
+        # 0. ¿Armada? El mismo interruptor que la escritura.
+        if (-not (Get-RegistryWriteArmed)) {
+            Write-RegistryWriteRejected $info 'disarmed' 'WRITE_DISARMED' $watch.Elapsed.TotalMilliseconds
+            return (New-RegistryWriteResult 'disarmed')
+        }
+
+        # 1. Raíz válida.
+        $parts = $Path.Split('\', 2)
+        if ($parts.Count -lt 2 -or -not $RegistryHives[$parts[0].ToUpper()]) {
+            Write-RegistryWriteRejected $info 'invalid path' 'INVALID_PATH' $watch.Elapsed.TotalMilliseconds
+            return (New-RegistryWriteResult 'badpath')
+        }
+
+        # 2. Lista blanca, y con nombre: sin él se borraría el valor
+        #    predeterminado de la clave, que ningún ajuste declara.
+        if ([string]::IsNullOrEmpty($Name)) {
+            Write-RegistryWriteRejected $info 'blocked' 'EMPTY_VALUE_NAME' $watch.Elapsed.TotalMilliseconds
+            return (New-RegistryWriteResult 'blocked')
+        }
+        if (-not (Test-RegistryWriteAllowed -Path $Path -Name $Name)) {
+            Write-RegistryWriteRejected $info 'blocked' 'PATH_NOT_ALLOWED' $watch.Elapsed.TotalMilliseconds
+            return (New-RegistryWriteResult 'blocked')
+        }
+
+        # 3. El tipo declarado, si lo hay, tiene que ser uno conocido.
+        $kind = $null
+        if ($Type) {
+            $kind = Resolve-RegistryKind $Type
+            if ($null -eq $kind) {
+                Write-RegistryWriteRejected $info 'typefail' 'TYPE_UNKNOWN' $watch.Elapsed.TotalMilliseconds
+                return (New-RegistryWriteResult 'typefail')
+            }
+        }
+
+        # 4. Validación previa y copia de seguridad, como al escribir.
+        $keyExists = Test-RegistryKeyExists $Path
+        $info.KeyExists = if ($null -eq $keyExists) { 'unknown' } else { [string]$keyExists }
+
+        $before = Get-RegistryStoredValue -Path $Path -Name $Name
+        $info.ValueExists = [string]($before.State -eq 'read')
+        $info.Old = switch ($before.State) {
+            'read'   { Format-RegistryValue $before.Value $before.Kind }
+            'denied' { '(no access)' }
+            default  { '(not set)' }
+        }
+        $info.ExistingType = if ($before.State -eq 'read') { [string]$before.Kind } else { '(none)' }
+        $info.TypeMatch = if ($before.State -ne 'read' -or $null -eq $kind) { 'n/a' } else { [string]($before.Kind -eq $kind) }
+
+        Add-RegistrySnapshot -Path $Path -Name $Name -Kind $before.Kind -Value $before.Value -Existed ($before.State -eq 'read') -State $before.State
+        Write-AppLog -Source 'registry' -Level 'info' -Status 'snapshot' `
+            -Message "$Path\$Name" -Detail ('old={0} | type={1} | existed={2}' -f $info.Old, $info.ExistingType, ($before.State -eq 'read'))
+
+        Write-RegistryWriteAttempt $info
+
+        if ($before.State -eq 'denied') {
+            Write-RegistryWriteFailure $info 'ACCESS_DENIED' $null $watch.Elapsed.TotalMilliseconds
+            return (New-RegistryWriteResult 'denied' $info.Old $info.New $null $false $null)
+        }
+
+        # 5. Ya no está: nada que borrar.
+        if ($before.State -ne 'read') {
+            Write-RegistryWriteRejected $info 'no change' 'ALREADY_ABSENT' $watch.Elapsed.TotalMilliseconds
+            return (New-RegistryWriteResult 'nochange' $info.Old $info.New $null $true $null)
+        }
+
+        # 5b. Existe con otro tipo: no es el valor que declara el ajuste.
+        if ($null -ne $kind -and $before.Kind -ne $kind) {
+            Write-RegistryWriteRejected $info 'type mismatch' 'TYPE_MISMATCH' $watch.Elapsed.TotalMilliseconds
+            return (New-RegistryWriteResult 'typemismatch' $info.Old $info.New $before.Kind $false $before.Value)
+        }
+
+        # 6. -WhatIf sale por aquí sin tocar nada.
+        if (-not $PSCmdlet.ShouldProcess("$Path\$Name", 'Delete value')) {
+            Write-RegistryWriteRejected $info 'no change' 'WHATIF' $watch.Elapsed.TotalMilliseconds
+            return (New-RegistryWriteResult 'nochange' $info.Old $info.New $before.Kind $false $before.Value)
+        }
+
+        # 7. Borrar EL VALOR. La clave se abre (no se crea) con permiso
+        #    de escritura; DeleteValue sin lanzar si ya no está.
+        $base = $null; $key = $null; $err = $null
+        try {
+            $base = [Microsoft.Win32.RegistryKey]::OpenBaseKey($RegistryHives[$parts[0].ToUpper()], [Microsoft.Win32.RegistryView]::Registry64)
+            $key = $base.OpenSubKey($parts[1], $true)
+            if ($null -eq $key) { throw [System.IO.IOException]::new("OpenSubKey devolvio null para '$($parts[1])'") }
+            $key.DeleteValue($Name, $false)
+        }
+        catch {
+            $err = $_
+        }
+        finally {
+            if ($key)  { $key.Dispose() }
+            if ($base) { $base.Dispose() }
+        }
+
+        if ($err) {
+            $reason = Get-RegistryWriteFailReason (Resolve-RegistryException $err)
+            Write-RegistryWriteFailure $info $reason $err $watch.Elapsed.TotalMilliseconds
+            return (New-RegistryWriteResult 'denied' $info.Old $info.New $before.Kind $false $before.Value)
+        }
+
+        # 8. Relectura: tiene que haber desaparecido.
+        $after     = Get-RegistryStoredValue -Path $Path -Name $Name
+        $afterText = switch ($after.State) {
+            'read'    { Format-RegistryValue $after.Value $after.Kind }
+            'missing' { '(absent)' }
+            default   { '(no access)' }
+        }
+        $verified = ($after.State -eq 'missing')
+
+        Write-RegistryPostValidation $info $info.New $afterText $verified
+
+        if ($verified) {
+            $d = 'action={0} | requested={1} | type={2} | old={3} | new=(absent) | {4:N1} ms' -f `
+                $info.Action, $info.Requested, $info.ExistingType, $info.Old, $watch.Elapsed.TotalMilliseconds
+            Write-AppLog -Source 'registry' -Level 'info' -Status 'deleted' -Message "$Path\$Name" -Detail $d
+            return (New-RegistryWriteResult 'deleted' $info.Old '(absent)' $null $true $null)
+        }
+
+        Write-RegistryWriteFailure $info 'DELETE_NOT_PERSISTED' $null $watch.Elapsed.TotalMilliseconds
+        New-RegistryWriteResult 'denied' $info.Old $afterText $after.Kind $false $after.Value
+    }
+    catch {
+        # Red de seguridad: core/ no lanza hacia arriba (CLAUDE.md).
+        Write-RegistryWriteFailure $info 'BACKEND_EXCEPTION' $_ $watch.Elapsed.TotalMilliseconds
+        New-RegistryWriteResult 'denied' $info.Old $info.New
+    }
 }

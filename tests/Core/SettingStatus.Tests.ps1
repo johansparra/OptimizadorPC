@@ -164,6 +164,51 @@ Describe 'core/Registry/SettingStatus.ps1 - el estado de un ajuste' {
     }
 }
 
+Describe 'core/Registry/SettingStatus.ps1 - de fábrica el valor no existe (DefaultAbsent)' {
+
+    # Una directiva: sin Default, con DefaultAbsent.
+    function New-AbsentKey {
+        param([string]$Current, [string]$State = 'read', [string]$Recommended = '1')
+        @{ Path = 'HKEY_CURRENT_USER\Software\Prueba'; Name = 'Directiva'; Type = 'DWord'
+           State = $State; Current = $Current; Recommended = $Recommended; DefaultAbsent = $true }
+    }
+
+    It 'ausente es de fábrica' {
+        Assert-Equal 'factory' (Get-RegistryKeyStatus (New-AbsentKey -Current $null -State 'missing'))
+    }
+
+    It 'puesto al recomendado es optimizado' {
+        Assert-Equal 'optimized' (Get-RegistryKeyStatus (New-AbsentKey -Current '0x00000001'))
+    }
+
+    It 'puesto a cualquier otro número es a medida, también al que usaría Windows' {
+        # La directiva configurada con el número de Windows sigue siendo
+        # una directiva puesta: Configuración la enseña administrada.
+        Assert-Equal 'custom' (Get-RegistryKeyStatus (New-AbsentKey -Current '0'))
+        Assert-Equal 'custom' (Get-RegistryKeyStatus (New-AbsentKey -Current '7'))
+    }
+
+    It 'sin poder leerla sigue siendo desconocido' {
+        Assert-Equal 'unknown' (Get-RegistryKeyStatus (New-AbsentKey -Current $null -State 'denied'))
+    }
+
+    It 'sin Recommended no se queda en unknown: tiene con qué comparar' {
+        Assert-Equal 'factory' (Get-RegistryKeyStatus (New-AbsentKey -Current $null -State 'missing' -Recommended ''))
+    }
+
+    It 'la línea de evaluación del log dice default=(absent)' {
+        Clear-AppLog
+        $clave = New-AbsentKey -Current $null -State 'missing'
+        $ajuste = New-FakeSetting @($clave)
+        Update-SettingStatus $ajuste | Out-Null
+        Write-SettingEvalLog $ajuste
+
+        $linea = @(Get-AppLog -Source 'registry') | Where-Object { $_.Status -eq 'checked' } | Select-Object -Last 1
+        Assert-Match 'default=\(absent\)' $linea.Detail
+        Assert-Match 'status=factory' $linea.Detail
+    }
+}
+
 Describe 'core/Registry/SettingStatus.ps1 - contra el registro de verdad' {
 
     It 'leer la sección deja a cada ajuste con su estado' {
@@ -229,6 +274,22 @@ Describe 'core/Registry/SettingStatus.ps1 - contra el registro de verdad' {
         foreach ($ajuste in @($cat.Items)) {
             Assert-NotNull $ajuste.Status "el ajuste '$($ajuste.Name)' se ha quedado sin estado"
             Assert-Contains $ajuste.Status (Get-SettingStatusNames) "el ajuste '$($ajuste.Name)'"
+        }
+    }
+
+    It 'Actualizaciones entera queda con un estado válido en cada ajuste' {
+        # Sus dos directivas no existen de fábrica (DefaultAbsent): en un
+        # equipo sin tocar salen 'factory', nunca 'unknown' por no tener
+        # Default con el que comparar.
+        $cat = Get-CategoryById 'update'
+        Assert-True ((Get-CategoryRegistryKeyCount $cat) -ge 1) 'Actualizaciones ya debería declarar claves'
+        Update-CategoryRegistryState -Category $cat | Out-Null
+
+        foreach ($ajuste in @($cat.Items)) {
+            Assert-Contains $ajuste.Status (Get-SettingStatusNames) "el ajuste '$($ajuste.Name)'"
+            foreach ($clave in @($ajuste.Registry)) {
+                if ($clave.State -eq 'missing') { Assert-Equal 'factory' $clave.Status "la clave '$($clave.Name)' ausente" }
+            }
         }
     }
 

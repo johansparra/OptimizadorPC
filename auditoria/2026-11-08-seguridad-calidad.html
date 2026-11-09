@@ -35,10 +35,10 @@
   <p class="sub">Repaso de la superficie nueva desde el 2026-09-07: secciones Limpieza y Energía, borrado de archivos, detalle del registro de actividad, sección Guías. Rama <code>visual/fluent-cards</code>, base <code>203097a</code>.</p>
 
   <div class="kpis">
-    <div class="card kpi"><b>602 / 602</b><span>pruebas, en 5.1 y en 7</span></div>
-    <div class="card kpi"><b>0</b><span>hallazgos de Semgrep (security-audit + secrets, 109 archivos)</span></div>
+    <div class="card kpi"><b>631 / 631</b><span>pruebas, en 5.1 y en 7 (tras la tercera pasada; eran 603)</span></div>
+    <div class="card kpi"><b>0</b><span>hallazgos de Semgrep (security-audit + secrets, 112 archivos)</span></div>
     <div class="card kpi"><b>1</b><span>aviso de PSScriptAnalyzer (el de la línea base)</span></div>
-    <div class="card kpi"><b>3</b><span>cambios de endurecimiento aplicados</span></div>
+    <div class="card kpi"><b>4 + 3</b><span>cambios de endurecimiento aplicados (repaso + tercera pasada)</span></div>
   </div>
 
   <h2>Superficie revisada</h2>
@@ -61,7 +61,21 @@
       <tr><td>2</td><td><b>Funciones que cambian el sistema sin <code>ShouldProcess</code>.</b> <code>SECURITY.md</code> §9 daba por verificado que solo <code>Write-RegistryValue</code> mutaba el sistema; <code>Start-CommandStep</code> y el borrado ya lo hacían.</td><td><span class="tag warn">Baja</span></td><td><span class="tag ok">Corregido</span> — <code>-WhatIf</code> real en <code>Start-CommandStep</code>, <code>Remove-CleanupFile</code>, <code>Remove-CleanupFolder</code> y <code>Clear-CleanupRecycleBin</code>: la limpieza se recorre en simulacro y dice lo que borraría.</td></tr>
       <tr><td>3</td><td><b><code>%TEMP%</code> fuera del perfil bloqueado sin matiz</b> (un disco RAM en <code>R:\Temp</code>) y <code>C:\Windows\Temp</code> sin cubrir.</td><td><span class="tag ok">Info</span></td><td><span class="tag ok">Corregido</span> — <code>Get-CleanupPathProblem</code>: <code>C:\Windows\Temp</code> exacto (pide admin), y un <code>%TEMP%</code> que se llame Temp/Tmp fuera de Windows, Archivos de programa, ProgramData y otros perfiles. Probado con rutas buenas y malas.</td></tr>
       <tr><td>4</td><td>Aviso nuevo de PSScriptAnalyzer: <code>$sender</code> como parámetro (variable automática) en el índice de las guías.</td><td><span class="tag ok">Info</span></td><td><span class="tag ok">Corregido</span></td></tr>
+      <tr><td>6</td><td><b>Un paso peligroso podía quedar marcado desde <code>settings.json</code>.</b> Ese archivo lo escribe cualquier programa del usuario sin privilegios; al recordar los pasos marcados, uno malicioso podía dejar marcado el reset del firewall y esperar a que el usuario pulse Ejecutar, que corre elevado. Encontrado en el segundo repaso con la skill <code>security-reviewer</code>.</td><td><span class="tag warn">Baja</span></td><td><span class="tag ok">Corregido</span> — <code>Restore-StepChoices</code> nunca restaura un paso con aviso; prueba en <code>Ui/StepsView.Tests.ps1</code>.</td></tr>
       <tr><td>5</td><td>Lo borrado por Limpieza no pasa por la papelera.</td><td><span class="tag warn">Media</span></td><td><span class="tag warn">Aceptado</span> — igual que el <code>.cmd</code> original; lo que se echa de menos viene desmarcado y con aviso (§11 nº 9).</td></tr>
+    </table>
+  </div>
+
+  <h2>Tercera pasada (mismo día)</h2>
+  <p class="sub">Sobre <code>f750d5f</code> más los cambios sin commitear del día: borrado de valores del registro, <em>Actualizaciones</em> con <code>-Registry</code>, paso <code>dns-dhcp</code> y la CI de Windows.</p>
+  <div class="card table-wrap">
+    <table>
+      <tr><th>#</th><th>Hallazgo</th><th>Severidad</th><th>Estado</th></tr>
+      <tr><td>7</td><td><b>Revertir un valor que no existía escribía el <code>Default</code></b> y dejaba una directiva puesta (Configuración la enseña «administrada por tu organización») en vez de volver a «sin configurar».</td><td><span class="tag warn">Baja</span></td><td><span class="tag ok">Corregido</span> — <code>Remove-RegistryValue</code> borra solo el valor, con la misma lista blanca de ruta y nombre, copia previa, tipo, <code>-WhatIf</code> y relectura; nunca borra claves. Se usa con <code>DefaultAbsent</code> o si la primera copia de la sesión lo vio ausente. Invariantes nuevas en <code>Source/Security.Tests.ps1</code>.</td></tr>
+      <tr><td>8</td><td><b><code>NoAutoRebootWithLoggedOnUsers</code> está en la denylist</b> (§3.4): los parches que piden reiniciar esperan al usuario.</td><td><span class="tag warn">Baja</span></td><td><span class="tag ok">Declarado</span> — el ajuste lleva <code>-AllowsSecurityTradeoff</code>, su descripción dice qué se pierde y no viene activo (de fábrica el valor no existe).</td></tr>
+      <tr><td>9</td><td><b>Con <code>DefaultAbsent</code>, <code>OFF</code> borra un valor aunque lo pusiera una GPO de la organización.</b></td><td><span class="tag ok">Info</span></td><td><span class="tag warn">Aceptado</span> — antes se pisaba con el <code>Default</code>, así que no es superficie nueva; una GPO de dominio se vuelve a aplicar sola (§11 nº 13).</td></tr>
+      <tr><td>10</td><td><b>Paso <code>dns-dhcp</code></b>: devuelve el DNS del adaptador al router.</td><td><span class="tag ok">Info</span></td><td><span class="tag ok">Sin hallazgo</span> — <code>netsh.exe</code> ya en la lista blanca, desmarcado, con aviso, y no se restaura marcado desde <code>settings.json</code>. Invariante nueva: todo paso que cambie el DNS viene desmarcado y avisa.</td></tr>
+      <tr><td>11</td><td><b>Sin CI de PSScriptAnalyzer ni de la suite</b>; imagen de Semgrep sin fijar.</td><td><span class="tag warn">Baja</span></td><td><span class="tag ok">Corregido, sin ver en verde</span> — <code>.github/workflows/ci.yml</code> (PSSA 1.25.0 contra línea base, suite en 5.1 y 7 en <code>windows-latest</code>), <code>semgrep/semgrep:1.183.0@sha256:2e45…2fb0</code>. La prueba de <code>SystemInfo</code> ya no exige «Windows 11» en un Windows Server (el runner).</td></tr>
     </table>
   </div>
 
@@ -69,6 +83,7 @@
   <div class="card">
     <p><b>PSScriptAnalyzer 1.25.0</b>, con la configuración del proyecto sobre <code>ui/</code> y <code>core/</code>: <b>1 aviso</b>, el falso positivo de <code>$CategoryIndex</code> de siempre. Pase estricto sobre <code>core/</code> (sin la exclusión de <code>ShouldProcess</code>): <b>12 avisos, todos por el verbo del nombre</b> (fábricas de objetos, interruptores del arnés, <code>Stop-CommandStep</code> que solo corta su propio proceso). Ninguna función que borre o ejecute queda sin <code>ShouldProcess</code>.</p>
     <p><b>Semgrep</b> (<code>--oss-only</code>, reglas <code>p/security-audit</code> y <code>p/secrets</code>): 0 hallazgos, 0 errores, 109 archivos.</p>
+    <p><b>Tercera pasada:</b> los mismos resultados sobre el código final. PSScriptAnalyzer, 1 aviso (línea base); pase estricto de <code>core/</code>, los mismos 12 falsos positivos por verbo (<code>Remove-RegistryValue</code> ya adopta <code>ShouldProcess</code> y no sale). Dos avisos nuevos en las pruebas (<code>$ventana</code> sin usar, y la sombra local de <code>$CleanupListMax</code>) corregidos. Semgrep 1.176.1: 0 hallazgos, 0 errores, 112 archivos.</p>
   </div>
 
   <h2>Lo que no cubre esta revisión</h2>

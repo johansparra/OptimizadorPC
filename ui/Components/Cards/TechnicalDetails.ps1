@@ -110,7 +110,12 @@ function New-RegistryKeyRow {
     $states.VerticalAlignment = 'Top'
     $states.Children.Add((New-CurrentLine $Window $Key))                                          | Out-Null
     $states.Children.Add((New-StateLine $Window (T 'Recommended:') $Key.Recommended 'Success'))   | Out-Null
-    $states.Children.Add((New-StateLine $Window (T 'Factory:')     $Key.Default     'TextMuted')) | Out-Null
+    # Una clave cuyo estado de fábrica es "no existe" (DefaultAbsent)
+    # no tiene número que enseñar: se dice con las mismas palabras que
+    # la línea "Actual:" cuando el valor no está.
+    $factory = $Key.Default
+    if ($Key.DefaultAbsent) { $factory = T 'not set' }
+    $states.Children.Add((New-StateLine $Window (T 'Factory:')     $factory         'TextMuted')) | Out-Null
     Add-ToColumn $grid $states 2
 
     $grid

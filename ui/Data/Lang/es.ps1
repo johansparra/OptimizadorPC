@@ -137,6 +137,9 @@ Register-Language 'es' @{
     'DNS: Google 8.8.4.4 as secondary' = 'DNS: Google 8.8.4.4 como secundario'
     'Adds the second Google DNS server to the adapter named "Ethernet".' = 'Añade el segundo DNS de Google al adaptador llamado "Ethernet".'
     'Run it together with the previous step: on its own it adds a server to whatever DNS is set.' = 'Ejecútalo junto con el paso anterior: solo, añade un servidor a lo que haya configurado.'
+    'DNS: back to automatic (DHCP)' = 'DNS: volver a automático (DHCP)'
+    'Undoes the two Google steps: the adapter named "Ethernet" goes back to the DNS your router provides.' = 'Deshace los dos pasos de Google: el adaptador llamado "Ethernet" vuelve al DNS que da tu router.'
+    'Only to undo the Google DNS. Do not tick it together with them: it runs after them and cancels them.' = 'Solo para deshacer el DNS de Google. No lo marques junto con ellos: corre después y los anula.'
     'Make sure the DHCP Client service is running' = 'Comprobar que el servicio Cliente DHCP está en marcha'
     'Starts it if it is stopped. Without it the PC does not get an IP address.' = 'Lo arranca si está parado. Sin él el equipo no recibe dirección IP.'
     'Make sure the DNS Client service is running' = 'Comprobar que el servicio Cliente DNS está en marcha'
@@ -247,6 +250,7 @@ Register-Language 'es' @{
     'applying'      = 'aplicando'
     'applied'       = 'aplicado'
     'restored'      = 'restaurado'
+    'deleted'       = 'borrado'
     'no change'     = 'sin cambios'
     'snapshot'      = 'copia'
     'write attempt' = 'intento'
@@ -690,10 +694,15 @@ Register-Language 'es' @{
 
     # ---- Update ----
     'Delivery Optimization (P2P)' = 'Optimización de distribución (P2P)'
-    'Allow Windows to download/upload updates to and from other PCs on the internet' = 'Permitir que Windows descargue y envíe actualizaciones desde y hacia otros equipos de internet'
+    'Download updates only from Microsoft, never from or to other PCs' = 'Descargar las actualizaciones solo de Microsoft, nunca desde ni hacia otros equipos'
+    'Group policy "Download Mode" set to HTTP only: Windows Update and the Store stop sharing pieces of updates with other PCs, on your network or on the internet. Updates still install normally. Turning it off removes the policy and Windows goes back to its own setting' = 'Directiva «Modo de descarga» en solo HTTP: Windows Update y la Tienda dejan de compartir trozos de actualizaciones con otros equipos, de tu red o de internet. Las actualizaciones se siguen instalando con normalidad. Al desactivarlo se quita la directiva y Windows vuelve a su propia configuración'
+    'Not set (default; Windows uses 1, PCs on the local network) - 0x00000000 (HTTP only, no other PCs) - 0x00000003 (also PCs on the internet)' = 'Sin definir (predeterminado; Windows usa 1, equipos de la red local) - 0x00000000 (solo HTTP, sin otros equipos) - 0x00000003 (también equipos de internet)'
 
     'Auto-Restart With Active Sessions' = 'Reinicio automático con sesión iniciada'
-    'Allow Windows Update to restart the PC automatically while you are logged in' = 'Permitir que Windows Update reinicie el equipo automáticamente con la sesión iniciada'
+    'Stop Windows Update from restarting the PC while you are signed in. Lowers security: fixes that need a restart wait until you restart' = 'Impedir que Windows Update reinicie el equipo con la sesión iniciada. Baja la seguridad: las correcciones que piden reiniciar esperan a que reinicies tú'
+    'Policy "No auto-restart with logged on users for scheduled automatic updates installations". While someone is signed in, Windows waits for you to restart instead of doing it on its own, so security fixes that need a restart are not applied until then. Microsoft warns that on a PC nobody signs out of, updates may never restart. Windows only honours it when "Configure Automatic Updates" is set to scheduled install (option 4)' = 'Directiva «No reiniciar automáticamente con usuarios que hayan iniciado sesión para instalaciones de actualizaciones automáticas programadas». Con alguien con la sesión iniciada, Windows espera a que reinicies tú en vez de hacerlo solo, así que las correcciones de seguridad que piden reiniciar no se aplican hasta entonces. Microsoft avisa de que en un equipo en el que nadie cierra sesión puede que las actualizaciones no reinicien nunca. Windows solo la respeta si «Configurar Actualizaciones automáticas» está en instalación programada (opción 4)'
+    'Not set (default; Windows may restart on its own outside active hours) - 0x00000001 (no automatic restart while signed in)' = 'Sin definir (predeterminado; Windows puede reiniciar solo fuera del horario activo) - 0x00000001 (sin reinicio automático con la sesión iniciada)'
+    'Avoids restarts during a match, but security fixes wait for you' = 'Evita reinicios en mitad de una partida, pero las correcciones de seguridad te esperan'
 
     # ---- Búsqueda ----
     'Search' = 'Buscar'
