@@ -816,6 +816,9 @@ Detalles en [`tests/README.md`](tests/README.md), que además explica **por qué
 
 ## Pendiente
 
+> Lista de trabajo con las **decisiones abiertas** para la próxima sesión:
+> [`PENDIENTES.md`](PENDIENTES.md).
+
 - [ ] **Rollback persistente y "deshacer" en la UI.** Hoy `core/Registry/Writer.ps1`
   guarda el valor previo solo en memoria (`$RegistrySnapshots`): se pierde al cerrar
 - [ ] **Aviso de punto de restauración** (o `reg export` de la rama) antes de la primera
