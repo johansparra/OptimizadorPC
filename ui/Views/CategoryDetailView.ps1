@@ -59,7 +59,11 @@ function Show-CategoryDetailView {
         Add-PageActionLabel $Window $stamp
     }
 
-    Add-PageAction $Window (New-RefreshButton -Window $Window -Keys $keys)
+    Add-PageAction $Window (New-RefreshButton -Window $Window -Keys $keys -Category $Category)
+
+    # Lo que dirá el aviso de "refrescado": el refresco repinta por
+    # Show-CurrentView y su manejador no sabe de qué sección viene.
+    $script:CategoryRefreshToast = Get-CategoryReadText -Categories @($Category) -Purpose 'toast'
 
     # Los dos menús para abrir/cerrar las franjas plegables por
     # sección (Referencia / Detalles técnicos / Todo). Misma
@@ -180,7 +184,7 @@ function Invoke-CategoryRegistryRead {
     if ($targets.Count -eq 0) { return }
 
     $Window.Content.IsHitTestVisible = $false
-    Show-ProgressStrip $Window 'Reading the registry...'
+    Show-ProgressStrip $Window (Get-CategoryReadText -Categories $targets -Purpose 'progress')
     try {
         foreach ($category in $targets) {
             Update-CategoryRegistryState -Category $category -OnProgress {
@@ -219,12 +223,12 @@ function Invoke-CategoryRegistryRead {
     rehace en cada pintada hay que soltar el nombre anterior.
 #>
 function New-RefreshButton {
-    param($Window, [int]$Keys)
+    param($Window, [int]$Keys, $Category)
 
     $refresh = New-ChipButton $Window 'Refresh' 'Sync'
 
     if ($Keys -gt 0) {
-        $refresh.ToolTip = T 'Read the registry keys again'
+        $refresh.ToolTip = T (Get-CategoryReadText -Categories @($Category) -Purpose 'refresh')
         $refresh.Add_Click({ param($s, $e) Invoke-CategoryRefresh })
     }
     else {
@@ -351,8 +355,55 @@ function Invoke-CategoryRefresh {
         [System.Windows.Threading.DispatcherPriority]::Background,
         [action]{
             Show-CurrentView
-            Show-PageToast -Window (Get-AppWindow) -Text 'Registry values updated'
+            Show-PageToast -Window (Get-AppWindow) -Text $script:CategoryRefreshToast
         }) | Out-Null
+}
+
+# El aviso de la última sección pintada (lo fija Show-CategoryDetailView).
+$CategoryRefreshToast = 'Registry values updated'
+
+<#
+    El texto que toca según QUÉ lee la sección: el registro, servicios
+    y tareas, o las dos cosas. La sección no se nombra: se pregunta a
+    core/ qué clases de objetivo declaran sus ajustes
+    (Get-CategoryTargetKinds), así que una sección nueva sale bien
+    sola.
+
+      -Purpose  'progress'  la barra mientras se lee
+                'refresh'   el pie de ayuda del botón Refrescar
+                'toast'     el aviso al terminar de refrescar o de
+                            cambiar un ajuste
+#>
+function Get-CategoryReadText {
+    param(
+        [object[]]$Categories = @(),
+        [ValidateSet('progress', 'refresh', 'toast')][string]$Purpose
+    )
+
+    $kinds = @{}
+    foreach ($cat in @($Categories | Where-Object { $_ })) {
+        foreach ($k in @(Get-CategoryTargetKinds $cat)) { $kinds[$k] = $true }
+    }
+    $registry = $kinds.ContainsKey('registry')
+    $system   = $kinds.ContainsKey('service') -or $kinds.ContainsKey('task')
+
+    # Sin servicios ni tareas -o sin nada-, el texto de siempre.
+    if (-not $system) {
+        switch ($Purpose) {
+            'progress' { return 'Reading the registry...' }
+            'refresh'  { return 'Read the registry keys again' }
+            default    { return 'Registry values updated' }
+        }
+    }
+
+    switch ($Purpose) {
+        'progress' {
+            if ($registry) { return 'Reading the registry, services and tasks...' }
+            return 'Reading services and tasks...'
+        }
+        'refresh'  { return 'Read the services and tasks again' }
+        default    { return 'Services and tasks updated' }
+    }
 }
 
 <#
@@ -369,7 +420,7 @@ function Invoke-CategoryRefresh {
 function Invoke-SettingToggle {
     param($Setting, [bool]$Enabled, $Toggle)
 
-    if (-not $Setting -or @($Setting.Registry).Count -eq 0) { return }
+    if (-not $Setting -or -not (Test-SettingHasTargets $Setting)) { return }
 
     Set-SettingOptimization -Setting $Setting -Enabled $Enabled | Out-Null
 
@@ -432,5 +483,9 @@ function Update-SettingCard {
     Start-EnterTransition $fresh 140 4
 
     Update-CategorySummary
-    Show-PageToast -Window $window -Text 'Registry values updated'
+    $toast = 'Registry values updated'
+    if (@($Setting.Service).Count + @($Setting.ScheduledTask).Count -gt 0 -and @($Setting.Registry).Count -eq 0) {
+        $toast = 'Services and tasks updated'
+    }
+    Show-PageToast -Window $window -Text $toast
 }

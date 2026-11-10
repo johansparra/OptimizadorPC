@@ -4,7 +4,9 @@
 #
 # Es el puente entre core/Registry/Reader.ps1 (lee el sistema) y los
 # datos de ui/Data/Categories/: recorre las claves declaradas en el
-# campo -Registry de cada ajuste y rellena su Current.
+# campo -Registry de cada ajuste y rellena su Current. Igual con los
+# servicios (-Service, core/Services/) y las tareas programadas
+# (-ScheduledTask, core/ScheduledTasks/): ver Update-SettingTargetState.
 #
 # Sigue sin saber de interfaz. Para poder enseñar una barra de
 # progreso acepta un scriptblock -OnProgress al que va avisando;
@@ -63,20 +65,9 @@ function Update-CategoryRegistryState {
     # porque en cuanto están leídas las suyas hay que decidir en qué
     # estado ha quedado ese ajuste.
     foreach ($setting in @($Category.Items)) {
-        foreach ($key in @($setting.Registry)) {
-            $result = Read-RegistryValue $key.Path $key.Name
-
-            # Las claves de -Registry son hashtables, así que se
-            # rellenan en el sitio y la tarjeta las lee tal cual.
-            $key['State'] = $result.State
-            if ($result.State -eq 'read') {
-                $key['Current'] = Format-RegistryValue $result.Value $result.Kind $key.Display
-            }
-            else {
-                $key['Current'] = $null
-            }
-
-            $states[$result.State] = 1 + [int]$states[$result.State]
+        foreach ($target in @(Get-SettingTargets $setting)) {
+            $state = Update-SettingTargetState $target
+            $states[$state] = 1 + [int]$states[$state]
 
             $done++
             if ($OnProgress) { & $OnProgress $done $total }
@@ -106,12 +97,67 @@ function Update-CategoryRegistryState {
     $total
 }
 
-# Cuántas claves declara una categoría. La vista lo usa para saber
-# si merece la pena enseñar la barra antes de ponerse a leer.
+<#
+    Lee UN objetivo de un ajuste (Get-SettingTargets) por su mecanismo
+    y deja State y Current en su entrada. Devuelve el State.
+
+        registry  Read-RegistryValue          (core/Registry/Reader.ps1)
+        service   Update-ServiceEntryState    (core/Services/)
+        task      Update-ScheduledTaskEntryState (core/ScheduledTasks/)
+
+    Cada lectura deja su línea en el log. La usan este archivo al
+    entrar en la sección y core/Registry/SettingApply.ps1 al releer
+    tras un cambio: un solo camino para las dos cosas.
+#>
+function Update-SettingTargetState {
+    param($Target)
+
+    if (-not $Target -or -not $Target.Entry) { return 'unknown' }
+    $key = $Target.Entry
+
+    switch ($Target.Kind) {
+        'service' { return (Update-ServiceEntryState $key) }
+        'task'    { return (Update-ScheduledTaskEntryState $key) }
+    }
+
+    $result = Read-RegistryValue $key.Path $key.Name
+
+    # Las claves de -Registry son hashtables, así que se rellenan en
+    # el sitio y la tarjeta las lee tal cual.
+    $key['State'] = $result.State
+    if ($result.State -eq 'read') {
+        $key['Current'] = Format-RegistryValue $result.Value $result.Kind $key.Display
+    }
+    else {
+        $key['Current'] = $null
+    }
+    $result.State
+}
+
+# Cuántos objetivos declara una categoría: claves del registro,
+# servicios y tareas programadas (el nombre es de cuando solo había
+# claves). La vista lo usa para saber si hay algo que leer y si
+# merece la pena enseñar la barra antes de ponerse a ello.
 function Get-CategoryRegistryKeyCount {
     param([Parameter(Mandatory)]$Category)
 
     $n = 0
-    foreach ($setting in @($Category.Items)) { $n += @($setting.Registry).Count }
+    foreach ($setting in @($Category.Items)) { $n += @(Get-SettingTargets $setting).Count }
     $n
+}
+
+<#
+    ¿Qué clases de objetivo hay en una categoría? 'registry', 'service',
+    'task', sin repetir. La interfaz lo usa para decir "leyendo el
+    registro" o "leyendo servicios y tareas" sin conocer la sección.
+#>
+function Get-CategoryTargetKinds {
+    param($Category)
+
+    if (-not $Category) { return @() }
+    $kinds = @{}
+    foreach ($setting in @($Category.Items)) {
+        foreach ($t in @(Get-SettingTargets $setting)) { $kinds[$t.Kind] = $true }
+    }
+    @($kinds.Keys | Sort-Object)
 }

@@ -192,19 +192,19 @@ function New-Pill {
 #>
 $SettingStatusStyles = @{
     'optimized' = @{ Label = 'Optimized';           Icon = 'StarFill'; Fg = 'Success';   Bg = 'SuccessSoft'
-                     Tip   = 'The registry value is the one this program recommends'
+                     Tip   = 'The current value is the one this program recommends'
                      Count = 'Optimized: {0} of {1}' }
 
     'factory'   = @{ Label = 'Factory recommended'; Icon = 'Grid';     Fg = 'TextMuted'; Bg = 'SurfaceSunken'
-                     Tip   = 'The registry value is the Windows factory one'
+                     Tip   = 'The current value is the Windows factory one'
                      Count = 'Factory recommended: {0} of {1}' }
 
     'custom'    = @{ Label = 'Custom';              Icon = 'Sliders';  Fg = 'Warn';      Bg = 'WarnSoft'
-                     Tip   = 'The registry value is neither the recommended nor the factory one'
+                     Tip   = 'The current value is neither the recommended nor the factory one'
                      Count = 'Customised: {0} of {1}' }
 
     'unknown'   = @{ Label = 'Unknown';             Icon = 'Help';     Fg = 'TextFaint'; Bg = 'SurfaceSunken'
-                     Tip   = 'The registry value could not be read'
+                     Tip   = 'The current value could not be read'
                      Count = 'Unknown: {0} of {1}' }
 }
 

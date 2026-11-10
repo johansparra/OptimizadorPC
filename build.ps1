@@ -32,11 +32,90 @@
     -OutFile cambia donde se deja el script combinado. Las pruebas
     lo mandan a un archivo por proceso, para que las dos suites
     puedan correr a la vez sin pisarse el mismo archivo.
+
+    3) FIRMA (opcional). Con un certificado de firma de código,
+       firma el .exe con Authenticode (SHA-256), le pone un sello
+       de tiempo RFC 3161 y lo verifica:
+
+        powershell -ExecutionPolicy Bypass -File .\build.ps1 -CertificateThumbprint <huella>
+
+       La huella también puede venir en la variable de entorno
+       OPTIMIZADORPC_SIGN_THUMBPRINT (para la CI). El certificado
+       se busca en Cert:\CurrentUser\My y Cert:\LocalMachine\My, y
+       solo vale uno con el uso "Firma de código", clave privada y
+       en vigor. -TimestampServer (o OPTIMIZADORPC_TIMESTAMP_URL)
+       cambia el servidor de sellado; por defecto DigiCert. El
+       sello necesita red. -NoTimestamp firma sin sello (la firma
+       deja de valer cuando caduque el certificado: no lo
+       distribuyas así).
+
+       Sin certificado compila sin firmar, como siempre, y lo dice
+       en una línea. Si se pidió firmar y algo falla -certificado
+       que no vale, firma que no se pone, sello que no llega-,
+       termina con código 1 y dice qué ha quedado en el .exe (si
+       el sello no llega, NO se firma: firma y sello van en la
+       misma llamada). Un certificado autofirmado firma, pero
+       avisa de que no sirve para distribuir.
+       El trabajo de firmar vive en tools/CodeSigning.ps1, fuera
+       de las capas: no entra en el .exe. Firma como signtool
+       (SignerSignEx2), no con Set-AuthenticodeSignature: ese
+       solo sabe poner el sello legado, no el RFC 3161 (el porqué,
+       en la cabecera de tools/CodeSigning.ps1).
+
+       Para probar el flujo sin comprar nada:
+       tools/New-DevSigningCert.ps1 (autofirmado, NO distribuible).
 #>
 
-param([switch]$CombineOnly, [string]$OutFile)
+param(
+    [switch]$CombineOnly,
+    [string]$OutFile,
+    [string]$CertificateThumbprint,
+    [string]$TimestampServer,
+    [switch]$NoTimestamp
+)
 
 $root = $PSScriptRoot
+
+# ---- 0. Firma: se resuelve ANTES de compilar ----
+# Un certificado mal puesto tiene que fallar al empezar, no tras
+# esperar a ps2exe. Sin huella no se carga nada de esto.
+$signCert = $null
+$timestampUrl = $null
+if (-not $CombineOnly) {
+    $thumb = if ($CertificateThumbprint) { $CertificateThumbprint } else { $env:OPTIMIZADORPC_SIGN_THUMBPRINT }
+    if ($thumb) {
+        . (Join-Path $root 'tools\CodeSigning.ps1')
+        $resuelto = Resolve-CodeSigningCertificate -Thumbprint $thumb
+        if ($resuelto.Problem) {
+            Write-Host "FIRMA: $($resuelto.Problem)." -ForegroundColor Red
+            if ($resuelto.Usable.Count -gt 0) {
+                Write-Host '  Certificados de firma de código que sí valdrían:' -ForegroundColor Red
+                foreach ($u in $resuelto.Usable) {
+                    Write-Host ('    {0}  {1}  (caduca {2:yyyy-MM-dd}, {3})' -f $u.Thumbprint, $u.Subject, $u.NotAfter, $u.Store) -ForegroundColor Red
+                }
+            }
+            else {
+                Write-Host '  No hay ningún certificado de firma de código utilizable en este equipo.' -ForegroundColor Red
+            }
+            Write-Host 'No se ha compilado nada.' -ForegroundColor Red
+            exit 1
+        }
+        $signCert = $resuelto.Certificate
+
+        if (-not $NoTimestamp) {
+            $timestampUrl = if ($TimestampServer) { $TimestampServer }
+                            elseif ($env:OPTIMIZADORPC_TIMESTAMP_URL) { $env:OPTIMIZADORPC_TIMESTAMP_URL }
+                            else { 'http://timestamp.digicert.com' }
+            $uri = $null
+            if (-not [System.Uri]::TryCreate($timestampUrl, [System.UriKind]::Absolute, [ref]$uri) -or
+                $uri.Scheme -notin @('http', 'https')) {
+                Write-Host "FIRMA: '$timestampUrl' no es una URL http/https de servidor de sellado. No se ha compilado nada." -ForegroundColor Red
+                exit 1
+            }
+        }
+        Write-Host ('Se firmará con: {0} ({1}, {2})' -f $signCert.Subject, $signCert.Thumbprint, $resuelto.Store) -ForegroundColor Cyan
+    }
+}
 $buildDir = Join-Path $root 'build'
 New-Item -Path $buildDir -ItemType Directory -Force | Out-Null
 
@@ -161,6 +240,11 @@ $outPath = Join-Path $buildDir 'OptimizadorPC.exe'
 . (Join-Path $root 'ui\Data\AppInfo.ps1')
 $exeVersion = '{0}.0' -f $AppInfo.Version
 
+# Para saber si ps2exe ha dejado un .exe NUEVO: build/OptimizadorPC.exe
+# está versionado, y si la compilación fallara sin lanzar se firmaría
+# (o se probaría) el de antes sin que nadie lo notase.
+$compileStart = Get-Date
+
 Invoke-ps2exe `
     -inputFile $combinedPath `
     -outputFile $outPath `
@@ -172,5 +256,56 @@ Invoke-ps2exe `
     -version $exeVersion `
     -product $AppInfo.Name
 
+$exeItem = Get-Item -LiteralPath $outPath -ErrorAction SilentlyContinue
+if ($null -eq $exeItem -or $exeItem.LastWriteTime -lt $compileStart.AddSeconds(-2)) {
+    Write-Host "ps2exe no ha dejado un .exe nuevo en $outPath." -ForegroundColor Red
+    exit 1
+}
+
 Write-Host "Listo: $outPath" -ForegroundColor Green
 Write-Host 'Ese .exe es portable: cópialo donde quieras, no necesita instalación ni la carpeta ui/.' -ForegroundColor Green
+
+# ---- 3. Firmar (solo si se pidió) ----
+if (-not $signCert) {
+    Write-Host 'Sin firmar: no se ha indicado certificado (-CertificateThumbprint u OPTIMIZADORPC_SIGN_THUMBPRINT).' -ForegroundColor Yellow
+    exit 0
+}
+
+$firma = Invoke-CodeSigning -Path $outPath -Certificate $signCert -TimestampServer $timestampUrl
+$sha256 = (Get-FileHash -LiteralPath $outPath -Algorithm SHA256).Hash
+
+if ($firma.Outcome -eq 'failed') {
+    Write-Host "FIRMA: $($firma.Error)." -ForegroundColor Red
+    $ahora = Get-AuthenticodeSignature -FilePath $outPath -ErrorAction SilentlyContinue
+    $estado = if ($null -eq $ahora) { 'no se puede leer' } elseif ($ahora.Status -eq 'NotSigned') { 'SIN firma' } else { "firmado a medias ($($ahora.Status))" }
+    Write-Host "  El .exe compilado se ha quedado $estado. No lo distribuyas." -ForegroundColor Red
+    if ($timestampUrl) {
+        Write-Host "  Sello pedido a $timestampUrl. Si es la red, repite; prueba otro con -TimestampServer, o -NoTimestamp si es a propósito." -ForegroundColor Red
+    }
+    exit 1
+}
+
+switch ($firma.Outcome) {
+    'trusted' {
+        Write-Host "Firmado: $($signCert.Subject). Windows lo da por válido (Valid)." -ForegroundColor Green
+    }
+    'untrusted-selfsigned' {
+        Write-Host "Firmado con un certificado AUTOFIRMADO ($($signCert.Subject))." -ForegroundColor Yellow
+        Write-Host "  La firma está, pero este equipo no confía en él ($($firma.Status): $($firma.StatusMessage))" -ForegroundColor Yellow
+        Write-Host '  Sirve para probar el flujo; NO para distribuir: SmartScreen avisará igual que sin firma.' -ForegroundColor Yellow
+    }
+    'untrusted' {
+        Write-Host "FIRMA: la firma está, pero Windows no la da por válida: $($firma.Status) - $($firma.StatusMessage)" -ForegroundColor Red
+        Write-Host '  Con un certificado comprado esto no debería pasar (¿cadena incompleta? ¿revocado?). No lo distribuyas.' -ForegroundColor Red
+        exit 1
+    }
+}
+
+if ($firma.Timestamped) {
+    Write-Host "  Sello de tiempo RFC 3161: $($firma.TimestampAuthority)" -ForegroundColor Green
+}
+else {
+    Write-Host '  Sin sello de tiempo (-NoTimestamp): la firma dejará de valer cuando caduque el certificado. No lo distribuyas así.' -ForegroundColor Yellow
+}
+Write-Host "  SHA-256: $sha256" -ForegroundColor Green
+exit 0

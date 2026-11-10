@@ -78,7 +78,7 @@ $RegistryWriteAllowlist = @(
 # Lo que no se puede abrir como rama entera. Aquí la clave tiene que
 # ser EXACTAMENTE esa -nada de lo que cuelga de ella- y el nombre del
 # valor, uno de los de su lista. Así se puede escribir el Start de
-# SysMain sin abrir ...\Services, o DisableWpbtExecution sin abrir
+# lfsvc sin abrir ...\Services, o DisableWpbtExecution sin abrir
 # Session Manager (debajo viven KnownDLLs, BootExecute, Environment).
 # Añadir un valor es añadir un nombre aquí, y es una decisión de
 # seguridad igual que una rama.
@@ -91,8 +91,9 @@ $RegistryWriteAllowedValues = @(
        Names = @('autodisconnect', 'Size', 'EnableOplocks', 'IRPStackSize',
                  'SharingViolationDelay', 'SharingViolationRetries') }
     # Tipo de inicio de servicios concretos: solo Start, uno a uno.
-    @{ Path = 'HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\SysMain';      Names = @('Start') }
-    @{ Path = 'HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\DiagTrack';    Names = @('Start') }
+    # SysMain y DiagTrack YA NO: los lleva core/Services (sección
+    # Servicios y tareas), y dejar su Start aquí sería una puerta
+    # abierta que ningún ajuste usa.
     @{ Path = 'HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\lfsvc';        Names = @('Start') }
     @{ Path = 'HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\MapsBroker';   Names = @('Start') }
     @{ Path = 'HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\CscService';   Names = @('Start') }
@@ -125,6 +126,9 @@ $RegistryWriteAllowedValues = @(
     @{ Path = 'HKEY_CURRENT_USER\Software\Microsoft\InputPersonalization\TrainedDataStore';             Names = @('HarvestContacts') }
     @{ Path = 'HKEY_CURRENT_USER\Software\Microsoft\Personalization\Settings';                          Names = @('AcceptedPrivacyPolicy') }
     @{ Path = 'HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced';          Names = @('Start_TrackProgs') }
+    # Frecuencia de las peticiones de comentarios (solo el número; no
+    # PeriodInNanoSeconds, que no tiene ajuste).
+    @{ Path = 'HKEY_CURRENT_USER\Software\Microsoft\Siuf\Rules';                                        Names = @('NumberOfSIUFInPeriod') }
     # Barra de tareas.
     @{ Path = 'HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced\TaskbarDeveloperSettings'
        Names = @('TaskbarEndTask') }

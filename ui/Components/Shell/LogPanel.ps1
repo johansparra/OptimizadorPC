@@ -880,6 +880,10 @@ function New-LogPill {
         'not set'          = @{ Fg = 'Warn';      Bg = 'WarnSoft' }
         'no access'        = @{ Fg = 'Danger';    Bg = 'DangerSoft' }
         'unknown root key' = @{ Fg = 'Danger';    Bg = 'DangerSoft' }
+        # Servicios y tareas (core/Services/, core/ScheduledTasks/).
+        'not found'        = @{ Fg = 'Warn';      Bg = 'WarnSoft' }
+        'unavailable'      = @{ Fg = 'Danger';    Bg = 'DangerSoft' }
+        'invalid name'     = @{ Fg = 'Danger';    Bg = 'DangerSoft' }
         'reading'          = @{ Fg = 'Accent';    Bg = 'AccentSoft' }
         'done'             = @{ Fg = 'Accent';    Bg = 'AccentSoft' }
         'error'            = @{ Fg = 'Danger';    Bg = 'DangerSoft' }

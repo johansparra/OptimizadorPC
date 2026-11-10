@@ -98,6 +98,20 @@ function Get-TestSettingsPath { $AppSettingsPath }
 Set-RegistryWriteArmed $false
 
 <#
+    NI CAMBIAN SERVICIOS NI TAREAS PROGRAMADAS.
+
+    Lo mismo para core/Services/ServiceStartup.ps1 y
+    core/ScheduledTasks/ScheduledTaskState.ps1: pulsar el interruptor
+    de 'Telemetry Service' en una prueba deshabilitaría DiagTrack de
+    verdad, y los ejecutores de GitHub Actions corren elevados.
+    Desarmados, cada cambio termina en 'disarmed' sin tocar nada. Las
+    pruebas de core/ solo LEEN servicios y tareas reales, y la única
+    escritura que se prueba armada va con -WhatIf.
+#>
+Set-ServiceWriteArmed $false
+Set-ScheduledTaskWriteArmed $false
+
+<#
     NI EJECUTAN COMANDOS DE VERDAD (NI RED NI BORRADOS).
 
     Lo mismo para core/Commands/CommandRunner.ps1: una prueba que pulse

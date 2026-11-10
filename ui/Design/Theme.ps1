@@ -457,6 +457,18 @@ function Get-EnterTarget {
     también donde van el cursor y el clic, para que respondan en
     todo el rectángulo de la tarjeta -incluida la franja que deja
     libre al subir-.
+
+    LA SOMBRA NO VA EN LA TARJETA, sino en una placa detrás de ella
+    (Get-LiftPlate). Un Effect de WPF pinta TODO su subárbol en un
+    mapa de bits aparte: el texto pierde ClearType y, mientras la
+    tarjeta sube por posiciones de medio píxel y el halo cambia de
+    radio, ese mapa se reescala en cada fotograma. Resultado: título
+    y descripción borrosos al pasar el ratón, y nítidos "al rato",
+    cuando la animación termina. La placa tiene la misma forma y el
+    mismo relleno (opaco), queda tapada por la tarjeta y COMPARTE su
+    TranslateTransform (que solo usa la entrada en cascada), así que
+    se mueve con ella sin que el texto atraviese ningún efecto. La
+    subida del hover no usa ese transform: ver Set-LiftState.
 #>
 function Add-HoverLift {
     param($Border, [string]$Glow)
@@ -465,10 +477,21 @@ function Add-HoverLift {
     $shadow.Color = [System.Windows.Media.Colors]::Black
     $shadow.Direction = 270; $shadow.ShadowDepth = 2
     $shadow.BlurRadius = 10; $shadow.Opacity = 0.05
-    $Border.Effect = $shadow
 
     $Border.RenderTransform = New-Object System.Windows.Media.TranslateTransform
     if ($Glow) { $Border.Tag = $Glow }
+
+    # La placa de la sombra: misma forma, mismo relleno, misma
+    # transformación (la instancia, no una copia).
+    $plate = New-Object System.Windows.Controls.Border
+    $plate.CornerRadius = $Border.CornerRadius
+    $plate.SetResourceReference([System.Windows.Controls.Border]::BackgroundProperty, 'CardGradient')
+    $plate.IsHitTestVisible = $false
+    $plate.Effect = $shadow
+    $plate.RenderTransform = $Border.RenderTransform
+    $plate.Uid = 'lift-plate'
+    if ($Glow) { $plate.Tag = $Glow }
+    [System.Windows.Controls.Panel]::SetZIndex($plate, -1)
 
     # El margen se muda al envoltorio: así su área transparente es
     # exactamente la de la tarjeta y el hueco entre tarjetas sigue
@@ -477,36 +500,94 @@ function Add-HoverLift {
     $slot.Background = [System.Windows.Media.Brushes]::Transparent
     $slot.Margin = $Border.Margin
     $Border.Margin = New-Object System.Windows.Thickness 0
+
+    # La tarjeta va PRIMERO (Children[0]: de eso dependen
+    # Get-EnterTarget, CategoryTile y las pruebas) y la placa
+    # detrás por ZIndex, no por orden.
     $slot.Children.Add($Border) | Out-Null
+    $slot.Children.Add($plate) | Out-Null
 
     # La marca que reconoce Get-EnterTarget: este envoltorio no se
     # mueve, se mueve su hijo.
     $slot.Uid = 'lift'
 
-    # Nada de closures (regla 4): la tarjeta es el único hijo del
-    # envoltorio, así que el manejador la saca del emisor.
+    # Nada de closures (regla 4): tarjeta y placa salen del emisor.
     $slot.Add_MouseEnter({
         param($s, $e)
-        $card = $s.Children[0]
-        Set-GlowColor $card
-        $card.RenderTransform.BeginAnimation([System.Windows.Media.TranslateTransform]::YProperty, (New-Anim 0 (-3) 170))
-        $card.Effect.BeginAnimation([System.Windows.Media.Effects.DropShadowEffect]::OpacityProperty, (New-Anim 0.05 0.30 170))
-        $card.Effect.BeginAnimation([System.Windows.Media.Effects.DropShadowEffect]::BlurRadiusProperty, (New-Anim 10 26 170))
+        Set-LiftState $s -Up
     })
     $slot.Add_MouseLeave({
         param($s, $e)
-        $card = $s.Children[0]
-        $card.RenderTransform.BeginAnimation([System.Windows.Media.TranslateTransform]::YProperty, (New-Anim (-3) 0 170))
-        $card.Effect.BeginAnimation([System.Windows.Media.Effects.DropShadowEffect]::OpacityProperty, (New-Anim 0.30 0.05 170))
-        $card.Effect.BeginAnimation([System.Windows.Media.Effects.DropShadowEffect]::BlurRadiusProperty, (New-Anim 26 10 170))
+        Set-LiftState $s
     })
 
     $slot
 }
 
 <#
-    Tiñe la sombra de una tarjeta con el color que lleva anotado en
-    su Tag.
+    Sube (-Up) o baja la tarjeta de un envoltorio de Add-HoverLift.
+
+    La elevación se anima por Margin, no por RenderTransform: pasa por
+    el layout y, con UseLayoutRounding (puesto en la ventana), cada
+    fotograma cae en un píxel entero (0, -1, -2, -3). Ojo: eso SOLO
+    no basta para que el texto se vea nítido. Lo que lo emborronaba
+    era TextFormattingMode="Ideal", que pinta en baja calidad el texto
+    que se mueve, sea por margin o por transform; la ventana va en
+    "Display" (regla 29).
+
+    -3 arriba y +3 abajo: el hueco total no cambia, así que el
+    envoltorio -quien escucha al ratón- no se mueve ni empuja a las
+    tarjetas de al lado (regla 21). La animación arranca desde donde
+    esté (sin From), así que entrar y salir rápido no da saltos.
+#>
+function Set-LiftState {
+    param($Slot, [switch]$Up)
+
+    $card  = $Slot.Children[0]
+    $plate = Get-LiftPlate $Slot
+
+    if ($Up) { $to = New-Object System.Windows.Thickness 0, -3, 0, 3 }
+    else     { $to = New-Object System.Windows.Thickness 0 }
+
+    foreach ($el in @($card, $plate)) {
+        if ($null -eq $el) { continue }
+        $a = New-Object System.Windows.Media.Animation.ThicknessAnimation
+        $a.To = $to
+        $a.Duration = New-Object System.Windows.Duration ([TimeSpan]::FromMilliseconds(170))
+        $a.EasingFunction = New-Ease
+        $el.BeginAnimation([System.Windows.FrameworkElement]::MarginProperty, $a)
+    }
+
+    if ($plate) {
+        if ($Up) {
+            Set-GlowColor $plate
+            $plate.Effect.BeginAnimation([System.Windows.Media.Effects.DropShadowEffect]::OpacityProperty, (New-Anim 0.05 0.30 170))
+            $plate.Effect.BeginAnimation([System.Windows.Media.Effects.DropShadowEffect]::BlurRadiusProperty, (New-Anim 10 26 170))
+        }
+        else {
+            $plate.Effect.BeginAnimation([System.Windows.Media.Effects.DropShadowEffect]::OpacityProperty, (New-Anim 0.30 0.05 170))
+            $plate.Effect.BeginAnimation([System.Windows.Media.Effects.DropShadowEffect]::BlurRadiusProperty, (New-Anim 26 10 170))
+        }
+    }
+}
+
+<#
+    La placa de la sombra de un envoltorio de Add-HoverLift, o $null.
+    Se busca por su Uid y no por posición: la tarjeta es Children[0]
+    y alguien podría añadir algo más al envoltorio.
+#>
+function Get-LiftPlate {
+    param($Slot)
+
+    foreach ($child in $Slot.Children) {
+        if ($child.Uid -eq 'lift-plate') { return $child }
+    }
+    $null
+}
+
+<#
+    Tiñe la sombra de una tarjeta (hoy, su placa) con el color que
+    lleva anotado en su Tag.
 
     Sin Tag, sin ventana o con una clave que no sea un color plano
     se queda la sombra negra de siempre: un halo es un adorno y no

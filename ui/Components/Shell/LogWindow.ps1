@@ -160,6 +160,11 @@ function New-LogWindow {
     $win.SnapsToDevicePixels = $true
     $win.UseLayoutRounding = $true
 
+    # Mismo modo de texto que la principal (regla 29): en Ideal, el
+    # texto que se mueve se queda borroso un rato.
+    [System.Windows.Media.TextOptions]::SetTextFormattingMode($win, [System.Windows.Media.TextFormattingMode]::Display)
+    [System.Windows.Media.TextOptions]::SetTextRenderingMode($win, [System.Windows.Media.TextRenderingMode]::ClearType)
+
     # Una ventana creada por código no trae NameScope -el de la
     # principal lo monta el cargador de XAML-, y sin él RegisterName
     # lanza con "No se encontró ningún NameScope". Tiene que estar

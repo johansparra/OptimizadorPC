@@ -87,6 +87,16 @@ Describe 'ui/Components/Shell/LogWindow.ps1 - la ventana' {
         Assert-True  ($suelta.MinHeight -gt 0) 'ni alto mínimo'
     }
 
+    It 'las dos ventanas pintan el texto en modo Display (regla 29)' {
+        # En Ideal, el texto que se mueve -cascada, elevación, cajón- se
+        # pinta en baja calidad y tarda en reafilarse: se ve borroso.
+        $ventana = New-AppWindow
+        $suelta = New-LogWindow $ventana
+        foreach ($w in @($ventana, $suelta)) {
+            Assert-Equal 'Display' ([string][System.Windows.Media.TextOptions]::GetTextFormattingMode($w)) 'el texto se vería borroso al moverse'
+        }
+    }
+
     It 'hereda los pinceles del tema de la principal' {
         # Sin esto, cada DynamicResource de dentro se quedaría sin
         # resolver y la ventana saldría en blanco y negro.

@@ -11,7 +11,8 @@ powershell -ExecutionPolicy Bypass -File ./tests/Run-Tests.ps1         # solo 5.
 dos (regla 8 de `CLAUDE.md`). Devuelve 0 si todo pasa y 1 si algo falla.
 
 La CI (`.github/workflows/ci.yml`) las pasa en cada push y pull request, un runner
-`windows-latest` por host. Ese runner es un **Windows Server**: lo que dependa de la
+`windows-latest` por host, y en otro compila el `.exe` y le pasa la prueba de humo
+elevada (`Smoke/`, más abajo). Ese runner es un **Windows Server**: lo que dependa de la
 edición del sistema tiene que valer también ahí (ver `Core/SystemInfo.Tests.ps1`).
 
 ```powershell
@@ -144,25 +145,35 @@ existen con la ventana pintada y un ratón de verdad. Por ejemplo:
 
 Ese último caso es el que más valdría la pena, y ya existe a medias con
 `System.Windows.Automation` —sin instalar nada—: `Smoke/Invoke-Smoke.ps1` (abajo)
-arranca el programa empaquetado y lo mira desde fuera. Ahora que un clic **escribe y
+arranca el programa empaquetado y lo mira desde fuera, y desde 2026-11-09 también el
+`.exe` **elevado** sin intervención (`-Exe`, en la CI). Ahora que un clic **escribe y
 borra valores en `HKLM` con privilegios de administrador**, lo que falta importa más
-que antes: que corra sobre el `.exe` **elevado** sin intervención y que **pulse** algo.
-Sigue pendiente porque cuesta bastante más de mantener y la escritura y el borrado ya
+que antes: que **pulse** algo. Sigue pendiente porque cuesta bastante más de mantener y la escritura y el borrado ya
 están cubiertos a nivel de `core/` contra una rama de pruebas en `HKCU`
 (`Core/RegistryWriter.Tests.ps1`, `Core/SettingApply.Tests.ps1`).
 
 ## La prueba de humo (`Smoke/Invoke-Smoke.ps1`)
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\tests\Smoke\Invoke-Smoke.ps1        # el script empaquetado
-powershell -ExecutionPolicy Bypass -File .\tests\Smoke\Invoke-Smoke.ps1 -Exe   # el .exe (pide UAC)
+powershell -ExecutionPolicy Bypass -File .\tests\Smoke\Invoke-Smoke.ps1        # el script empaquetado, sin elevar
+powershell -ExecutionPolicy Bypass -File .\tests\Smoke\Invoke-Smoke.ps1 -Exe   # el .exe, desde una terminal ELEVADA
 ```
 
 Arranca **de verdad** lo que va en el `.exe` (`build/_combined.ps1`, con Windows
 PowerShell 5.1 y sin elevar) y lo mira desde fuera con `System.Windows.Automation`: que
-sale la ventana, que el menú trae sus cuatro entradas y que el proceso no se muere. No
-pulsa nada y la cierra. No es un `*.Tests.ps1` a propósito: abre una ventana delante de
-lo que estés haciendo, así que `Run-Tests.ps1` no la recoge. Hay que compilar antes.
+sale la ventana con el título del programa (`$AppInfo.Name`), que el menú trae sus cuatro
+entradas y que el proceso no se muere. No pulsa nada y la cierra con su botón (si no
+responde, `CloseMainWindow`, y matarlo cuenta como fallo). No es un `*.Tests.ps1` a
+propósito: abre una ventana delante de lo que estés haciendo, así que `Run-Tests.ps1` no
+la recoge. Hay que compilar antes.
+
+**Con `-Exe` arranca `build/OptimizadorPC.exe`, elevado y sin nadie delante.** UAC no se
+salta: el `.exe` lleva `-requireAdmin`, y lanzado desde un proceso que **ya** está
+elevado arranca elevado sin diálogo. Además de lo de arriba comprueba en el token del
+proceso que de verdad corre elevado. Así corre en la CI (job `humo` de `ci.yml`: el
+runner de Windows es administrador sin UAC) y en local desde una terminal "Ejecutar como
+administrador". **Sin elevar no arranca nada**: dice `SALTADO` y sale con **2** (0 bien,
+1 falla), en vez de sacar un UAC y quedarse esperando.
 
 ## Lo que estas pruebas NO cubren
 
@@ -171,14 +182,16 @@ lo que estés haciendo, así que `Run-Tests.ps1` no la recoge. Hay que compilar 
   aplicación y mirarla.
 - **El `.exe` funcionando.** Se comprueba que el paquete que arma `build.ps1` parsea
   y lleva todo dentro, pero `Run-Tests.ps1` no ejecuta el binario. La prueba de humo
-  con `-Exe` sí lo arranca, a mano (hay que aceptar el UAC) y sin pulsar nada.
+  con `-Exe` sí lo arranca, elevado y sin intervención (en la CI, o en local desde una
+  terminal elevada), pero sin pulsar nada.
 - **El ratón de verdad.** Se disparan los eventos, no se mueve un cursor.
 - **La escritura al registro EN EL EQUIPO REAL.** El arnés la desarma
   (`Set-RegistryWriteArmed $false` en `AppHost.ps1`); las pruebas de `core/` la rearman
   solo contra `HKCU\Software\OptimizadorPC\Tests\<PID>`. Que el ajuste real de *Regedit*
   escriba de verdad en `HKLM` al pulsarlo en la aplicación compilada no se prueba: eso
   necesitaría el `.exe` elevado y la prueba de humo con UI Automation de arriba.
-- **El `.exe` elevado.** Las pruebas corren en tu sesión normal; el binario pide UAC.
+- **El `.exe` elevado, pulsando.** Las pruebas corren en tu sesión normal; el `.exe`
+  elevado solo lo arranca y lo cierra la prueba de humo (`-Exe`).
 - **Los comandos de verdad.** El arnés desarma `CommandRunner`: solo corre de verdad el
   paso de lectura `netsh interface show interface`. La limpieza se prueba sobre una
   carpeta de mentira, y ni la papelera, ni `powercfg`, ni DISM se ejecutan nunca en

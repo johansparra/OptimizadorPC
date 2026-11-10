@@ -74,7 +74,7 @@ function New-SettingCard {
     # -Flush lo lleva la ÚLTIMA franja: si "Referencia" tiene
     # "Detalles técnicos" debajo, no es la última y no redondea el
     # pie (ver New-DisclosureSection).
-    $showReference = (Get-ViewOption 'reference') -and @($Setting.Registry).Count -gt 0
+    $showReference = (Get-ViewOption 'reference') -and (Test-SettingHasTargets $Setting)
     $showTechnical = [bool](Get-ViewOption 'technical')
 
     if ($showReference) {
@@ -220,9 +220,9 @@ function New-SettingControl {
 
             $toggle = New-ToggleSwitch -Window $Window -InitialState $initialOn -Label $state -Payload $Setting
 
-            if (@($Setting.Registry).Count -gt 0) {
-                # Ajuste con clave: pulsar ESCRIBE en el registro (ON =
-                # Recommended, OFF = Default) y actualiza SOLO esta
+            if (Test-SettingHasTargets $Setting) {
+                # Ajuste con clave (o servicio, o tarea): pulsar ESCRIBE
+                # en el equipo (ON = Recommended, OFF = Default) y actualiza SOLO esta
                 # tarjeta con el estado real releído. Si la escritura
                 # falla, la tarjeta nueva deja el toggle donde de
                 # verdad está. El ajuste viaja por el Tag y el propio

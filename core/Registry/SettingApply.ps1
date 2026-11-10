@@ -21,6 +21,11 @@
 # core/Registry/SettingStatus.ps1, para que la interfaz solo tenga que
 # repintar.
 #
+# Un ajuste con -Service o -ScheduledTask pasa por aquí igual: ON
+# escribe su Recommended y OFF su Default, cada uno por su mecanismo
+# (core/Services/ServiceStartup.ps1, core/ScheduledTasks/), con su
+# lista blanca, desarmado, copia previa y relectura. Nunca se borran.
+#
 # NO lee nada al arrancar la tarjeta: eso ya lo hace
 # core/Registry/CategoryState.ps1. Aquí solo se entra al pulsar ON/OFF.
 #
@@ -63,8 +68,8 @@ function Set-SettingOptimization {
         [Parameter(Mandatory)][bool]$Enabled
     )
 
-    $keys = @($Setting.Registry)
-    if ($keys.Count -eq 0) { return $null }
+    $targets = @(Get-SettingTargets $Setting)
+    if ($targets.Count -eq 0) { return $null }
 
     $requested = if ($Enabled) { 'ON' } else { 'OFF' }
     $action    = if ($Enabled) { 'EnableOptimization' } else { 'RestoreDefault' }
@@ -72,12 +77,30 @@ function Set-SettingOptimization {
     # Cabecera del bloque en el registro de actividad, como la de
     # una lectura de sección: separa un cambio del siguiente.
     Write-AppLog -Source 'registry' -Level 'info' -Status 'applying' `
-        -Message $Setting.Name -Detail ('requested={0} | {1} key(s)' -f $requested, $keys.Count)
+        -Message $Setting.Name -Detail ('requested={0} | {1} key(s)' -f $requested, $targets.Count)
 
     # -WhatIf salta las escrituras; la relectura y el recálculo de
     # estado se hacen igual, para devolver el estado actual.
     if ($PSCmdlet.ShouldProcess($Setting.Name, "$action ($requested)")) {
-        foreach ($key in $keys) {
+        foreach ($t in $targets) {
+            $key = $t.Entry
+
+            # Un servicio o una tarea van por su propio mecanismo, con
+            # su lista blanca. Ninguno de los dos se "borra": OFF
+            # escribe siempre su Default.
+            if ($t.Kind -eq 'service') {
+                $mode = if ($Enabled) { [string]$key.Recommended } else { [string]$key.Default }
+                Set-ServiceStartMode -Name ([string]$key.Name) -StartMode $mode `
+                    -Requested $requested -Action $action | Out-Null
+                continue
+            }
+            if ($t.Kind -eq 'task') {
+                $state = if ($Enabled) { [string]$key.Recommended } else { [string]$key.Default }
+                Set-ScheduledTaskEnabled -Path ([string]$key.Path) -Name ([string]$key.Name) -State $state `
+                    -Requested $requested -Action $action | Out-Null
+                continue
+            }
+
             if (-not $Enabled -and (Test-RegistryRestoreByDelete $key)) {
                 Remove-RegistryValue -Path $key.Path -Name $key.Name -Type $key.Type `
                     -Requested $requested -Action 'RestoreAbsent' | Out-Null
@@ -89,18 +112,9 @@ function Set-SettingOptimization {
         }
     }
 
-    foreach ($key in $keys) {
-        # Relectura por Read-RegistryValue (con su [read] en el log) y
-        # vuelco en la clave: la tarjeta la lee tal cual al repintar.
-        $r = Read-RegistryValue $key.Path $key.Name
-        $key['State'] = $r.State
-        if ($r.State -eq 'read') {
-            $key['Current'] = Format-RegistryValue $r.Value $r.Kind $key.Display
-        }
-        else {
-            $key['Current'] = $null
-        }
-    }
+    # Relectura por el camino de siempre (con su [read] en el log) y
+    # vuelco en la entrada: la tarjeta la lee tal cual al repintar.
+    foreach ($t in $targets) { Update-SettingTargetState $t | Out-Null }
 
     # Recomendado / de fábrica / a medida, con lo que se acaba de
     # releer. Mismo camino que una lectura de sección.

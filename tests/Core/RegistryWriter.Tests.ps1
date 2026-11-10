@@ -46,8 +46,14 @@ Describe 'core/Registry/Writer.ps1 - la lista blanca' {
         }
     }
 
+    It 'el Start de SysMain y DiagTrack ya no se escribe por el registro (lo lleva core/Services)' {
+        foreach ($s in 'SysMain', 'DiagTrack') {
+            Assert-False (Test-RegistryWriteAllowed -Path "HKLM\SYSTEM\CurrentControlSet\Services\$s" -Name 'Start') "$s\Start no debería seguir en la lista blanca del registro"
+        }
+    }
+
     It 'un valor de la lista de valores pasa solo con su clave exacta y su nombre' {
-        $svc = 'HKLM\SYSTEM\CurrentControlSet\Services\SysMain'
+        $svc = 'HKLM\SYSTEM\CurrentControlSet\Services\lfsvc'
         Assert-True  (Test-RegistryWriteAllowed -Path $svc -Name 'Start')
         Assert-True  (Test-RegistryWriteAllowed -Path $svc -Name 'START') 'el nombre no distingue mayúsculas'
         # Sin nombre, otro nombre, o una subclave: no.
@@ -384,9 +390,9 @@ Describe 'core/Registry/Writer.ps1 - borrar un valor' {
     }
 
     It 'la lista de valores también manda al borrar: otro nombre de la misma clave, no' {
-        # SysMain\Start está permitido; ImagePath no. Se rechaza ANTES
+        # lfsvc\Start está permitido; ImagePath no. Se rechaza ANTES
         # de tocar nada, así que no hace falta administrador.
-        Assert-Equal 'blocked' (Remove-RegistryValue -Path 'HKLM\SYSTEM\CurrentControlSet\Services\SysMain' -Name 'ImagePath').State
+        Assert-Equal 'blocked' (Remove-RegistryValue -Path 'HKLM\SYSTEM\CurrentControlSet\Services\lfsvc' -Name 'ImagePath').State
     }
 
     It 'no borra un valor que existe con OTRO tipo' {

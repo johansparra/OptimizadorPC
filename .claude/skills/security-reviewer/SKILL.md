@@ -71,7 +71,8 @@ cumpliendo:
    si la clave declara `DefaultAbsent = $true` (de fábrica no existe). Cada clave lleva
    uno de los dos, nunca ambos (lo vigila `Security.Tests.ps1`). Un ajuste sin ninguno
    no se puede revertir: no se aplica. `Writer.ps1` guarda además el valor previo en
-   `$RegistrySnapshots` (**solo en memoria** — pendiente persistirlo).
+   `$RegistrySnapshots` (**solo en memoria**, y así se queda: el propietario descartó
+   persistirlo, ver `SECURITY.md` §4).
 2. **Distinguir "no existía" de "valía otra cosa".** `Writer.ps1` lo hace vía
    `Get-RegistryStoredValue` (`missing` vs `read`) y lo apunta en el snapshot
    (`Existed`, `State`). Si la primera copia de la sesión lo vio `missing`, `OFF` lo
@@ -91,9 +92,9 @@ cumpliendo:
 **Preferir `HKCU` a `HKLM` siempre que exista la variante.** Afecta solo al usuario,
 no necesita privilegios y el daño potencial es mucho menor.
 
-**Pendiente (no implementado):** antes de la primera escritura elevada de una sesión,
-recomendar al usuario dos redes de seguridad — exportar la rama afectada
-(`reg export`) y un punto de restauración — y exponer un "deshacer" en la UI.
+**Descartado por decisión del propietario:** ni `reg export`, ni punto de
+restauración, ni "deshacer" en la UI (`SECURITY.md` §4 y §11 nº 2). No lo propongas
+como hallazgo; la red de seguridad es el `Default`/`DefaultAbsent` de cada clave.
 
 ## 4. Ajustes que degradan la seguridad del equipo
 
@@ -116,11 +117,12 @@ UAC remoto
 **Estado vivo en este repositorio** (verificado leyendo `ui/Data/Categories/Regedit.ps1`
 y `Update.ps1`):
 
-| Grupo (49 ajustes, uno por clave) | Ejemplos | Riesgo |
+| Grupo (47 ajustes con `-Registry` y 9 de *Servicios y tareas*, uno por objetivo) | Ejemplos | Riesgo |
 | --- | --- | --- |
 | Rendimiento | MMCSS (`NetworkThrottlingIndex`, `SystemResponsiveness`, prioridades de *Games*), TCP/IP (`DefaultTTL`, `Tcp1323Opts`...), SMB de `LanmanServer`, Prefetcher, QoS | Ninguno de seguridad. Reversibles por su `Default`. |
-| Privacidad | Telemetría (`AllowTelemetry`), historial de actividad, ID de publicidad, escritura a mano, voz en línea | Ninguno: reducen lo que sale del equipo. |
-| Servicios (`Start`) | SysMain, DiagTrack, lfsvc, MapsBroker, CscService, StorSvc, SharedAccess | Ninguno de seguridad; ICS rompe la zona con cobertura (lo dice su nota). |
+| Privacidad | Telemetría (`AllowTelemetry`, `Default = 1`: OFF nunca sube el nivel), historial de actividad, ID de publicidad, escritura a mano, voz en línea, peticiones de comentarios (`NumberOfSIUFInPeriod`, `DefaultAbsent`) | Ninguno: reducen lo que sale del equipo. |
+| Servicios (`Start`) | lfsvc, MapsBroker, CscService, StorSvc, SharedAccess | Ninguno de seguridad; ICS rompe la zona con cobertura (lo dice su nota). |
+| *Servicios y tareas* (`-Service`, `-ScheduledTask`, `SECURITY.md` §14) | Tipo de inicio de DiagTrack, dmwappushservice y SysMain; seis tareas de telemetría (CEIP, Appraiser, Autochk\Proxy, DiskDiagnosticDataCollector) | Ninguno de seguridad. Listas blancas propias y listas de **protegidos** (Defender, firewall, Update, BITS, cifrado, núcleo) que se rechazan en runtime. |
 | Sube la seguridad | *Block WPBT Executables* (`DisableWpbtExecution`) | — |
 | *Actualizaciones* | Delivery Optimization (`DODownloadMode` = 0, solo HTTP) | Ninguno: reduce lo que sale del equipo. |
 | *Actualizaciones* — **baja la seguridad** | *Auto-Restart With Active Sessions* (`NoAutoRebootWithLoggedOnUsers` = 1) | Los parches que piden reiniciar esperan al usuario. Lleva `-AllowsSecurityTradeoff`, lo dice en su descripción y no viene activo (de fábrica el valor no existe). |
@@ -178,7 +180,12 @@ subir de versión sea un cambio consciente con recompilación y prueba. `-Force
 
 **Sin resolver:** el `.exe` **no está firmado** (Authenticode). Un binario sin firma
 que pide UAC es justo lo que Windows enseña a no ejecutar. Bloquea distribuir a
-terceros hasta que haya firma. En la CI, `actions/checkout` va fijado por SHA y la
+terceros hasta que haya firma. **El build ya firma** (2026-11-09):
+`build.ps1 -CertificateThumbprint` firma SHA-256 + RFC 3161 vía `SignerSignEx2`
+(`tools/CodeSigning.ps1`, fuera de las capas) y verifica; falta que el propietario
+compre el certificado (OV/EV) o use Azure Trusted Signing. Al revisar: que el
+`Add-Type` de `tools/CodeSigning.ps1` siga siendo un literal fijo y que
+`New-DevSigningCert.ps1` nunca meta su certificado en la raíz de confianza. En la CI, `actions/checkout` va fijado por SHA y la
 imagen `semgrep/semgrep` por digest (2026-11-08); PSScriptAnalyzer se instala con
 `-RequiredVersion 1.25.0` (`.github/workflows/ci.yml`). Subir cualquiera de los tres es
 un cambio consciente, como ps2exe.

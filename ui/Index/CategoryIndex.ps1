@@ -34,5 +34,6 @@ $CategoryIndex = @(
     @{ Id = 'cleanup';       Visible = $true;  Locked = $false }
     @{ Id = 'power';         Visible = $true;  Locked = $false }
     @{ Id = 'update';        Visible = $true;  Locked = $false }
+    @{ Id = 'services';      Visible = $true;  Locked = $false }
 
 )

@@ -5,20 +5,21 @@ Aplicación de escritorio para optimizar Windows 11 Pro. Interfaz **WPF** escrit
 > **Estado: interfaz completa + cambios reales acotados, en expansión.**
 > La navegación, las tarjetas, los toggles, los dropdowns, el buscador y el registro
 > de actividad funcionan. `core/` **lee y escribe** el registro de Windows: al pulsar
-> el toggle de un ajuste con `-Registry` (hoy 49, uno por clave: los 47 de *Regedit* y
+> el toggle de un ajuste con `-Registry` (hoy 47, uno por clave: los 45 de *Regedit* y
 > los 2 de *Actualizaciones*) se escribe cada clave por una **lista blanca de rutas**
 > (`core/Registry/Writer.ps1`), respetando el tipo, con copia del valor previo y
 > verificación por relectura. Apagarlo vuelve al valor de fábrica, y si de fábrica el
 > valor **no existía** (una directiva sin configurar) lo **borra** —solo el valor, nunca
 > la clave—. Las secciones de **comandos** —*Internet*, *Limpieza* y *Energía*—
 > ejecutan programas de Windows y vacían carpetas de temporales, también por lista blanca
-> (`core/Commands/`). La sección **Guías** enseña las notas `.md` de `ui/Data/Guides/`.
+> (`core/Commands/`). La sección **Servicios y tareas** cambia el tipo de inicio de 3
+> servicios y habilita o deshabilita 6 tareas programadas de telemetría, cada cosa por su
+> mecanismo y su lista blanca (`core/Services/`, `core/ScheduledTasks/`). La sección
+> **Guías** enseña las notas `.md` de `ui/Data/Guides/`.
 > **El `.exe` corre elevado.** Ver [`SECURITY.md`](SECURITY.md) para el modelo de
 > amenaza y los contratos.
 >
-> **Pendiente:** persistir el rollback entre sesiones y exponer "deshacer" en la UI,
-> aviso de punto de restauración antes de escribir, y servicios, tareas programadas y
-> directivas que no sean un valor del registro. Ver [Pendiente](#pendiente).
+> **Pendiente:** directivas que no sean un valor del registro. Ver [Pendiente](#pendiente).
 
 ---
 
@@ -44,10 +45,17 @@ OptimizadorPC/
 │   ├── Registry/            Todo lo del registro de Windows
 │   │   ├── Reader.ps1           Lectura del registro (los 4 estados, DWord con signo)
 │   │   ├── Writer.ps1           Escribir y borrar UN valor: lista blanca, tipo, snapshot, relectura
-│   │   ├── SettingApply.ps1     Toggle ON/OFF -> Recommended / Default de cada clave
-│   │   │                        (OFF borra el valor si de fábrica no existe)
-│   │   ├── SettingStatus.ps1    optimized / factory / custom / unknown por comparación
+│   │   ├── SettingApply.ps1     Toggle ON/OFF -> Recommended / Default de cada clave,
+│   │   │                        servicio o tarea (OFF borra el valor si de fábrica no existe)
+│   │   ├── SettingStatus.ps1    optimized / factory / custom / unknown por comparación;
+│   │   │                        Get-SettingTargets: claves, servicios y tareas de un ajuste
 │   │   └── CategoryState.ps1    Vuelca en los ajustes lo que hay en el equipo
+│   ├── Services/
+│   │   └── ServiceStartup.ps1   Tipo de inicio de un servicio: lista blanca, protegidos,
+│   │                            -WhatIf, copia previa, relectura (SECURITY.md §14)
+│   ├── ScheduledTasks/
+│   │   └── ScheduledTaskState.ps1  Habilitar/deshabilitar una tarea: lista blanca por ruta
+│   │                               y nombre, carpetas protegidas, -WhatIf, relectura
 │   ├── Interop/
 │   │   ├── SystemBackdrop.ps1   Mica y Acrílico de Windows 11 (dwmapi)
 │   │   └── WorkArea.ps1         Maximizar sin tapar la barra de tareas (user32)
@@ -95,8 +103,9 @@ OptimizadorPC/
 │   │   ├── AppInfo.ps1          Nombre, VERSIÓN (única fuente; la lee build.ps1),
 │   │   │                        descripción y repositorio
 │   │   ├── Categories/          Un archivo por sección
-│   │   │   ├── Regedit.ps1          AJUSTES con -Registry (47)
+│   │   │   ├── Regedit.ps1          AJUSTES con -Registry (45)
 │   │   │   ├── Update.ps1           AJUSTES con -Registry (2 directivas de Windows Update)
+│   │   │   ├── Services.ps1         AJUSTES con -Service (3) y -ScheduledTask (6)
 │   │   │   ├── Internet.ps1         COMANDOS, no ajustes: los pasos de
 │   │   │   │                        Reiniciar_Red_v3.cmd, en orden de ejecución
 │   │   │   ├── Cleanup.ps1          COMANDOS: los de EliminarTemporales.v1.cmd
@@ -166,6 +175,10 @@ OptimizadorPC/
 │   ├── Source/              Pruebas del código fuente, sin ejecutarlo
 │   ├── Smoke/               Prueba de humo del programa empaquetado (UI Automation)
 │   └── README.md            Cómo lanzarlas y qué cubren
+│
+├── tools/                   Herramientas de build. NO es una capa: no entra en el .exe
+│   ├── CodeSigning.ps1      Firma Authenticode (SHA-256 + RFC 3161); la usa build.ps1
+│   └── New-DevSigningCert.ps1  Certificado autofirmado SOLO para probar la firma
 │
 └── build/                   Todo lo que produce build.ps1
     ├── OptimizadorPC.exe    Binario portable (versionado, es el entregable)
@@ -444,6 +457,25 @@ valores por defecto. `-Tags`, `-Value` y los contadores `Recommended` / `Default
 `Custom` / `Total` de `Register-Category` siguen existiendo para una sección **sin**
 `-Registry`, pero hoy ninguna los usa.
 
+**Un servicio o una tarea programada se declaran igual**, con `-Service` o
+`-ScheduledTask` en vez de `-Registry` (ver `ui/Data/Categories/Services.ps1`):
+
+```powershell
+New-Setting -Name 'Telemetry Service' -Description '...' `
+    -Service @( @{ Name = 'DiagTrack'; Recommended = 'Disabled'; Default = 'Automatic' } )
+
+New-Setting -Name 'USB CEIP' -Description '...' `
+    -ScheduledTask @( @{ Path = '\Microsoft\Windows\Customer Experience Improvement Program\'
+                         Name = 'UsbCeip'; Recommended = 'Disabled'; Default = 'Enabled' } )
+```
+
+Un servicio admite `Automatic`, `Manual` o `Disabled`; una tarea, `Enabled` o
+`Disabled`. Nada de `DefaultAbsent`: no se crean ni se borran. **Un ajuste toca una sola
+cosa** —una clave, un servicio o una tarea— y su nombre tiene que estar en la lista
+blanca del mecanismo (`$ServiceWriteAllowlist`, `$ScheduledTaskWriteAllowlist`): lo
+vigila `tests/Source/Security.Tests.ps1`. El estado, el interruptor, los detalles
+técnicos y el buscador funcionan igual que con una clave (`Get-SettingTargets`).
+
 ### El estado de cada ajuste
 
 Un ajuste que declara claves con `-Registry` **no lleva `-Tags`**: su etiqueta se
@@ -473,8 +505,9 @@ Detalles que importan al declarar una clave:
   `unknown`: sin nada con lo que comparar, decir "personalizado" sería una acusación
   sin pruebas.
 - **`DefaultAbsent = $true` en vez de `Default`** es para las directivas, cuyo estado de
-  fábrica es "sin configurar": ausente es `factory`, y cualquier valor puesto es
-  `optimized` o `custom`.
+  fábrica es "sin configurar", y para cualquier otro valor que de fábrica no exista
+  (*Feedback Frequency*, `NumberOfSIUFInPeriod`): ausente es `factory`, y cualquier
+  valor puesto es `optimized` o `custom`.
 
 **Apagar (`OFF`) no siempre escribe.** `SettingApply.ps1` escribe el `Default` de cada
 clave, salvo que la clave declare `DefaultAbsent` o que la primera copia de la sesión
@@ -582,7 +615,7 @@ flowchart LR
 | Contenedor XAML      | Qué recibe                                |
 | -------------------- | ----------------------------------------- |
 | `HeaderTitleArea`    | Título grande o breadcrumb                |
-| `HeaderActionsArea`  | Buscador, "Quick Actions", "View"         |
+| `HeaderActionsArea`  | Buscador y "View"                         |
 | `MainContent`        | El cuerpo de la vista (lista de tarjetas) |
 
 Las vistas no tocan esas zonas directamente: pasan por `ui/Components/Layout/PageHeader.ps1`, que las limpia y las repuebla. Así **cambiar de pantalla no recrea la ventana** y todas las pantallas comparten el mismo aspecto de cabecera.
@@ -657,13 +690,14 @@ Una fila por archivo de `ui/Data/Categories/`. El orden mostrado es el de `ui/In
 
 | Archivo | Id | Categoría | Icono | Badge | Ajustes |
 | ------- | -- | --------- | ----- | ----- | ------- |
-| `Regedit.ps1` | `regedit` | Regedit | `Shield` | NEW 41 *(contado)* | 47 con `-Registry` |
+| `Regedit.ps1` | `regedit` | Regedit | `Shield` | NEW 39 *(contado)* | 45 con `-Registry` |
 | `Internet.ps1` | `internet` | Internet | `Globe` | NEW *(a mano)* | 28 pasos |
 | `Cleanup.ps1` | `cleanup` | Cleanup | `Broom` | NEW *(a mano)* | 16 pasos |
 | `Power.ps1` | `power` | Power | `Power` | NEW *(a mano)* | 2 pasos |
-| `Update.ps1` | `update` | Update | `Sync` | NEW 1 *(a mano)* | 2 con `-Registry` |
+| `Update.ps1` | `update` | Update | `Sync` | — *(contado: ninguno marcado)* | 2 con `-Registry` |
+| `Services.ps1` | `services` | Services & Tasks (*Servicios y tareas*) | `Wrench` | NEW 9 *(contado)* | 3 con `-Service`, 6 con `-ScheduledTask` |
 
-> **El badge se cuenta solo** a partir de los ajustes que llevan su propio `-Badge 'NEW'`: una categoría que no declare `Badge` sale con `NEW <n>`, o sin badge si no hay ninguno marcado. `Update.ps1` todavía lo declara a mano (sus ajustes no llevan `-Badge`); borrar esa línea los pasa al recuento automático.
+> **El badge se cuenta solo** a partir de los ajustes que llevan su propio `-Badge 'NEW'`: una categoría que no declare `Badge` sale con `NEW <n>`, o sin badge si no hay ninguno marcado (es el caso de `Update.ps1`).
 >
 > **Las píldoras ya no llevan números escritos a mano**, ni en la lista ni en el detalle. En una sección de ajustes cuentan por el estado leído del registro (`Get-CategoryStatusCounts`, ver *El estado de cada ajuste*): la lista lee todas las secciones la primera vez que se abre. En una sección de comandos dicen cuántos pasos hay marcados de cuántos.
 
@@ -714,6 +748,23 @@ powershell -ExecutionPolicy Bypass -File .\build.ps1 -CombineOnly
 
 `build.ps1` deja todo en `build/`: el `.exe` (`build/OptimizadorPC.exe`, versionado) y el script combinado intermedio (`build/_combined.ps1`, generado y fuera de git). Instala el módulo `ps2exe` automáticamente en `CurrentUser` si falta (no requiere admin para instalarlo). El `.exe` resultante se compila con `-requireAdmin`, así que **pedirá elevación al abrirse**.
 
+#### Firmar el `.exe` (Authenticode)
+
+```powershell
+# Compilar y firmar: SHA-256 + sello de tiempo RFC 3161, y verificación
+powershell -ExecutionPolicy Bypass -File .\build.ps1 -CertificateThumbprint <huella>
+
+# Otro servidor de sellado (por defecto http://timestamp.digicert.com)
+powershell -ExecutionPolicy Bypass -File .\build.ps1 -CertificateThumbprint <huella> -TimestampServer http://timestamp.sectigo.com
+```
+
+- **Sin `-CertificateThumbprint` compila sin firmar**, como siempre, y lo dice en una línea. En la CI la huella puede ir en la variable de entorno `OPTIMIZADORPC_SIGN_THUMBPRINT` (y el servidor en `OPTIMIZADORPC_TIMESTAMP_URL`).
+- El certificado se busca en `Cert:\CurrentUser\My` y `Cert:\LocalMachine\My`, y solo vale uno con el uso **Firma de código**, **clave privada** y en vigor. Si no vale, `build.ps1` dice por qué, enseña los que sí valdrían y no compila. La huella se puede pegar tal cual sale del diálogo de certificados (con espacios).
+- **El sello necesita red.** Firma y sello van en la misma llamada (como `signtool /tr`): si el servidor no contesta, el `.exe` se queda **sin firmar** y el build termina con código 1. `-NoTimestamp` firma sin sello a propósito (la firma caduca con el certificado: no lo distribuyas así).
+- Al final imprime el estado de `Get-AuthenticodeSignature`, quién selló y el **SHA-256** del `.exe` para publicarlo junto a la descarga.
+- Para **probar** el flujo sin comprar nada: `.\tools\New-DevSigningCert.ps1` crea un certificado **autofirmado** en `CurrentUser\My` (7 días) y escribe la orden para compilar con él y la de borrarlo. Firma de verdad, pero ningún equipo confía en él: `build.ps1` lo dice y **no sirve para distribuir**. Bórralo al terminar.
+- **Lo que falta no es código:** el propietario tiene que comprar un certificado de firma de código **OV o EV** (EV da reputación inmediata en SmartScreen) o usar **Azure Trusted Signing**. Detalle y motivos en `SECURITY.md` §8 y §11 nº 3. El trabajo de firmar vive en `tools/CodeSigning.ps1`; `tools/` no es una capa y no entra en el `.exe`.
+
 ---
 
 ## Pruebas
@@ -735,7 +786,7 @@ Cubren cinco cosas:
 
 Detalles en [`tests/README.md`](tests/README.md), que además explica **por qué Playwright no sirve aquí** (automatiza navegadores; esto es WPF) y qué haría falta para llegar a pruebas de extremo a extremo con UI Automation.
 
-**La CI** (`.github/workflows/ci.yml`, en `windows-latest`) pasa en cada push y pull request **PSScriptAnalyzer 1.25.0** con `PSScriptAnalyzerSettings.psd1` —falla con cualquier error y con cualquier aviso que no esté en `.github/pssa-baseline.txt`— y la suite entera en **5.1 y en 7**, un runner por host. Semgrep va aparte (`.github/workflows/semgrep.yml`), con la imagen fijada por digest.
+**La CI** (`.github/workflows/ci.yml`, en `windows-latest`) pasa en cada push y pull request **PSScriptAnalyzer 1.25.0** con `PSScriptAnalyzerSettings.psd1` —falla con cualquier error y con cualquier aviso que no esté en `.github/pssa-baseline.txt`—, la suite entera en **5.1 y en 7**, un runner por host, y la **prueba de humo del `.exe`**: compila con `build.ps1` y lo arranca elevado (el runner es administrador sin UAC) con `tests/Smoke/Invoke-Smoke.ps1 -Exe`. Semgrep va aparte (`.github/workflows/semgrep.yml`), con la imagen fijada por digest.
 
 ---
 
@@ -752,6 +803,12 @@ Detalles en [`tests/README.md`](tests/README.md), que además explica **por qué
 
 ## Hecho recientemente
 
+- [x] **Servicios y tareas programadas** como mecanismos propios
+  (`core/Services/ServiceStartup.ps1`, `core/ScheduledTasks/ScheduledTaskState.ps1`):
+  lista blanca, lista de protegidos (Defender, firewall, Update, núcleo), desarmados en
+  pruebas, `-WhatIf`, copia previa y relectura. Sección nueva *Servicios y tareas* tras
+  *Actualizaciones*; SysMain y DiagTrack se mudaron allí desde *Regedit*
+  (`SECURITY.md` §14)
 - [x] **Leer y escribir** el registro: `core/Registry/` lee los cuatro estados y
   escribe por lista blanca de rutas, con tipo, snapshot en memoria y verificación por
   relectura. Cableado al toggle de *Regedit* (`core/Registry/SettingApply.ps1`)
@@ -801,6 +858,16 @@ Detalles en [`tests/README.md`](tests/README.md), que además explica **por qué
 - [x] **`OFF` vuelve a "no configurado"**: si de fábrica el valor no existe
   (`DefaultAbsent = $true`) o la primera copia de la sesión lo vio ausente, se borra el
   valor (`Remove-RegistryValue`) en vez de escribir un `Default`
+- [x] **Las directivas de *Regedit* declaran `DefaultAbsent`** (QoS, las tres del
+  historial de actividad y *Consumer Features*): `OFF` las deja "sin configurar" en vez
+  de puestas con otro número
+- [x] **`NumberOfSIUFInPeriod` portado** (*Feedback Frequency*, frecuencia de las
+  peticiones de comentarios): `HKCU`, `DefaultAbsent`, solo ese valor en la lista blanca
+- [x] **"Diagnostic Data Level" vuelve a `1`** (solo obligatorios) al apagarlo, no a
+  `3`: el de fábrica depende de la instalación y con `3` `OFF` subía la telemetría
+- [x] **"Delivery Optimization" ya no está duplicado**: la directiva `DODownloadMode`
+  (rama `Policies`) vive solo en *Actualizaciones* ("Delivery Optimization (P2P)");
+  *Regedit* conserva las tres claves de Delivery Optimization que no son directiva
 - [x] **Contadores de las píldoras calculados**: la lista y el detalle cuentan por el
   estado leído (`Get-CategoryStatusCounts`) o por los pasos marcados; ninguna sección
   declara ya `Recommended` / `Default` / `Custom` / `Total`
@@ -819,22 +886,8 @@ Detalles en [`tests/README.md`](tests/README.md), que además explica **por qué
 > Lista de trabajo con las **decisiones abiertas** para la próxima sesión:
 > [`PENDIENTES.md`](PENDIENTES.md).
 
-- [ ] **Rollback persistente y "deshacer" en la UI.** Hoy `core/Registry/Writer.ps1`
-  guarda el valor previo solo en memoria (`$RegistrySnapshots`): se pierde al cerrar
-- [ ] **Aviso de punto de restauración** (o `reg export` de la rama) antes de la primera
-  escritura elevada
-- [ ] Lógica real de otros mecanismos (servicios, tareas programadas, directivas que no
-  sean un valor del registro) como subcarpetas nuevas de `core/`. Los planes de energía
-  ya van por comandos (*Energía*)
-- [ ] **Pasar a `DefaultAbsent` los ajustes de *Regedit* en ramas `Policies`.** Hoy
-  declaran un `Default` y `OFF` deja la directiva puesta con ese número en vez de
-  volver a "sin configurar" (salvo que la primera copia de la sesión la viera ausente)
-- [ ] **"Delivery Optimization" está duplicado**: *Regedit* ("Delivery Optimization
-  (Policy)") y *Actualizaciones* ("Delivery Optimization (P2P)") escriben el mismo
-  valor (`HKLM\SOFTWARE\Policies\Microsoft\Windows\DeliveryOptimization\DODownloadMode`),
-  y el de *Regedit* con `Default` en vez de `DefaultAbsent`: apagar uno u otro no deja
-  lo mismo
-- [ ] "Quick Actions" de la lista (hoy decorativo; el "Refrescar" del detalle sí
-  funciona). El botón "Reset" ya no existe
+- [ ] Lógica real de las directivas que no sean un valor del registro, como subcarpeta
+  nueva de `core/`. Los planes de energía ya van por comandos (*Energía*), y los
+  servicios y las tareas programadas por `core/Services/` y `core/ScheduledTasks/`
 - [ ] Prueba de humo del `.exe` **elevado** sin intervención (la de hoy arranca el script
   empaquetado sin elevar; con `-Exe` hace falta aceptar el UAC a mano)

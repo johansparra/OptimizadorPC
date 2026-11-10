@@ -64,6 +64,14 @@ archivos**; PSScriptAnalyzer sin avisos nuevos (1 de línea base; 12 falsos posi
 verbo en el pase estricto de `core/`). Informe:
 [`auditoria/2026-11-08-seguridad-calidad.html`](auditoria/2026-11-08-seguridad-calidad.html).
 
+**Cuarta pasada 2026-11-09.** Superficie nueva: **servicios y tareas programadas** como
+mecanismos propios (`core/Services/`, `core/ScheduledTasks/`), cada uno con su lista
+blanca, su lista de protegidos (Defender, firewall, Windows Update, cifrado, núcleo),
+desarmado en pruebas, `-WhatIf`, copia previa y relectura, y la sección *Servicios y
+tareas* que los usa (3 servicios y 6 tareas de telemetría). SysMain y DiagTrack dejan de
+escribirse por su valor `Start` del registro. Contrato en §14; invariantes en §10;
+riesgos en §11 nº 14 a 16.
+
 ---
 
 ## 1. Qué es esto y por qué importa
@@ -75,7 +83,7 @@ Optimizador PC es un **`.exe` portable de un solo archivo**, compilado con ps2ex
 | `-requireAdmin` | **Todo el código corre con privilegios de administrador.** |
 | `-noConsole` | El usuario **no ve mensajes**: un fallo o un cambio es silencioso. |
 | Portable | Puede acabar en un USB, una descarga o una carpeta escribible por todos. |
-| Sin firma Authenticode | SmartScreen lo marca como no confiable al abrirlo. |
+| Sin firma Authenticode (el build **ya sabe** firmar; falta el certificado, §11 nº 3) | SmartScreen lo marca como no confiable al abrirlo. |
 
 Los tres riesgos reales, por gravedad:
 
@@ -104,6 +112,7 @@ son:
 | El **registro de Windows** que se lee | El equipo | Se abre siempre `RegistryView::Registry64`. Un `DWord` llega como `Int32` con signo y se reinterpreta sin signo (`Format-RegistryValue`). `core/` **nunca lanza**: devuelve un estado (`read`/`missing`/`denied`/`badpath`). |
 | URLs de referencia (`-Link` de cada ajuste) | **Escritas en el propio repositorio** (`ui/Data/Categories/*.ps1`) | Antes de llegar al shell se validan: tiene que ser una URI absoluta con esquema `http` o `https` (`core/Shell/ExternalLink.ps1`). Cualquier otra cosa se rechaza sin tocar el shell. |
 | `-Recommended` / `-Default` de cada clave de registro | **Escritas en el propio repositorio** | Es el contrato de aplicación y de reversión. No proviene de entrada del usuario. |
+| `-Service` / `-ScheduledTask` de cada ajuste (nombre del servicio, ruta y nombre de la tarea, `Recommended` / `Default`) | **Escritos en el propio repositorio** (`ui/Data/Categories/Services.ps1`) | Solo los de la lista blanca de su mecanismo, nunca uno protegido; solo el tipo de inicio o habilitar/deshabilitar. Ver §14. |
 | Pasos de las secciones de comandos (`-Exe`, `-Arguments`, `-Service`, `-Clean` de cada `New-CommandStep`) | **Escritos en el propio repositorio** (`ui/Data/Categories/Internet.ps1`, `Cleanup.ps1`, `Power.ps1`) | Se ejecutan **sin shell**, solo ejecutables, servicios y carpetas de una lista blanca; los ejecutables por ruta completa de la carpeta de sistema, las carpetas dentro de la del usuario (con las dos excepciones de §12). Ver §12. El usuario solo elige **cuáles** correr, no **qué** se ejecuta. |
 | Salida de esos comandos | El equipo | Solo se **muestra** y se apunta en el log. Nunca se ejecuta ni se usa para construir otro comando. |
 | Guías (`ui/Data/Guides/*.md`) | **Escritas en el propio repositorio**, dentro del `.exe` en Base64 | Se **leen** como texto (`ui/Engine/Markdown.ps1`) y se pintan en un `RichTextBox` de solo lectura. Nunca se ejecutan; sus enlaces pasan por `Invoke-ExternalLink` (solo `http`/`https`, §6). |
@@ -121,10 +130,18 @@ descargas. Lo vigila `tests/Source/Security.Tests.ps1`.
 
 La escritura vive en **`core/Registry/Writer.ps1`** (una clave por llamada) y se
 dispara desde **`core/Registry/SettingApply.ps1`** (el toggle ON/OFF de un ajuste con
-`-Registry`). Nada más escribe (ni borra) en el registro. Hoy son **49** ajustes con
-`-Registry`, **uno por clave**: 47 en *Regedit* y 2 en *Actualizaciones* (dos
+`-Registry`). Nada más escribe (ni borra) en el registro. Hoy son **47** ajustes con
+`-Registry`, **uno por clave**: 45 en *Regedit* y 2 en *Actualizaciones* (dos
 directivas de `HKLM\SOFTWARE\Policies\Microsoft\Windows`, dentro de la rama ya
-permitida); el primero que se cableó fue `NetworkThrottlingIndex` —benigno,
+permitida). Ningún valor lo escriben dos ajustes: la directiva de Delivery
+Optimization (`DODownloadMode` en la rama `Policies`) vive solo en *Actualizaciones*.
+Todas las directivas de la rama `Policies` —las 2 de *Actualizaciones* y 5 de
+*Regedit*— declaran `DefaultAbsent`, y también *Feedback Frequency*
+(`NumberOfSIUFInPeriod`, en `HKCU`): no es una directiva, pero de fábrica tampoco
+existe. *Diagnostic Data Level* (`AllowTelemetry`) lleva `Default = 1` y no el `3` que
+deja la instalación al aceptar los datos opcionales: el de fábrica depende de lo que se
+eligió (1 o 3), y con 3 `OFF` **subía** la telemetría a quien había elegido "solo
+obligatorios"; con 1 nunca la sube. El primero que se cableó fue `NetworkThrottlingIndex` —benigno,
 reversible, en una rama permitida—.
 
 ### 3.1 Lista blanca de rutas
@@ -149,11 +166,15 @@ SECURITY, BCD, `...\Services` y todo lo demás quedan fuera por omisión.
 abrir como rama entera entra **valor a valor**: la clave tiene que ser *exactamente*
 la declarada —sus subclaves no heredan el permiso— y el nombre del valor, uno de su
 lista. Así entran el `Start` de siete servicios concretos (SysMain, DiagTrack, lfsvc,
-MapsBroker, CscService, StorSvc, SharedAccess), cuatro valores de
+MapsBroker, CscService, StorSvc, SharedAccess; **los dos primeros ya no los escribe
+ningún ajuste** desde 2026-11-09: sus tarjetas pasaron a *Servicios y tareas*, que cambia
+el tipo de inicio por su propio mecanismo, §14 —quitarlos de esta lista está pendiente,
+ver §11 nº 14—), cuatro valores de
 `Tcpip\Parameters` (no `...\Interfaces`), seis de `LanmanServer\Parameters`,
 `DisableWpbtExecution` de `Session Manager` (sin abrir `KnownDLLs`, `BootExecute`,
 `Environment`), `EnablePrefetcher`, `HibernateEnabled` y los de privacidad del paquete
-BF6. `Test-RegistryWriteAllowed` sin `-Name` nunca acepta esta lista.
+BF6 (el último, `NumberOfSIUFInPeriod` de `HKCU\Software\Microsoft\Siuf\Rules`, solo
+ese valor: `PeriodInNanoSeconds`, al lado, no entra). `Test-RegistryWriteAllowed` sin `-Name` nunca acepta esta lista.
 
 > **Riesgo conocido [Media].** `HKLM\SOFTWARE\Policies\Microsoft` es un prefijo
 > **amplio**: por debajo cuelgan las claves GPO de Windows Defender
@@ -265,12 +286,24 @@ activo (de fábrica el valor no existe → `factory` → interruptor apagado) y 
 la directiva. Windows solo la respeta con *Configure Automatic Updates* en la opción 4;
 el ajuste lo dice y no escribe `AUOptions`.
 
-Los 47 ajustes de *Regedit* no tocan esta lista ni llevan la marca. Son de rendimiento
+Los 45 ajustes de *Regedit* no tocan esta lista ni llevan la marca. Son de rendimiento
 (MMCSS, TCP/IP, SMB, Prefetcher, QoS), privacidad (telemetría, actividad, publicidad,
-escritura a mano) y servicios (`Start` de siete servicios concretos); uno **sube** la
+escritura a mano, peticiones de comentarios) y servicios (`Start` de cinco servicios concretos); uno **sube** la
 seguridad: *Block WPBT Executables* (`DisableWpbtExecution`). Los ajustes de UAC,
 BitLocker y Automatic Maintenance que existieron en versiones anteriores fueron
 retirados.
+
+**Servicios y tareas programadas (§14).** La misma denylist, llevada a nombres de
+servicio y a carpetas de tareas: Defender (`WinDefend`, `WdNisSvc`, `Sense`...),
+`SecurityHealthService`, `wscsvc`, el firewall (`mpssvc`, `BFE`), Windows Update
+(`wuauserv`, `UsoSvc`, `WaaSMedicSvc`, `BITS`, `DoSvc`, `TrustedInstaller`), cifrado y
+credenciales (`BDESVC`, `CryptSvc`, `KeyIso`, `VaultSvc`, `SamSs`...) y el núcleo
+(`EventLog`, `RpcSs`, `Schedule`, `Winmgmt`...); y las carpetas de tareas
+`WindowsUpdate`, `UpdateOrchestrator`, `WaaSMedic`, `Windows Defender`, `ExploitGuard`,
+`BitLocker`, `TPM`, `SystemRestore`... **No se pueden marcar con
+`-AllowsSecurityTradeoff`**: están en las listas de protegidos de `core/` y se rechazan
+en tiempo de ejecución aunque alguien los añadiera a la lista blanca. Los 9 ajustes de
+*Servicios y tareas* —telemetría y SysMain— no tocan ninguno.
 
 ---
 
@@ -288,12 +321,13 @@ retirados.
   Como la copia vive en memoria, eso solo vale dentro de la misma sesión: tras
   reiniciar el programa, `OFF` vuelve a escribir el `Default` declarado.
 
-> **Riesgo conocido [Media].** `$RegistrySnapshots` vive **solo en memoria** y se pierde
-> al cerrar la aplicación. **No hay "deshacer" en la UI** ni exportación del snapshot.
-> **No se avisa** al usuario de crear un punto de restauración ni de exportar la rama
-> (`reg export`) antes de la primera escritura elevada. Pendientes, en este orden:
-> (1) persistir el snapshot en `%APPDATA%`, (2) botón "deshacer último cambio",
-> (3) aviso de punto de restauración.
+> **Riesgo aceptado [Media] — descartado por decisión del propietario (2026-11-09).**
+> `$RegistrySnapshots` vive **solo en memoria** y se pierde al cerrar la aplicación, y
+> así se queda: **no se va a persistir**, no habrá "deshacer" en la UI ni aviso de punto
+> de restauración o de `reg export`. El propietario no usa copias, backups ni puntos de
+> restauración. El contrato de vuelta es el `Default` (o `DefaultAbsent`) declarado de
+> cada clave; la copia en memoria sigue existiendo y es la que decide, dentro de la
+> sesión, si `OFF` borra en vez de escribir. Ver §11 nº 2.
 
 ---
 
@@ -375,10 +409,38 @@ ps2exe. Puntos de seguridad:
   compilación podría traer código distinto del compilador, o podría ganar otro
   repositorio de PowerShell registrado con prioridad. Subir de versión es un cambio
   consciente: se edita el número, se recompila y se pasan las pruebas.
-- **El `.exe` no está firmado.** Un binario sin Authenticode que pide UAC es justo lo
-  que Windows enseña a no ejecutar. *Bloquea distribuir a terceros.* Mitigación:
-  firmar con un certificado de firma de código (idealmente EV, para reputación
-  inmediata en SmartScreen).
+- **El `.exe` no está firmado — pero el build ya firma** (2026-11-09). Un binario sin
+  Authenticode que pide UAC es justo lo que Windows enseña a no ejecutar. *Bloquea
+  distribuir a terceros.* `build.ps1 -CertificateThumbprint <huella>` (o la variable
+  `OPTIMIZADORPC_SIGN_THUMBPRINT`) firma con **SHA-256**, sello de tiempo **RFC 3161**
+  SHA-256 (`-TimestampServer`, por defecto `http://timestamp.digicert.com`) y verifica con
+  `Get-AuthenticodeSignature`. Contrato:
+  - Solo acepta un certificado de `Cert:\CurrentUser\My` o `Cert:\LocalMachine\My` con
+    EKU *Firma de código* (`1.3.6.1.5.5.7.3.3`), **clave privada** y en vigor; si no,
+    lo dice, enseña los que sí valdrían y **no compila**.
+  - Firma como `signtool sign /fd sha256 /tr <url> /td sha256`: una llamada a
+    `SignerSignEx2` de `mssign32.dll` (P/Invoke con un literal fijo en
+    `tools/CodeSigning.ps1`, que no entra en el `.exe`). **No** con
+    `Set-AuthenticodeSignature`: su `-TimestampServer` solo pone el sello **legado**
+    (contrafirma PKCS #9, comprobado por OID en 5.1 y 7), y sellar después con
+    `SignerTimeStampEx2` reescribía el `.exe` firmado y en la máquina de desarrollo el
+    proceso murió y el `.exe` desapareció con el antivirus encima.
+  - Firma y sello van juntos: si el servidor de sellado no contesta, **no se firma**
+    (el `.exe` se queda sin firma, código 1 y lo dice). `-NoTimestamp` firma sin sello
+    a propósito, con aviso (la firma caduca con el certificado).
+  - Resultado `Valid` → bien. Autofirmado → firma puesta, aviso de que no sirve para
+    distribuir, código 0. Cualquier otro estado con un certificado de CA → código 1.
+  - Imprime el **SHA-256** del `.exe` final, para publicarlo junto a la descarga.
+  - `tools/New-DevSigningCert.ps1` crea un certificado autofirmado de prueba (RSA 3072,
+    clave no exportable, 7 días) en `CurrentUser\My` **sin** meterlo en la raíz de
+    confianza: sirve para recorrer el flujo, no para distribuir.
+
+  **Lo que sigue dependiendo del propietario:** comprar un certificado de firma de
+  código **OV o EV** (EV da reputación inmediata en SmartScreen; hoy los dos vienen en
+  token o HSM, y el build los usa igual si el certificado aparece en `My` con su clave),
+  o usar **Azure Trusted Signing** (no deja el certificado en el almacén: se firma
+  después con `signtool` + su *dlib*, y `build.ps1` solo compilaría). La CI no firma: no
+  hay certificado que darle.
 - **CI (`.github/workflows/semgrep.yml`)** — corregido el 2026-09-07:
   - `actions/checkout` **fijado por SHA** (`d23441a…` = v6.1.0). Una etiqueta la puede
     repuntar el dueño de la acción en silencio; era el único hallazgo de Semgrep
@@ -406,6 +468,12 @@ ps2exe. Puntos de seguridad:
     `pwsh`, cada uno en su runner, `-STA` explícito). El arnés desarma la escritura al
     registro de la app y la ejecución de comandos; solo toca su rama de pruebas en
     `HKCU`, que borra al terminar.
+  - Job `humo` (2026-11-09): compila con `build.ps1` en Windows PowerShell 5.1 (ps2exe
+    fijado, sin firmar; borra antes el `.exe` versionado para probar el recién
+    compilado) y corre `tests/Smoke/Invoke-Smoke.ps1 -Exe`. El runner es administrador
+    sin UAC, así que el `.exe` (`-requireAdmin`) arranca elevado sin diálogo; la prueba
+    comprueba en su token que lo está. No pulsa nada: arrancar solo lee el registro.
+    Instala el proveedor NuGet si falta (`Install-Module` de 5.1 lo pide).
   - `actions/checkout` con el mismo SHA que `semgrep.yml` y `persist-credentials: false`
     (ningún job hace push).
   - *Sin probar todavía en un runner* (se escribió sin poder hacer push). Riesgo
@@ -497,8 +565,8 @@ aportan**, por orden de valor:
 | **PSScriptAnalyzer** en CI (Windows runner) | Reglas específicas de PowerShell, gratis, sin token | **Hecho (2026-11-08)**: job `pssa` de `ci.yml`, versión fijada, contra línea base |
 | **Semgrep** con rulesets fijados + SARIF | Patrones de seguridad e inyección, dedupe entre ramas | Ya en CI, disparador corregido e imagen fijada por digest; faltan `--config` versionados y SARIF |
 | **Gitleaks** / `trufflehog` en pre-commit y CI | Secretos filtrados en el historial | Complementa a `p/secrets` |
-| **Firma Authenticode del `.exe`** + hash publicado | Integridad del entregable | Necesita certificado |
-| `System.Windows.Automation` (prueba de humo) | Que el programa empaquetado arranca y no rompe | **Hecho (2026-11-08)**: `tests/Smoke/Invoke-Smoke.ps1` arranca `build/_combined.ps1` sin elevar; el `.exe` elevado sigue a mano (`-Exe`, pide UAC) |
+| **Firma Authenticode del `.exe`** + hash publicado | Integridad del entregable | **Build listo (2026-11-09)**: `build.ps1 -CertificateThumbprint` firma SHA-256 + RFC 3161, verifica e imprime el SHA-256 (§8). Falta el certificado |
+| `System.Windows.Automation` (prueba de humo) | Que el programa empaquetado arranca y no rompe | **Hecho (2026-11-08)**: `tests/Smoke/Invoke-Smoke.ps1` arranca `build/_combined.ps1` sin elevar. **Y el `.exe` elevado sin intervención (2026-11-09)**: `-Exe` desde un proceso ya elevado (sin diálogo de UAC), comprueba título, elevación del token, menú y cierre limpio; job `humo` de `ci.yml`. Sin elevar sale con 2 (saltado), nunca lanza UAC |
 
 ---
 
@@ -523,6 +591,11 @@ antes solo vivía en prosa. **Falla la suite** si:
 | Un paso que cambia el DNS de un adaptador (`dns` con `set`/`add`) nunca viene marcado de serie y lleva aviso | Sustituir el DNS del router, o devolverlo a DHCP, sin que el usuario lo decida. |
 | Cada clave de `-Registry` declara a dónde vuelve `OFF`: un `Default` **o** `DefaultAbsent`, nunca los dos | Un ajuste que no sabe volver a fábrica, o que vuelve a dos sitios distintos. |
 | Nada en `ui/`/`core/` borra **claves** del registro, y solo `core/Registry/Writer.ps1` borra **valores** | Una segunda puerta para borrar del registro con privilegios, sin lista blanca. |
+| Todo `-Service` pasa `Test-ServiceWriteAllowed` y toda `-ScheduledTask` pasa `Test-ScheduledTaskWriteAllowed` (ruta **y** nombre exactos) | Un servicio o una tarea fuera de la lista acabaría en `blocked` al pulsar, en silencio. |
+| `$ServiceWriteAllowlist` no tiene ningún servicio de la denylist (Defender, firewall, Update, cifrado, núcleo) y `$ServiceProtectedNames` los tiene **todos**; `$ScheduledTaskWriteAllowlist` no cuelga de ninguna carpeta protegida (Update, Defender, BitLocker...) | Una rebaja de seguridad colada como "telemetría". |
+| Cada `-Service`/`-ScheduledTask` declara `Recommended` y `Default`, nunca `DefaultAbsent` | Un servicio o una tarea que no sabe volver a fábrica. |
+| Un ajuste toca **una** cosa: una clave, un servicio o una tarea | Un interruptor que cambia más de lo que dice. |
+| Solo `core/Services/ServiceStartup.ps1` llama a `Set-Service` y solo `core/ScheduledTasks/ScheduledTaskState.ps1` a `Enable-`/`Disable-ScheduledTask`; nadie usa `sc config/stop/delete/create`, `schtasks`, `Stop-Service`, `Remove-Service` ni `(Un)Register-ScheduledTask` | Una segunda puerta, sin lista blanca, para cambiar servicios o tareas con privilegios. |
 
 Cobertura de la ejecución de comandos: `tests/Core/CommandRunner.Tests.ps1` (lista
 blanca, rutas rechazadas, desarmado, `blocked`, un proceso real de solo lectura,
@@ -533,7 +606,8 @@ el simulacro de `-WhatIf` que no borra nada, por trozos; sobre una carpeta de me
 `%TEMP%`) y `tests/Ui/StepsView.Tests.ps1` (solo lo marcado, siempre en el orden del
 archivo, detener, sección bloqueada, Limpieza entera desarmada, y que un paso con aviso
 no se restaura marcado desde `settings.json`). Fuera de la suite, la prueba de humo
-`tests/Smoke/Invoke-Smoke.ps1` arranca el programa empaquetado de verdad.
+`tests/Smoke/Invoke-Smoke.ps1` arranca el programa empaquetado de verdad, y con `-Exe`
+el `.exe` compilado **elevado** (job `humo` de la CI).
 
 Cobertura de `core/` relacionada (ya existente):
 `tests/Core/RegistryWriter.Tests.ps1` (lista blanca, tipado, snapshot, relectura,
@@ -550,8 +624,8 @@ blanca, nombre vacío, otro tipo, `-WhatIf`, desarmado, copia previa, log) y
 | # | Riesgo | Sev. | Estado |
 | - | --- | --- | --- |
 | 1 | Lista blanca de escritura amplia (`SOFTWARE\Policies\Microsoft` alcanza Defender/Update/SmartScreen) | Media | **Mitigado en parte** por la denylist de nombres de valor (§3.4) + revisión manual. Estrechar el prefijo requiere saber qué claves se querrán escribir. |
-| 2 | Rollback solo en memoria; sin "deshacer" en UI; sin aviso de punto de restauración | Media | **Aceptado temporalmente** por decisión del propietario. Pendiente: persistir snapshot → botón deshacer → aviso de restauración. |
-| 3 | `.exe` sin firma Authenticode | Media | **Aceptado** mientras no se distribuya a terceros. Bloquea la distribución. |
+| 2 | Rollback solo en memoria; sin "deshacer" en UI; sin aviso de punto de restauración | Media | **Aceptado — descartado por decisión del propietario (2026-11-09).** No se persistirá el snapshot ni habrá "deshacer" ni aviso de restauración: el propietario no usa copias ni puntos de restauración. El contrato de vuelta es el `Default`/`DefaultAbsent` de cada clave (§4). La fila se conserva para no cambiar la numeración que citan otros documentos. |
+| 3 | `.exe` sin firma Authenticode | Media | **Aceptado** mientras no se distribuya a terceros. Bloquea la distribución. **Resuelto en el build (2026-11-09):** `build.ps1 -CertificateThumbprint <huella>` (o `OPTIMIZADORPC_SIGN_THUMBPRINT`) firma SHA-256 con sello RFC 3161 y verifica con `Get-AuthenticodeSignature`; sin certificado compila sin firmar y lo dice (§8). Probado de punta a punta con un certificado autofirmado de `tools/New-DevSigningCert.ps1` (firma presente, sello RFC 3161 de DigiCert, estado "raíz no de confianza" como se espera), borrado después. **Sigue dependiendo del propietario:** comprar el certificado de firma de código OV/EV, o usar Azure Trusted Signing; hasta entonces el `.exe` que se entrega sigue sin firma. |
 | 4 | CI de Semgrep incompleta | Baja | **Corregido en parte.** 2026-09-07: `actions/checkout` fijado por SHA y quitado el filtro `paths` del `push` (cada push a master pasa por Semgrep). 2026-11-08: imagen fijada por digest (`semgrep/semgrep:1.183.0@sha256:2e45517a…`, §8). **Queda:** `--config` no versionados en el repo (depende de la config de la plataforma) y sin subida de SARIF a *code scanning*. |
 | 5 | Sin CI de PSScriptAnalyzer ni de la suite de pruebas (solo Semgrep) | Baja | **Corregido, pendiente de verlo en verde (2026-11-08).** `.github/workflows/ci.yml` en `windows-latest`: PSScriptAnalyzer 1.25.0 contra línea base (§9) y la suite en los dos hosts (§8). Escrito sin poder hacer push: **no se ha ejecutado aún en un runner**. `windows-latest` es **Windows Server** (build ≥ 26100): `tests/Core/SystemInfo.Tests.ps1` ya distingue cliente de servidor (`InstallationType` = `Client`) y solo exige `^Windows 11` en un cliente. Solo se dispara en `master`/`main` y en PR: la rama de trabajo no lo ejecuta hasta abrir el PR. No hay runner x64 de Windows 11 alojado por GitHub. |
 | 6 | `Add-Type` en `SystemBackdrop.ps1` y `WorkArea.ps1` compila una cadena de C# | Info | **Aceptado.** Las cadenas son literales fijos y revisados; no se construyen en runtime. `WorkArea.ps1` (2026-10-03) subclasifica la ventana propia con `SetWindowLongPtr` solo para corregir `WM_GETMINMAXINFO`; no toca otras ventanas ni otros procesos. |
@@ -562,6 +636,9 @@ blanca, nombre vacío, otro tipo, `-WhatIf`, desarmado, copia previa, log) y
 | 11 | `settings.json` lo puede escribir cualquier programa del usuario sin privilegios, y el `.exe` lo lee corriendo elevado | Baja | **Mitigado (2026-11-08).** De ahí solo salen preferencias de interfaz y qué pasos marcó el usuario; ningún paso fuera de la lista blanca puede entrar por ese camino, y un paso con aviso (firewall, papelera, DNS) **nunca** se restaura marcado (§7). |
 | 12 | Un `%TEMP%` movido fuera del perfil (`R:\Temp`) se vacía aunque lo compartan otros usuarios | Baja | **Aceptado (2026-11-08).** Solo si la carpeta se llama `Temp`/`Tmp` y no cuelga de Windows, Archivos de programa, ProgramData ni de otro perfil (§12); la variable la fija el propio usuario. |
 | 13 | Con `DefaultAbsent`, `OFF` **borra** el valor aunque lo hubiera puesto otro (una GPO de la organización, otra herramienta) | Baja | **Aceptado (2026-11-08).** Antes `OFF` lo pisaba con el `Default`, así que no es superficie nueva; ahora deja la directiva "sin configurar", que es el estado de fábrica. Una GPO de dominio la vuelve a aplicar en el siguiente refresco. Solo afecta a valores de la lista blanca y por acción explícita del usuario. |
+| 14 | Servicios y tareas programadas sin mecanismo propio: el tipo de inicio de un servicio se cambiaba escribiendo su valor `Start` en el registro (lista de valores de §3.1), y las tareas no se podían tocar | Media | **Resuelto (2026-11-09).** `core/Services/ServiceStartup.ps1` y `core/ScheduledTasks/ScheduledTaskState.ps1`, con su lista blanca, su lista de protegidos, desarmado, `-WhatIf`, copia previa y relectura (§14). SysMain y DiagTrack se mudaron de *Regedit* a *Servicios y tareas*. **Queda:** sus dos entradas `Start` siguen en `$RegistryWriteAllowedValues` de `Writer.ps1` sin ningún ajuste que las use; quitarlas exige cambiar también `tests/Core/RegistryWriter.Tests.ps1`, que usa `SysMain\Start` como ejemplo de la lista de valores. Los otros cinco servicios de *Regedit* (lfsvc, MapsBroker, CscService, StorSvc, SharedAccess) siguen por el registro; pasarlos al mecanismo nuevo es una decisión pendiente. |
+| 15 | El tipo de inicio y el estado de las tareas solo se copian **en memoria** (`$ServiceSnapshots`, `$ScheduledTaskSnapshots`) | Baja | **Aceptado (2026-11-09)**, por la misma decisión que el nº 2: el contrato de vuelta es el `Default` declarado (el de fábrica de Windows 11). Un servicio que el usuario tuviera en `Manual` a propósito vuelve a `Automatic` con `OFF`, igual que un valor del registro personalizado vuelve a su `Default`. Además, `Set-Service` de **pwsh 7** puede quitar el "inicio retrasado" al cambiar el tipo (no comprobado: las pruebas nunca escriben); el de 5.1 (el del `.exe`) no lo toca. Ninguno de los tres servicios lo usa de fábrica. |
+| 16 | Dos tareas de la lista pueden no existir (`Microsoft Compatibility Appraiser` y `ProgramDataUpdater` faltan en compilaciones recientes de Windows 11; en la 26300 existe `Microsoft Compatibility Appraiser Exp`) | Info | **Aceptado (2026-11-09).** Salen `missing` → de fábrica, y el interruptor no hace nada (`Set-ScheduledTaskEnabled` devuelve `missing` sin escribir). La variante `Exp` **no** está en la lista blanca: añadirla es decisión del propietario. |
 
 ---
 
@@ -657,3 +734,82 @@ Es un proyecto personal, repositorio público en GitHub
 un *issue* marcándolo como sensible o usa el contacto del perfil del repositorio.
 Describe la **clase** de problema y un escenario de fallo con valores reales; no hace
 falta un exploit funcional.
+
+---
+
+## 14. Servicios y tareas programadas — el contrato
+
+*(2026-11-09.)* Un ajuste puede declarar, en vez de una clave del registro, **el tipo
+de inicio de un servicio** (`-Service`) o **si una tarea programada está habilitada**
+(`-ScheduledTask`). Cada uno tiene su mecanismo en `core/`, con el mismo contrato que
+`core/Registry/Writer.ps1`, y el toggle llega por el mismo camino que una clave
+(`core/Registry/SettingApply.ps1`: `ON` → `Recommended`, `OFF` → `Default`). Hoy los usa
+una sola sección, *Servicios y tareas* (`ui/Data/Categories/Services.ps1`).
+
+| | Servicios | Tareas programadas |
+| --- | --- | --- |
+| Archivo | `core/Services/ServiceStartup.ps1` | `core/ScheduledTasks/ScheduledTaskState.ps1` |
+| Qué cambia | **Solo** el tipo de inicio: `Automatic`, `Manual` o `Disabled` | **Solo** habilitada / deshabilitada |
+| Qué NO hace nunca | Parar, arrancar, crear, borrar; tocar la cuenta, el ejecutable, las dependencias o los permisos | Crear, borrar, ejecutar, parar; tocar desencadenadores, acciones o la cuenta |
+| Lee con | CIM (`Win32_Service`), el mismo `StartMode` en 5.1 y en 7 | `Get-ScheduledTask` (módulo `ScheduledTasks` de Windows) |
+| Escribe con | `Set-Service -StartupType` | `Enable-ScheduledTask` / `Disable-ScheduledTask` |
+| Lista blanca | `$ServiceWriteAllowlist`, por **nombre exacto** | `$ScheduledTaskWriteAllowlist`, por **ruta y nombre exactos** |
+| Protegidos (se rechazan aunque estén en la blanca) | `$ServiceProtectedNames` | `$ScheduledTaskProtectedPaths` (prefijos de carpeta) |
+| Desarmado (pruebas) | `Set-ServiceWriteArmed $false` | `Set-ScheduledTaskWriteArmed $false` |
+| Copia previa (en memoria) | `$ServiceSnapshots` | `$ScheduledTaskSnapshots` |
+| Origen en el log | `services` | `tasks` |
+
+**Sin intérprete ni ejecutables**: nada de `cmd /c`, `powershell -c`, `sc.exe` ni
+`schtasks.exe`. Lo vigila `Security.Tests.ps1` (§10).
+
+**Lista blanca de hoy:**
+
+```text
+Servicios:  DiagTrack  dmwappushservice  SysMain
+
+Tareas:     \Microsoft\Windows\Application Experience\Microsoft Compatibility Appraiser
+            \Microsoft\Windows\Application Experience\ProgramDataUpdater
+            \Microsoft\Windows\Customer Experience Improvement Program\Consolidator
+            \Microsoft\Windows\Customer Experience Improvement Program\UsbCeip
+            \Microsoft\Windows\Autochk\Proxy
+            \Microsoft\Windows\DiskDiagnostic\Microsoft-Windows-DiskDiagnosticDataCollector
+```
+
+Todo es telemetría salvo SysMain (el precargador de memoria), cuya tarjeta dice que es
+discutible y que en un disco duro suele empeorar. Ninguno baja la seguridad del equipo.
+
+**Cada escritura, en este orden** (igual que el registro): armada → nombre con forma
+válida (sin comillas ni comodines: el nombre de un servicio va dentro de un filtro de
+CIM, y `Get-ScheduledTask` expande `*`, `?` y `[]`) → lista blanca y no protegido → valor
+que se sepa escribir → lectura previa y **copia** → si no existe, `missing` sin escribir;
+si no se pudo leer, `denied` sin escribir → si ya está así, `nochange` → `-WhatIf` →
+escribir → **relectura**. Estados: `written`, `nochange`, `blocked`, `badname`,
+`unsupported`, `missing`, `denied`, `disarmed`. **Nada lanza.**
+
+**Reversibilidad.** El contrato de vuelta es el `Default` declarado de cada entrada, el
+de fábrica de Windows 11: `DiagTrack` `Automatic`, `dmwappushservice` `Manual`, `SysMain`
+`Automatic`, las seis tareas `Enabled`. No hay `DefaultAbsent`: un servicio o una tarea no
+se borran (lo vigila `Security.Tests.ps1`). La copia previa vive en memoria, igual que la
+del registro (§4, §11 nº 15). **Los valores de fábrica no se pudieron comprobar en el
+equipo de desarrollo**, que ya los tenía todos deshabilitados; son los de una instalación
+limpia de Windows 11.
+
+**Lo que no existe en este equipo** (una tarea que una compilación nueva quitó) se lee
+`missing`, cuenta como `factory` —igual que un valor del registro ausente— y su
+interruptor no hace nada (§11 nº 16).
+
+**El cambio de un servicio vale desde el siguiente reinicio**: el servicio que ya corre
+no se para. La tarjeta lo dice.
+
+**Añadir un servicio o una tarea a la lista blanca es una decisión de seguridad**, igual
+que una rama del registro: se revisa a mano, se apunta aquí y las pruebas de §10 lo
+vigilan (que no esté en la denylist y que cada `-Service`/`-ScheduledTask` declarado pase
+la lista). Ampliar la denylist se hace en los dos sitios: `$ServiceProtectedNames` /
+`$ScheduledTaskProtectedPaths` en `core/` y `$SecurityDeniedServices` /
+`$SecurityDeniedTaskFolders` en `tests/Source/Security.Tests.ps1`.
+
+Pruebas: `tests/Core/ServiceStartup.Tests.ps1`, `tests/Core/ScheduledTaskState.Tests.ps1`
+(lista blanca, protegidos, comodines, lectura real de un servicio y una tarea que existen,
+`missing`, desarmado, rechazos armados con `-WhatIf`, que `-WhatIf` no cambia nada,
+copia previa) y `tests/Core/ServicesSection.Tests.ps1` (la sección entera leída de
+verdad y aplicada desarmada). **Las pruebas nunca cambian un servicio ni una tarea.**

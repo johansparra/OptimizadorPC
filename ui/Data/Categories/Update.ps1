@@ -22,9 +22,14 @@
 # bajan la seguridad (SECURITY.md §3.4): lleva -AllowsSecurityTradeoff
 # y su descripción dice lo que se pierde.
 #
-# 'Delivery Optimization (P2P)' toca el MISMO valor que el ajuste
-# 'Delivery Optimization (Policy)' de Regedit. Es a propósito: es la
-# directiva de esta sección. Los dos proponen el mismo valor (0).
+# 'Delivery Optimization (P2P)' es la ÚNICA tarjeta del programa que
+# toca la directiva DODownloadMode (Regedit tenía una copia, 'Delivery
+# Optimization (Policy)', y se quitó para no tener dos interruptores
+# sobre el mismo valor). Las otras tres claves de Delivery Optimization
+# (las que no son directiva) siguen en Regedit.
+#
+# Sin Badge: lo cuenta Register-Category a partir de los Items que
+# llevan -Badge 'NEW', y aquí no lleva ninguno.
 # ------------------------------------------------------------
 
 Register-Category @{
@@ -33,7 +38,6 @@ Register-Category @{
     Icon        = 'Sync'
     Accent      = 'Accent'
     AccentSoft  = 'AccentSoft'
-    Badge       = 'NEW 1'
     Description = 'Update Policy, Delivery & Store, Update Behavior'
 
     # SIN contadores a mano (Recommended / Default / Custom / Total):

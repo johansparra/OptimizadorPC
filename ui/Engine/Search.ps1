@@ -121,6 +121,21 @@ function Get-SettingSearchFields {
         $fields.Add((New-SearchField 'Factory'        $key.Default))
     }
 
+    # Servicios y tareas: el nombre técnico tal cual (DiagTrack,
+    # UsbCeip...) y los tipos de inicio, traducidos y en original.
+    foreach ($svc in @($Setting.Service | Where-Object { $_ })) {
+        $fields.Add((New-SearchField 'Service'       $svc.Name))
+        $fields.Add((New-SearchField 'Current value' $svc.Current     -Translate))
+        $fields.Add((New-SearchField 'Recommended'   $svc.Recommended -Translate))
+        $fields.Add((New-SearchField 'Factory'       $svc.Default     -Translate))
+    }
+    foreach ($task in @($Setting.ScheduledTask | Where-Object { $_ })) {
+        $fields.Add((New-SearchField 'Scheduled task' ([string]$task.Path + [string]$task.Name)))
+        $fields.Add((New-SearchField 'Current value'  $task.Current     -Translate))
+        $fields.Add((New-SearchField 'Recommended'    $task.Recommended -Translate))
+        $fields.Add((New-SearchField 'Factory'        $task.Default     -Translate))
+    }
+
     # El estado real, si ya se ha leído el equipo: buscar "optimizado"
     # saca lo que está aplicado.
     if ($Setting.Status) {

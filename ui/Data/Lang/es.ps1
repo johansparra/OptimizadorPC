@@ -267,7 +267,6 @@ Register-Language 'es' @{
     'Optimizations' = 'Optimizaciones'
     'Optimize your Windows system performance, privacy and power usage' = 'Ajusta el rendimiento, la privacidad y el consumo de tu sistema'
     'Search optimizations...' = 'Buscar optimizaciones...'
-    'Quick Actions' = 'Acciones rápidas'
     'View'          = 'Vista'
 
     # ---- Menú del botón "Vista" ----
@@ -342,10 +341,10 @@ Register-Language 'es' @{
     'Factory recommended' = 'Recomendado de fábrica'
     'Unknown'             = 'Desconocido'
 
-    'The registry value is the one this program recommends' = 'El valor del registro es el que recomienda el programa'
-    'The registry value is the Windows factory one'         = 'El valor del registro es el de fábrica de Windows'
-    'The registry value is neither the recommended nor the factory one' = 'El valor del registro no es ni el recomendado ni el de fábrica'
-    'The registry value could not be read'                  = 'No se ha podido leer el valor del registro'
+    'The current value is the one this program recommends' = 'El valor actual es el que recomienda el programa'
+    'The current value is the Windows factory one' = 'El valor actual es el de fábrica de Windows'
+    'The current value is neither the recommended nor the factory one' = 'El valor actual no es ni el recomendado ni el de fábrica'
+    'The current value could not be read' = 'No se ha podido leer el valor actual'
 
     'Optimized: {0} of {1}'           = 'Optimizados: {0} de {1}'
     'Factory recommended: {0} of {1}' = 'Recomendados de fábrica: {0} de {1}'
@@ -513,16 +512,10 @@ Register-Language 'es' @{
     'When a network client opens a shared file that is busy, the server retries this many times before giving up. Zero returns the error immediately' = 'Cuando un cliente de la red abre un archivo compartido que está ocupado, el servidor reintenta este número de veces antes de rendirse. Con cero devuelve el error al instante'
     '0x00000005 (5, default) - 0x00000000 (no retries)' = '0x00000005 (5, predeterminado) - 0x00000000 (sin reintentos)'
 
-    'SysMain Service' = 'Servicio SysMain'
-    'Disable SysMain (formerly Superfetch)' = 'Deshabilita SysMain (antes Superfetch)'
-    'SysMain preloads into memory the programs you use most and manages the prefetcher. Disabling it stops that background disk and memory work; apps may open a little slower. Applies after a restart' = 'SysMain carga por adelantado en memoria los programas que más usas y gestiona el prefetcher. Deshabilitarlo detiene ese trabajo de disco y memoria en segundo plano; las aplicaciones pueden abrir algo más despacio. Se aplica al reiniciar'
-    '0x00000002 (automatic, default) - 0x00000003 (manual) - 0x00000004 (disabled)' = '0x00000002 (automático, predeterminado) - 0x00000003 (manual) - 0x00000004 (deshabilitado)'
-    'Avoids background disk activity; on an SSD the difference is small' = 'Evita actividad de disco en segundo plano; en un SSD la diferencia es pequeña'
-
     'QoS Reservable Bandwidth' = 'Ancho de banda reservable de QoS'
     'Set the bandwidth QoS applications may reserve to 0%' = 'Pone al 0% el ancho de banda que pueden reservar las aplicaciones con QoS'
     'Policy "Limit reservable bandwidth". Windows does NOT hold back 20% of your connection: the limit only applies to apps that ask for QoS priority, and unused bandwidth is always available to everything else' = 'Directiva "Limitar el ancho de banda reservable". Windows NO aparta el 20% de tu conexión: el límite solo se aplica a las aplicaciones que piden prioridad QoS, y el ancho de banda sin usar siempre está disponible para todo lo demás'
-    'Not set (20%, default; restored as 0x00000014) - 0x00000000 (0%)' = 'Sin definir (20%, predeterminado; se restaura como 0x00000014) - 0x00000000 (0%)'
+    'Not set (20%, default) - 0x00000000 (0%)' = 'Sin definir (20%, predeterminado) - 0x00000000 (0%)'
     'Myth: it does not free bandwidth for games' = 'Mito: no libera ancho de banda para los juegos'
 
     'Prefetcher' = 'Prefetcher'
@@ -540,7 +533,7 @@ Register-Language 'es' @{
     'Activity History' = 'Historial de actividad'
     'Turn off the activity feed' = 'Apaga la fuente de actividad'
     'Policy that turns off the activity feed: Windows stops keeping the list of apps, files and pages you have used' = 'Directiva que apaga la fuente de actividad: Windows deja de guardar la lista de aplicaciones, archivos y páginas que has usado'
-    '0x00000001 (allowed, default) - 0x00000000 (blocked)' = '0x00000001 (permitido, predeterminado) - 0x00000000 (bloqueado)'
+    'Not set (allowed, default) - 0x00000000 (blocked)' = 'Sin definir (permitido, predeterminado) - 0x00000000 (bloqueado)'
 
     'Publish User Activities' = 'Publicar actividades del usuario'
     'Stop Windows from recording user activities' = 'Impide que Windows registre las actividades del usuario'
@@ -553,7 +546,7 @@ Register-Language 'es' @{
     'Consumer Features' = 'Experiencias de consumidor'
     'Turn off Microsoft consumer experiences' = 'Desactiva las experiencias de consumidor de Microsoft'
     'Policy that stops Windows from installing suggested apps and showing promotional content. Windows only honours it on Enterprise and Education editions; on Home and Pro it is ignored' = 'Directiva que impide que Windows instale aplicaciones sugeridas y muestre contenido promocional. Windows solo la respeta en las ediciones Enterprise y Education; en Home y Pro se ignora'
-    '0x00000000 (allowed, default) - 0x00000001 (turned off)' = '0x00000000 (permitido, predeterminado) - 0x00000001 (desactivado)'
+    'Not set (allowed, default) - 0x00000001 (turned off)' = 'Sin definir (permitido, predeterminado) - 0x00000001 (desactivado)'
     'No effect on Home or Pro editions' = 'Sin efecto en las ediciones Home y Pro'
 
     'Delivery Optimization' = 'Optimización de distribución'
@@ -565,10 +558,6 @@ Register-Language 'es' @{
     'Delivery Optimization (Legacy Mode)' = 'Optimización de distribución (modo antiguo)'
     'Old name of the Delivery Optimization download mode' = 'Nombre antiguo del modo de descarga de Optimización de distribución'
     'Same download mode under the name that older Windows 10 builds read. Setting it to HTTP only keeps those builds from sharing pieces of updates with other PCs' = 'El mismo modo de descarga con el nombre que leen las compilaciones antiguas de Windows 10. Ponerlo en solo HTTP evita que esas compilaciones compartan trozos de actualizaciones con otros equipos'
-
-    'Delivery Optimization (Policy)' = 'Optimización de distribución (directiva)'
-    'Force HTTP-only update downloads by policy' = 'Fuerza por directiva la descarga de actualizaciones solo por HTTP'
-    'Group policy for the Delivery Optimization download mode. It wins over the switch in Settings, which then shows as managed by your organization' = 'Directiva de grupo del modo de descarga de Optimización de distribución. Manda sobre el interruptor de Configuración, que pasa a mostrarse como administrado por tu organización'
 
     'Delivery Optimization (Settings Key)' = 'Optimización de distribución (clave Settings)'
     'Download mode stored in the Delivery Optimization settings key' = 'Modo de descarga guardado en la clave Settings de Optimización de distribución'
@@ -588,12 +577,6 @@ Register-Language 'es' @{
     'Disable the Offline Files service (CscService)' = 'Deshabilita el servicio de archivos sin conexión (CscService)'
     'Disables the service that keeps local copies of network folders to use them without a connection. Nobody uses it on a home PC. Applies after a restart' = 'Deshabilita el servicio que guarda copias locales de carpetas de red para usarlas sin conexión. En un equipo doméstico no se usa. Se aplica al reiniciar'
     'Unused on a home PC' = 'No se usa en un equipo doméstico'
-
-    'Telemetry Service' = 'Servicio de telemetría'
-    'Disable Connected User Experiences and Telemetry (DiagTrack)' = 'Deshabilita Experiencias del usuario y telemetría asociadas (DiagTrack)'
-    'Disables the service that collects and sends diagnostic data to Microsoft. Windows Update and Defender keep working. Applies after a restart' = 'Deshabilita el servicio que recopila y envía datos de diagnóstico a Microsoft. Windows Update y Defender siguen funcionando. Se aplica al reiniciar'
-    '0x00000002 (automatic, default) - 0x00000004 (disabled)' = '0x00000002 (automático, predeterminado) - 0x00000004 (deshabilitado)'
-    'Privacy; removes a small background load' = 'Privacidad; quita una pequeña carga en segundo plano'
 
     'Downloaded Maps Manager' = 'Administrador de mapas descargados'
     'Disable the offline maps service (MapsBroker)' = 'Deshabilita el servicio de mapas sin conexión (MapsBroker)'
@@ -657,11 +640,16 @@ Register-Language 'es' @{
     'Diagnostic Data Level' = 'Nivel de datos de diagnóstico'
     'Send Microsoft the least diagnostic data the edition allows' = 'Envía a Microsoft los mínimos datos de diagnóstico que permite la edición'
     'Sets the diagnostic data level. 0 (Security) is only honoured on Enterprise and Education; on Home and Pro Windows treats it as 1 (Required data only)' = 'Fija el nivel de datos de diagnóstico. 0 (Seguridad) solo se respeta en Enterprise y Education; en Home y Pro Windows lo trata como 1 (solo datos obligatorios)'
-    '0x00000003 (optional data, default if accepted at setup) - 0x00000001 (required only) - 0x00000000 (security, Enterprise/Education)' = '0x00000003 (datos opcionales, predeterminado si se aceptó en la instalación) - 0x00000001 (solo obligatorios) - 0x00000000 (seguridad, Enterprise/Education)'
+    '0x00000001 (required only, restored with OFF) - 0x00000003 (optional data, if accepted at setup) - 0x00000000 (security, Enterprise/Education)' = '0x00000001 (solo obligatorios, el que restaura OFF) - 0x00000003 (datos opcionales, si se aceptó en la instalación) - 0x00000000 (seguridad, Enterprise/Education)'
 
     'Track App Launches' = 'Seguimiento de aplicaciones abiertas'
     'Stop Windows from tracking which apps you open' = 'Impide que Windows registre qué aplicaciones abres'
     'Stops Windows from recording which apps you launch to improve Start and search results. "Most used" in Start stops filling in' = 'Impide que Windows apunte qué aplicaciones abres para mejorar Inicio y los resultados de búsqueda. La lista "Más usadas" de Inicio deja de rellenarse'
+
+    'Feedback Frequency' = 'Frecuencia de comentarios'
+    'Stop Windows from asking for your feedback' = 'Impide que Windows te pida tu opinión'
+    'Sets how many times Windows may ask for your feedback (the Feedback Hub surveys and pop-ups). 0 means never. You can still send feedback yourself' = 'Fija cuántas veces puede Windows pedirte tu opinión (las encuestas y avisos del Centro de opiniones). 0 es nunca. Puedes seguir enviando comentarios por tu cuenta'
+    'Not set (Windows decides, default) - 0x00000000 (never)' = 'Sin definir (decide Windows, predeterminado) - 0x00000000 (nunca)'
 
     'User Account Control Level' = 'Nivel del Control de cuentas de usuario'
     'Controls UAC notification level and secure desktop behavior' = 'Controla el nivel de aviso del UAC y el comportamiento del escritorio seguro'
@@ -736,5 +724,84 @@ Register-Language 'es' @{
     'Status'         = 'Estado'
     # 'Recommended' ya está más arriba, con las etiquetas de
     # clasificación: es la misma palabra.
+    'Service'        = 'Servicio'
+    'Scheduled task' = 'Tarea programada'
+
+    # ============================================================
+    # SERVICIOS Y TAREAS (core/Services/, core/ScheduledTasks/)
+    # ============================================================
+
+    # ---- Marco: lectura, refresco, detalles técnicos y log ----
+    'Reading services and tasks...' = 'Leyendo servicios y tareas...'
+    'Reading the registry, services and tasks...' = 'Leyendo el registro, los servicios y las tareas...'
+    'Read the services and tasks again' = 'Volver a leer los servicios y las tareas'
+    'Services and tasks updated' = 'Servicios y tareas actualizados'
+    'Windows service' = 'Servicio de Windows'
+    'Service:'        = 'Servicio:'
+    'Folder:'         = 'Carpeta:'
+    'Task:'           = 'Tarea:'
+    'Copy the service name' = 'Copiar el nombre del servicio'
+    'Copy the task folder'  = 'Copiar la carpeta de la tarea'
+    'Copy the task name'    = 'Copiar el nombre de la tarea'
+    'not found on this PC'  = 'no existe en este equipo'
+    'not found'    = 'no existe'
+    'unavailable'  = 'no disponible'
+    'invalid name' = 'nombre inválido'
+
+    # Tipos de inicio de un servicio y estado de una tarea: los mismos
+    # nombres que services.msc y el Programador de tareas.
+    'Automatic' = 'Automático'
+    'Manual'    = 'Manual'
+    'Disabled'  = 'Deshabilitado'
+    'Enabled'   = 'Habilitado'
+    'Boot'      = 'Arranque'
+    'System'    = 'Sistema'
+
+    # ---- La sección ----
+    'Services & Tasks' = 'Servicios y tareas'
+    'Telemetry services and scheduled tasks' = 'Servicios de telemetría y tareas programadas'
+
+    'Automatic (default) - Manual - Disabled' = 'Automático (predeterminado) - Manual - Deshabilitado'
+    'Enabled (default) - Disabled' = 'Habilitado (predeterminado) - Deshabilitado'
+    'Avoids an occasional disk scan in the background' = 'Evita un análisis de disco ocasional en segundo plano'
+
+    'Telemetry Service' = 'Servicio de telemetría'
+    'Disable Connected User Experiences and Telemetry (DiagTrack)' = 'Deshabilita Experiencias del usuario y telemetría asociadas (DiagTrack)'
+    'Sets the service that collects and sends diagnostic data to Microsoft to Disabled. Windows Update and Defender keep working. Applies after a restart' = 'Pone en Deshabilitado el servicio que recopila y envía datos de diagnóstico a Microsoft. Windows Update y Defender siguen funcionando. Se aplica al reiniciar'
+    'Privacy; removes a small background load' = 'Privacidad; quita una pequeña carga en segundo plano'
+
+    'WAP Push Message Routing' = 'Enrutamiento de mensajes WAP Push'
+    'Disable the WAP Push message routing service (dmwappushservice)' = 'Deshabilita el servicio de enrutamiento de mensajes WAP Push (dmwappushservice)'
+    'Sets to Disabled the service that routes device management push messages and feeds the telemetry pipeline. A home PC that no organization manages does not use it. If this PC is enrolled in work or school device management (Intune, MDM), leave it as it is. Applies after a restart' = 'Pone en Deshabilitado el servicio que enruta los mensajes push de la administración de dispositivos y alimenta la telemetría. Un equipo doméstico que no administra ninguna organización no lo usa. Si este equipo está inscrito en la administración de dispositivos del trabajo o de un centro de estudios (Intune, MDM), déjalo como está. Se aplica al reiniciar'
+    'Manual (default, starts on demand) - Disabled' = 'Manual (predeterminado, arranca cuando se le pide) - Deshabilitado'
+
+    'SysMain Service' = 'Servicio SysMain'
+    'Disable SysMain (formerly Superfetch). Debatable: on an SSD it gains almost nothing' = 'Deshabilita SysMain (antes Superfetch). Discutible: en un SSD casi no gana nada'
+    'SysMain preloads into memory the programs you use most. On a hard disk that makes them open faster, so disabling it usually makes the PC slower. On an SSD both the benefit and the cost are small. Only worth disabling if you see it causing constant disk activity. Applies after a restart' = 'SysMain carga por adelantado en memoria los programas que más usas. En un disco duro eso los abre más rápido, así que deshabilitarlo suele volver el equipo más lento. En un SSD tanto la ventaja como el coste son pequeños. Solo merece la pena deshabilitarlo si ves que provoca actividad de disco constante. Se aplica al reiniciar'
+    'Not a gaming tweak: on a hard disk, games and apps may load slower' = 'No es un ajuste para juegos: en un disco duro, juegos y aplicaciones pueden cargar más despacio'
+
+    'Compatibility Appraiser' = 'Evaluador de compatibilidad'
+    'Disable the program compatibility telemetry task' = 'Deshabilita la tarea de telemetría de compatibilidad de programas'
+    'Scheduled task that scans installed programs and sends compatibility data to Microsoft, which uses it for Windows upgrade checks. Some Windows 11 builds renamed or removed it: then it shows as not found and the switch changes nothing' = 'Tarea programada que analiza los programas instalados y envía datos de compatibilidad a Microsoft, que los usa para comprobar las actualizaciones de Windows. Algunas compilaciones de Windows 11 la renombraron o la quitaron: entonces sale como inexistente y el interruptor no cambia nada'
+
+    'Program Data Updater' = 'Actualizador de datos de programas'
+    'Disable the program telemetry task of the Customer Experience Improvement Program' = 'Deshabilita la tarea de telemetría de programas del Programa para la mejora de la experiencia del usuario'
+    'Scheduled task that collects program telemetry for the Customer Experience Improvement Program. Windows 11 no longer has it on most PCs: if it is not found, there is nothing to change' = 'Tarea programada que recopila telemetría de programas para el Programa para la mejora de la experiencia del usuario. Windows 11 ya no la trae en la mayoría de equipos: si no existe, no hay nada que cambiar'
+
+    'CEIP Consolidator' = 'Consolidador del CEIP'
+    'Disable the task that sends usage data to Microsoft' = 'Deshabilita la tarea que envía datos de uso a Microsoft'
+    'Scheduled task of the Customer Experience Improvement Program: if you joined it, it collects and sends usage data to Microsoft' = 'Tarea programada del Programa para la mejora de la experiencia del usuario: si participas, recopila y envía datos de uso a Microsoft'
+
+    'USB CEIP' = 'CEIP de USB'
+    'Disable the USB telemetry task' = 'Deshabilita la tarea de telemetría de USB'
+    'Scheduled task that collects USB statistics and information about this PC and sends them to Microsoft, for Customer Experience Improvement Program participants. USB devices keep working the same' = 'Tarea programada que recopila estadísticas de USB e información sobre este equipo y las envía a Microsoft, para quienes participan en el Programa para la mejora de la experiencia del usuario. Los dispositivos USB siguen funcionando igual'
+
+    'Autochk Telemetry' = 'Telemetría de Autochk'
+    'Disable the task that uploads boot disk check data' = 'Deshabilita la tarea que sube los datos de la comprobación de disco al arrancar'
+    'Scheduled task that collects and uploads data from autochk (the disk check at boot) for the Customer Experience Improvement Program. The disk check itself keeps working: only the upload stops' = 'Tarea programada que recopila y sube los datos de autochk (la comprobación de disco al arrancar) para el Programa para la mejora de la experiencia del usuario. La comprobación de disco sigue funcionando: solo deja de subirse'
+
+    'Disk Diagnostic Data Collector' = 'Recopilador de datos de diagnóstico de disco'
+    'Disable the task that sends disk information to Microsoft' = 'Deshabilita la tarea que envía información de los discos a Microsoft'
+    'Scheduled task that sends general information about your disks and system to Microsoft, for Customer Experience Improvement Program participants. It is not the disk check (chkdsk), which is not affected' = 'Tarea programada que envía información general sobre tus discos y el sistema a Microsoft, para quienes participan en el Programa para la mejora de la experiencia del usuario. No es la comprobación de disco (chkdsk), que no se ve afectada'
 
 }

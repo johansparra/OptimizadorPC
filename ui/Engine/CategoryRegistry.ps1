@@ -284,6 +284,34 @@ function Get-CategoryStatusCounts {
                      ausente cuenta como de fábrica. Una clave lleva
                      uno de los dos, nunca ambos (Security.Tests.ps1).
 
+    -Service declara el TIPO DE INICIO de un servicio de Windows
+    (core/Services/ServiceStartup.ps1). Cada entrada es una tabla:
+
+        Name         Nombre corto del servicio ('DiagTrack'), el de
+                     "sc query". Tiene que estar en $ServiceWriteAllowlist.
+        Recommended  'Automatic' | 'Manual' | 'Disabled'. Lo escribe ON.
+        Default      Lo mismo, el de fábrica de Windows 11. Lo escribe OFF.
+
+    -ScheduledTask declara si una tarea programada está habilitada
+    (core/ScheduledTasks/ScheduledTaskState.ps1):
+
+        Path         Carpeta, empezando y acabando en '\'
+                     ('\Microsoft\Windows\Autochk\').
+        Name         Nombre exacto de la tarea ('Proxy'). Ruta y nombre
+                     tienen que estar en $ScheduledTaskWriteAllowlist.
+        Recommended  'Enabled' | 'Disabled'. Lo escribe ON.
+        Default      El de fábrica. Lo escribe OFF.
+
+    Servicios y tareas no llevan DefaultAbsent: no se crean ni se
+    borran, solo se cambian. Un servicio o una tarea que no exista en
+    este equipo sale 'missing' y cuenta como de fábrica, como un valor
+    del registro ausente.
+
+    UN AJUSTE = UN OBJETIVO. Igual que "una clave por ajuste": un
+    ajuste declara una clave, o un servicio, o una tarea; nunca varios
+    ni mezclados (lo vigila tests/Source/Security.Tests.ps1). Así el
+    interruptor dice exactamente qué cambia.
+
     -AllowsSecurityTradeoff marca un ajuste que BAJA la seguridad del
     equipo (SECURITY.md §3.4): su -Description tiene que decir qué se
     pierde. Sin la marca, Security.Tests.ps1 falla si el ajuste toca
@@ -319,6 +347,8 @@ function New-Setting {
         $Value,
         [string]$Badge,
         [hashtable[]]$Registry = @(),
+        [hashtable[]]$Service = @(),
+        [hashtable[]]$ScheduledTask = @(),
 
         # Bloques de la "Descripción" ampliada (solo si hay -Registry).
         [string]$WhatItDoes,
@@ -333,6 +363,29 @@ function New-Setting {
 
     if ($Options) { $type = 'Dropdown' } else { $type = 'Toggle' }
 
+    # Un servicio o una tarea mal declarados se cazan al cargar, no al
+    # pulsar: lo mismo que New-CommandStep con un paso sin tipo.
+    foreach ($svc in $Service) {
+        foreach ($field in 'Name', 'Recommended', 'Default') {
+            if (-not $svc[$field]) { throw "New-Setting '$Name': -Service necesita $field." }
+        }
+        foreach ($field in 'Recommended', 'Default') {
+            if (@('Automatic', 'Manual', 'Disabled') -notcontains [string]$svc[$field]) {
+                throw "New-Setting '$Name': -Service $field tiene que ser Automatic, Manual o Disabled."
+            }
+        }
+    }
+    foreach ($task in $ScheduledTask) {
+        foreach ($field in 'Path', 'Name', 'Recommended', 'Default') {
+            if (-not $task[$field]) { throw "New-Setting '$Name': -ScheduledTask necesita $field." }
+        }
+        foreach ($field in 'Recommended', 'Default') {
+            if (@('Enabled', 'Disabled') -notcontains [string]$task[$field]) {
+                throw "New-Setting '$Name': -ScheduledTask $field tiene que ser Enabled o Disabled."
+            }
+        }
+    }
+
     [PSCustomObject]@{
         Name        = $Name
         Description = $Description
@@ -342,6 +395,8 @@ function New-Setting {
         Value       = $Value
         Badge       = $Badge
         Registry    = $Registry
+        Service       = $Service
+        ScheduledTask = $ScheduledTask
 
         # Bloques de la "Descripción" ampliada. Opcionales; los pinta
         # New-SettingFactSheet cuando el ajuste tiene claves.

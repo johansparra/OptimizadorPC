@@ -16,6 +16,10 @@
 # La ruta y el valor se pueden seleccionar con el ratón y copiar con
 # Ctrl+C, y cada uno tiene su botón [c] al lado (ver New-MonoField).
 #
+# Un ajuste con -Service enseña el servicio (nombre corto y tipo de
+# inicio) y uno con -ScheduledTask la tarea (carpeta, nombre y si está
+# habilitada), con las mismas tres líneas de estado a la derecha.
+#
 # Los datos salen del campo Registry del ajuste (ver -Registry
 # en New-Setting, ui/Engine/CategoryRegistry.ps1). Un ajuste que aún no
 # lo declare enseña un aviso en su lugar, para que se vea que la
@@ -48,24 +52,116 @@ function New-TechnicalBody {
     $strip.Margin = New-Object System.Windows.Thickness 0, 0, 0, 12
     Set-BoxBg $strip 'SurfaceSunken'
 
+    $targets = @(Get-SettingTargets $Setting)
+
+    # El título dice QUÉ toca: claves del registro, un servicio o una
+    # tarea programada. Hoy un ajuste declara una sola clase.
+    $title = 'Windows registry keys'
+    if ($targets.Count -gt 0 -and @($targets | Where-Object { $_.Kind -eq 'registry' }).Count -eq 0) {
+        if (@($targets | Where-Object { $_.Kind -eq 'service' }).Count -gt 0) { $title = 'Windows service' }
+        else { $title = 'Scheduled task' }
+    }
+
     $stripText = New-Object System.Windows.Controls.TextBlock
-    $stripText.Text = T 'Windows registry keys'
+    $stripText.Text = T $title
     $stripText.FontSize = 11.5
     $stripText.FontWeight = 'SemiBold'
     Set-TextFg $stripText 'TextMuted'
     $strip.Child = $stripText
     $body.Children.Add($strip) | Out-Null
 
-    $keys = @($Setting.Registry)
-    if ($keys.Count -eq 0) {
+    if ($targets.Count -eq 0) {
         $body.Children.Add((New-TechnicalPlaceholder)) | Out-Null
         return $body
     }
 
-    foreach ($key in $keys) {
-        $body.Children.Add((New-RegistryKeyRow $Window $key)) | Out-Null
+    foreach ($target in $targets) {
+        switch ($target.Kind) {
+            'service' { $row = New-ServiceTargetRow $Window $target.Entry }
+            'task'    { $row = New-TaskTargetRow $Window $target.Entry }
+            default   { $row = New-RegistryKeyRow $Window $target.Entry }
+        }
+        $body.Children.Add($row) | Out-Null
     }
     $body
+}
+
+<#
+    Un servicio: su nombre corto (copiable, es el que se escribe en
+    "sc query" o en services.msc) y el tipo de inicio actual,
+    recomendado y de fábrica.
+
+    Los tipos de inicio se traducen: no son texto técnico para pegar en
+    ningún sitio, sino lo mismo que enseña services.msc en tu idioma.
+#>
+function New-ServiceTargetRow {
+    param($Window, $Entry)
+
+    $grid = New-TargetRowGrid 'Gear'
+
+    $texts = New-Object System.Windows.Controls.StackPanel
+    $texts.Margin = New-Object System.Windows.Thickness 0, 0, 24, 0
+    $texts.Children.Add((New-MonoField -Window $Window -Label (T 'Service:') -Value ([string]$Entry.Name) `
+        -Suffix '(StartMode)' -Tip 'Copy the service name')) | Out-Null
+    Add-ToColumn $grid $texts 1
+
+    Add-ToColumn $grid (New-TargetStates $Window $Entry 'not found on this PC') 2
+    $grid
+}
+
+# Una tarea programada: carpeta y nombre (copiables, como en el
+# Programador de tareas) y si está habilitada.
+function New-TaskTargetRow {
+    param($Window, $Entry)
+
+    $grid = New-TargetRowGrid 'Clock'
+
+    $texts = New-Object System.Windows.Controls.StackPanel
+    $texts.Margin = New-Object System.Windows.Thickness 0, 0, 24, 0
+    $texts.Children.Add((New-MonoField -Window $Window -Label (T 'Folder:') -Value ([string]$Entry.Path) `
+        -Tip 'Copy the task folder')) | Out-Null
+    $texts.Children.Add((New-MonoField -Window $Window -Label (T 'Task:') -Value ([string]$Entry.Name) `
+        -Tip 'Copy the task name')) | Out-Null
+    Add-ToColumn $grid $texts 1
+
+    Add-ToColumn $grid (New-TargetStates $Window $Entry 'not found on this PC') 2
+    $grid
+}
+
+# La rejilla de tres columnas de una fila, con el icono de su clase
+# en la primera (solo indica; no abre nada).
+function New-TargetRowGrid {
+    param([string]$Icon)
+
+    $grid = New-Object System.Windows.Controls.Grid
+    $grid.Margin = New-Object System.Windows.Thickness 4, 0, 4, 14
+    Add-GridColumns $grid 'Auto', '*', 'Auto'
+
+    $badge = New-Object System.Windows.Controls.Border
+    $badge.Width = 28; $badge.Height = 28
+    $badge.CornerRadius = New-Object System.Windows.CornerRadius 8
+    $badge.BorderThickness = New-Object System.Windows.Thickness 1
+    $badge.Margin = New-Object System.Windows.Thickness 0, 1, 14, 0
+    $badge.VerticalAlignment = 'Top'
+    Set-BoxBg   $badge 'Surface'
+    Set-BoxLine $badge 'Stroke'
+    $badge.Child = (New-Icon $Icon 12 'TextMuted')
+    Add-ToColumn $grid $badge 0
+
+    $grid
+}
+
+# Actual / recomendado / de fábrica de un servicio o una tarea. Los
+# valores son palabras ('Disabled', 'Enabled'...) y se traducen.
+function New-TargetStates {
+    param($Window, $Entry, [string]$MissingText)
+
+    $states = New-Object System.Windows.Controls.StackPanel
+    $states.VerticalAlignment = 'Top'
+    $states.Children.Add((New-CurrentLine $Window $Entry -Translate -MissingText $MissingText))      | Out-Null
+    $states.Children.Add((New-StateLine $Window (T 'Recommended:') (T ([string]$Entry.Recommended)) 'Success'))   | Out-Null
+    $states.Children.Add((New-StateLine $Window (T 'Factory:')     (T ([string]$Entry.Default))     'TextMuted')) | Out-Null
+    $states
 }
 
 # Una clave: botón de abrir, ruta y valor, y los tres estados.
@@ -132,7 +228,7 @@ function New-RegistryKeyRow {
     ha mirado".
 #>
 function New-CurrentLine {
-    param($Window, $Key)
+    param($Window, $Key, [switch]$Translate, [string]$MissingText = 'not set')
 
     $label = T 'Current:'
 
@@ -146,11 +242,17 @@ function New-CurrentLine {
             # se ha comparado con nada- se queda en el color normal.
             $fg = 'Text'
             if ($Key.Status) { $fg = (Get-StatusStyle $Key.Status).Fg }
-            return (New-StateLine $Window $label $Key.Current $fg)
+            # Un valor del registro es un dato y no se traduce; el tipo
+            # de inicio de un servicio ('Disabled') es una palabra, sí.
+            $shown = $Key.Current
+            if ($Translate) { $shown = T ([string]$Key.Current) }
+            return (New-StateLine $Window $label $shown $fg)
         }
-        'missing' { return (New-StateLine $Window $label (T 'not set')           'TextFaint') }
-        'denied'  { return (New-StateLine $Window $label (T 'no access')         'Danger') }
-        'badpath' { return (New-StateLine $Window $label (T 'unknown root key')  'Danger') }
+        'missing'     { return (New-StateLine $Window $label (T $MissingText)       'TextFaint') }
+        'denied'      { return (New-StateLine $Window $label (T 'no access')        'Danger') }
+        'badpath'     { return (New-StateLine $Window $label (T 'unknown root key') 'Danger') }
+        'badname'     { return (New-StateLine $Window $label (T 'invalid name')     'Danger') }
+        'unavailable' { return (New-StateLine $Window $label (T 'unavailable')      'Danger') }
     }
 
     # Sin State: nadie ha leído todavía esta clave.

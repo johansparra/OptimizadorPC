@@ -6,10 +6,10 @@ Contexto para trabajar en **Optimizador PC**. Ver `README.md` para la estructura
 
 App de escritorio **WPF construida en PowerShell 5.1**, compilada a un `.exe` portable con **ps2exe**. Muestra categorías de optimizaciones de Windows 11 con toggles y dropdowns.
 
-**Estado actual: interfaz completa + cambios reales acotados.** Tres mecanismos tocan
+**Estado actual: interfaz completa + cambios reales acotados.** Cinco mecanismos tocan
 el equipo, cada uno con su lista blanca:
 
-- **Registro.** Al pulsar el toggle de un ajuste con `-Registry` (hoy 49: los 47 de
+- **Registro.** Al pulsar el toggle de un ajuste con `-Registry` (hoy 47: los 45 de
   *Regedit* y los 2 de *Actualizaciones*, **uno por clave**: nunca se agrupan varias
   claves en un ajuste), `core/Registry/SettingApply.ps1` escribe la clave por una
   **lista blanca** de ramas y de valores concretos (`core/Registry/Writer.ps1`),
@@ -20,9 +20,16 @@ el equipo, cada uno con su lista blanca:
   Windows sin shell y por lista blanca (`core/Commands/CommandRunner.ps1`).
 - **Borrado.** *Limpieza* vacía carpetas de temporales del perfil y la papelera
   (`core/Commands/FolderCleanup.ps1`, el único sitio que borra archivos).
+- **Servicios.** Un ajuste con `-Service` cambia el **tipo de inicio** de un servicio
+  (`core/Services/ServiceStartup.ps1`): solo `Automatic`/`Manual`/`Disabled`, nunca
+  parar ni arrancar. Hoy 3, en *Servicios y tareas*.
+- **Tareas programadas.** Un ajuste con `-ScheduledTask` habilita o deshabilita una
+  tarea (`core/ScheduledTasks/ScheduledTaskState.ps1`), por ruta y nombre exactos. Hoy
+  6, en *Servicios y tareas*.
 
 Ya no queda ninguna sección con datos estáticos ni `-Tags` a mano: las de ajustes
-(*Regedit*, *Actualizaciones*) leen el registro y las píldoras se cuentan. La sección
+(*Regedit*, *Actualizaciones*, *Servicios y tareas*) leen el equipo y las píldoras se
+cuentan. La sección
 **Guías** enseña los `.md` de `ui/Data/Guides/`. **El `.exe` corre elevado.** Modelo
 de amenaza y contratos completos en `SECURITY.md`.
 
@@ -84,6 +91,13 @@ powershell -ExecutionPolicy Bypass -File .\main.ps1
 # Compilar el .exe portable
 powershell -ExecutionPolicy Bypass -File .\build.ps1
 
+# Compilar y FIRMAR (Authenticode SHA-256 + sello RFC 3161). Sin huella, sin firma.
+# tools/ no es una capa: no entra en el .exe. Ver SECURITY.md §8.
+powershell -ExecutionPolicy Bypass -File .\build.ps1 -CertificateThumbprint <huella>
+
+# Prueba de humo del .exe ELEVADO (desde una terminal elevada; sin elevar sale con 2)
+powershell -ExecutionPolicy Bypass -File .\tests\Smoke\Invoke-Smoke.ps1 -Exe
+
 # Pruebas (sin dependencias). Los DOS hosts a la vez -regla 8-, en una sola orden:
 pwsh -ExecutionPolicy Bypass -File .\tests\Run-Tests.ps1 -BothHosts
 
@@ -95,7 +109,8 @@ powershell -ExecutionPolicy Bypass -File .\tests\Run-Tests.ps1 -File 'Core*'
 Pester (Windows solo trae la 3.4, incompatible con la sintaxis moderna) y no necesitan
 instalar nada. `.github/workflows/ci.yml` pasa en cada push **PSScriptAnalyzer
 1.25.0** (con `PSScriptAnalyzerSettings.psd1`; un aviso que no esté en
-`.github/pssa-baseline.txt` la tumba) y la suite en **5.1 y en 7**; Semgrep va en
+`.github/pssa-baseline.txt` la tumba), la suite en **5.1 y en 7** y la prueba de humo
+del `.exe` recién compilado, elevado (job `humo`); Semgrep va en
 `semgrep.yml`. La CI no sustituye a `-BothHosts` en local. Se reparten en cuatro
 carpetas (más `tests/Smoke/`, la prueba de humo, que no recoge `Run-Tests.ps1`):
 
@@ -329,6 +344,18 @@ extracción (`--mode deep`, o que los nodos de documentación citen los símbolo
     su `Import-AppSettings`. Sin eso, pulsar el botón de tema en la sonda le cambiaba el
     tema al usuario en cada pasada de las pruebas.
 
+29. **Texto en `TextFormattingMode="Display"`, nunca `"Ideal"`.** En `Ideal`, WPF pinta
+    en baja calidad cualquier texto que cambia de sitio —la entrada en cascada, la
+    elevación de una tarjeta al pasar el ratón, un cajón— y no lo reafila hasta un
+    rato después: se ve borroso y "al momentico" se arregla. **Medido el 2026-11-09**
+    con capturas de pantalla comparadas al píxel: en `Ideal` el texto difería del de
+    reposo durante 0,3–2 s tras moverse, se animara por `Margin` o por
+    `RenderTransform`, y con `TextHintingMode="Fixed"` igual; en `Display`, idéntico en
+    todos los fotogramas. Una sombra animada en un hermano (la placa de
+    `Add-HoverLift`) no afecta; un `Effect` sobre el propio elemento sí (lo pasa a
+    mapa de bits), por eso la sombra de las tarjetas va en una placa detrás. Lo fijan
+    `MainWindow.xaml` y `New-LogWindow`, y lo vigila `LogWindow.Tests.ps1`.
+
 ## La capa visual (fondo, degradados y movimiento)
 
 Dónde vive cada cosa del aspecto, para no buscarla:
@@ -368,12 +395,13 @@ la vio ausente (`Test-RegistryRestoreByDelete`). Se borra el valor, **nunca la c
 por la misma lista blanca, desarmado, `-WhatIf`, copia previa y relectura. **Antes de
 tocar esto lee `SECURITY.md`** — la app corre elevada y ampliar la lista blanca es una
 decisión de seguridad, no un detalle. La red, la limpieza y la energía ya tienen su
-mecanismo (`core/Commands/`, ver "Las secciones de comandos" más abajo). Servicios y
-tareas programadas **todavía no**: cada uno será una subcarpeta nueva de `core/` con su
-propio contrato.
+mecanismo (`core/Commands/`, ver "Las secciones de comandos" más abajo), y los
+servicios y las tareas programadas el suyo (`core/Services/`, `core/ScheduledTasks/`,
+ver "Servicios y tareas programadas" más abajo). Las directivas que no son un valor del
+registro, **todavía no**.
 
 - La lógica de sistema vive en `core/`, nunca dentro de las vistas ni de los componentes.
-- **`core/` está dividido por lo que toca de Windows**, no por tamaño: `core/Registry/` (leer y escribir el registro), `core/Interop/` (llamadas a la API de Windows: Mica y Acrílico, y maximizar al área de trabajo), `core/Shell/` (abrir enlaces por el shell, solo `http`/`https`), `core/Commands/` (ejecutar los pasos de las secciones de comandos, sin shell y por lista blanca, y vaciar carpetas de temporales: `FolderCleanup.ps1` es el único sitio que borra archivos) y `core/Diagnostics/` (el registro de actividad y `SystemInfo.ps1`, sobre qué corre el programa). Un mecanismo nuevo — red, servicios, energía — es una subcarpeta nueva ahí dentro, y entra al `.exe` sola.
+- **`core/` está dividido por lo que toca de Windows**, no por tamaño: `core/Registry/` (leer y escribir el registro), `core/Interop/` (llamadas a la API de Windows: Mica y Acrílico, y maximizar al área de trabajo), `core/Shell/` (abrir enlaces por el shell, solo `http`/`https`), `core/Commands/` (ejecutar los pasos de las secciones de comandos, sin shell y por lista blanca, y vaciar carpetas de temporales: `FolderCleanup.ps1` es el único sitio que borra archivos), `core/Services/` (el tipo de inicio de un servicio), `core/ScheduledTasks/` (habilitar o deshabilitar una tarea programada) y `core/Diagnostics/` (el registro de actividad y `SystemInfo.ps1`, sobre qué corre el programa). Un mecanismo nuevo — red, servicios, energía — es una subcarpeta nueva ahí dentro, y entra al `.exe` sola.
 - **Nada de `core/` lanza hacia arriba.** Una clave inexistente o sin permisos es una respuesta, no un error: se devuelve un estado (`read` / `missing` / `denied` / `badpath`) y la interfaz lo pinta. Una excepción escapando de aquí tumbaría la ventana.
 - **Un DWord llega como `Int32` con signo.** `0xFFFFFFFF` se lee como `-1`. Hay que reinterpretarlo sin signo (`Format-RegistryValue`) o los valores altos salen negativos y no cuadran con lo declarado.
 - **Se abre siempre `RegistryView::Registry64`.** Si el `.exe` se compilara a 32 bits, `HKLM\SOFTWARE` se redirigiría a `Wow6432Node` en silencio.
@@ -386,8 +414,50 @@ propio contrato.
   ya construidas mirando su `Tag` (el ajuste). Tocar un interruptor NO reaplica el
   filtro: la tarjeta no desaparece bajo el ratón. Llegar desde la búsqueda lo quita.
 - **El estado se calcula donde se lee, no donde se pinta.** Cuelga de `Update-CategoryRegistryState`, así que entrar en la sección y pulsar *Refrescar* lo dejan al día por el mismo camino. La interfaz solo lee `$Setting.Status` y `$Key.Status`; los colores y los nombres salen todos de `Get-StatusStyle` (`ui/Design/UiKit.ps1`), que es el único sitio donde se escriben.
-- Todo cambio de registro/servicio debe ser reversible y tener su valor de restauración documentado. Para el registro, ese contrato es el `Default` de cada clave (a dónde vuelve `OFF`) **o**, con `DefaultAbsent`, la ausencia del valor (`OFF` lo borra), más el snapshot en memoria de `Writer.ps1` (el valor que había, aunque fuera personalizado). Una directiva (rama `Policies`) se declara con `DefaultAbsent`: con un `Default`, `OFF` la deja puesta en vez de "sin configurar". Ver `SECURITY.md` §4. **Pendiente**: persistir ese snapshot y exponer "deshacer" en la UI (hoy se pierde al cerrar), y pasar a `DefaultAbsent` los ajustes de *Regedit* que aún escriben en ramas `Policies` con `Default` (entre ellos "Delivery Optimization (Policy)", que toca el mismo valor que "Delivery Optimization (P2P)" de *Actualizaciones*).
+- Todo cambio de registro/servicio debe ser reversible y tener su valor de restauración documentado. Para el registro, ese contrato es el `Default` de cada clave (a dónde vuelve `OFF`) **o**, con `DefaultAbsent`, la ausencia del valor (`OFF` lo borra), más el snapshot en memoria de `Writer.ps1` (el valor que había, aunque fuera personalizado). Una directiva (rama `Policies`) se declara con `DefaultAbsent`: con un `Default`, `OFF` la deja puesta en vez de "sin configurar". El snapshot se pierde al cerrar y **no se va a persistir**: el propietario descartó copias, "deshacer" en la UI y puntos de restauración. Ver `SECURITY.md` §4. Ojo con `HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\DataCollection` (*Diagnostic Data Level*): pese al nombre no es una directiva de grupo, la escriben la instalación y Configuración y existe de fábrica, así que lleva `Default`. Ese `Default` es **1** (solo obligatorios), no 3: el de fábrica depende de lo elegido en la instalación, y con 3 `OFF` subía la telemetría a quien eligió "solo obligatorios". Con 1 nunca la sube. Y al revés, *Feedback Frequency* (`HKCU\Software\Microsoft\Siuf\Rules\NumberOfSIUFInPeriod`) no es directiva pero lleva `DefaultAbsent`: de fábrica el valor no existe.
 - **Un ajuste que baja la postura de seguridad del equipo** (UAC, Defender, SmartScreen, Windows Update, BitLocker…) no puede llamarse "Recommended" sin más, su descripción tiene que decir qué protección se pierde, no puede venir activo por defecto y lleva `-AllowsSecurityTradeoff` en su `New-Setting`. `tests/Source/Security.Tests.ps1` vigila que ningún `-Registry` toque esos nombres de valor sin esa marca. Ver `SECURITY.md` §3.4.
+
+### Servicios y tareas programadas
+
+Un ajuste puede declarar `-Service @(@{ Name; Recommended; Default })` o
+`-ScheduledTask @(@{ Path; Name; Recommended; Default })` en vez de `-Registry`. Lo usa
+*Servicios y tareas* (`ui/Data/Categories/Services.ps1`). Contrato completo en
+`SECURITY.md` §14.
+
+| Qué | Dónde |
+| --- | --- |
+| Tipo de inicio de un servicio: lista blanca `$ServiceWriteAllowlist`, protegidos `$ServiceProtectedNames`, leer por CIM, escribir con `Set-Service` | `core/Services/ServiceStartup.ps1` |
+| Tarea habilitada o no: lista blanca `$ScheduledTaskWriteAllowlist` (ruta **y** nombre), carpetas protegidas, módulo `ScheduledTasks` | `core/ScheduledTasks/ScheduledTaskState.ps1` |
+| Los objetivos de un ajuste (claves, servicios, tareas) y su estado | `Get-SettingTargets` en `core/Registry/SettingStatus.ps1` |
+| Leer un objetivo por su mecanismo | `Update-SettingTargetState` en `core/Registry/CategoryState.ps1` |
+| ON/OFF | `Set-SettingOptimization` en `core/Registry/SettingApply.ps1`, el mismo de las claves |
+
+- **El estado se calcula igual que el de una clave** (`Get-RegistryKeyStatus`): las
+  entradas traen `Recommended`, `Default` y, al leer, `State`/`Current`. Un servicio o
+  una tarea que no existe en el equipo es `missing` → `factory`, y su interruptor no
+  hace nada. Los valores son palabras (`Automatic`, `Disabled`, `Enabled`): se comparan
+  sin distinguir mayúsculas y la tarjeta las enseña traducidas.
+- **Nunca `DefaultAbsent`**: un servicio o una tarea no se crean ni se borran. `OFF`
+  escribe el `Default`, que es el de fábrica de Windows 11.
+- **Un ajuste = una cosa**: una clave, un servicio o una tarea. `Security.Tests.ps1`
+  falla si un ajuste declara más de un objetivo, si un `-Service`/`-ScheduledTask` no
+  pasa su lista blanca o si la lista blanca toca algo de la denylist (Defender,
+  firewall, Windows Update, BITS, cifrado, núcleo; carpetas `WindowsUpdate`,
+  `Windows Defender`, `BitLocker`...). **Añadir un servicio o una tarea a la lista
+  blanca es una decisión de seguridad.**
+- **Las pruebas nunca cambian un servicio ni una tarea**: el arnés desarma los dos
+  (`Set-ServiceWriteArmed $false`, `Set-ScheduledTaskWriteArmed $false`) y las de
+  `tests/Core/` solo leen, o escriben armadas con `-WhatIf` comprobando por relectura
+  que nada cambió. Los ejecutores de la CI corren elevados: el desarmado no es opcional.
+- **Un nombre en `Get-ScheduledTask` o en un filtro de CIM no puede llevar comodines ni
+  comillas**: los dos mecanismos rechazan la forma antes de llamar (`badname`).
+- **Un servicio no se para**: el tipo de inicio vale desde el siguiente reinicio, y la
+  tarjeta lo dice.
+- **El texto de la barra, de Refrescar y del aviso** sale de `Get-CategoryReadText`
+  (`ui/Views/CategoryDetailView.ps1`), que pregunta a `Get-CategoryTargetKinds` qué lee
+  la sección: "Leyendo el registro..." o "Leyendo servicios y tareas...".
+- `Get-CategoryRegistryKeyCount` cuenta **todos** los objetivos, no solo claves (el
+  nombre es de antes).
 
 ## Las secciones de comandos (hoy Internet, Limpieza y Energía)
 

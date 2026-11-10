@@ -8,6 +8,10 @@
 #   Path / Name / Type   dónde está el valor
 #   Recommended          lo que propone el programa
 #   Default              el valor de fábrica de Windows
+#   DefaultAbsent = $true  en vez de Default, cuando de fábrica el
+#                        valor NO existe (las directivas de la rama
+#                        SOFTWARE\Policies: "sin configurar"). Nunca
+#                        los dos a la vez.
 #   Display = 'hex'      enseñarlo como 0xFFFFFFFF y no en decimal
 #
 # NO se declara Current: lo rellena core/Registry/CategoryState.ps1 leyendo
@@ -15,10 +19,12 @@
 #
 # La ESCRITURA ya existe. Al pulsar el toggle de un ajuste con
 # -Registry, core/Registry/SettingApply.ps1 escribe cada clave:
-# ON  -> su Recommended,  OFF -> su Default. Corre elevado y va por
+# ON  -> su Recommended,  OFF -> su Default (o BORRA el valor si la
+# clave declara DefaultAbsent: la directiva vuelve a "sin configurar"
+# en vez de quedarse puesta con otro número). Corre elevado y va por
 # la lista blanca de core/Registry/Writer.ps1. Por eso
-# Recommended y Default son también el contrato de reversión: OFF
-# vuelve al Default declarado, y si el valor estaba personalizado,
+# Recommended y Default/DefaultAbsent son también el contrato de
+# reversión, y si el valor estaba personalizado,
 # core/Registry/Writer.ps1 guarda copia del anterior en memoria.
 # Ver SECURITY.md para el modelo de amenaza completo.
 #
@@ -46,8 +52,10 @@
 #   - TcpWindowSize / GlobalMaxTcpWindowSize: Windows 10/11 no los lee
 #     (los sustituye el autoajuste de ventana) y no hay de fábrica que
 #     escribir.
-#   - NumberOfSIUFInPeriod: de fábrica el valor NO existe y Writer.ps1
-#     todavía no sabe borrar.
+#   - La directiva de Delivery Optimization (SOFTWARE\Policies\...\
+#     DeliveryOptimization\DODownloadMode): vive en la sección
+#     Actualizaciones (Update.ps1), no aquí, para no tener dos
+#     interruptores sobre el mismo valor.
 #   - La capa de compatibilidad de bf6.exe: lleva una ruta de este
 #     equipo concreto (D:\juegos\...).
 #
@@ -296,35 +304,24 @@ Register-Category @{
             )
 
         # ---- 3c) Servicios --------------------------------------------
-        # Start: 2 automático, 3 manual, 4 deshabilitado. Se aplica al
-        # reiniciar; el servicio que ya corre no se para.
-
-        New-Setting -Name 'SysMain Service' `
-            -Description 'Disable SysMain (formerly Superfetch)' `
-            -WhatItDoes 'SysMain preloads into memory the programs you use most and manages the prefetcher. Disabling it stops that background disk and memory work; apps may open a little slower. Applies after a restart' `
-            -Values '0x00000002 (automatic, default) - 0x00000003 (manual) - 0x00000004 (disabled)' `
-            -GamingOptimal 'na' `
-            -GamingNote 'Avoids background disk activity; on an SSD the difference is small' `
-            -Badge 'NEW' `
-            -Registry @(
-                @{ Path = 'HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\SysMain'
-                   Name = 'Start'; Type = 'DWord'; Display = 'hex'
-                   Recommended = '0x00000004'; Default = '0x00000002' }
-            )
+        # SysMain se mudó a la sección Servicios y tareas (Services.ps1),
+        # que cambia el tipo de inicio por core/Services/ en vez de
+        # escribir el valor Start: no puede haber dos interruptores
+        # sobre lo mismo.
 
         # ---- 4) QoS -------------------------------------------------
 
         New-Setting -Name 'QoS Reservable Bandwidth' `
             -Description 'Set the bandwidth QoS applications may reserve to 0%' `
             -WhatItDoes 'Policy "Limit reservable bandwidth". Windows does NOT hold back 20% of your connection: the limit only applies to apps that ask for QoS priority, and unused bandwidth is always available to everything else' `
-            -Values 'Not set (20%, default; restored as 0x00000014) - 0x00000000 (0%)' `
+            -Values 'Not set (20%, default) - 0x00000000 (0%)' `
             -GamingOptimal 'na' `
             -GamingNote 'Myth: it does not free bandwidth for games' `
             -Badge 'NEW' `
             -Registry @(
                 @{ Path = 'HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Windows\Psched'
                    Name = 'NonBestEffortLimit'; Type = 'DWord'; Display = 'hex'
-                   Recommended = '0x00000000'; Default = '0x00000014' }
+                   Recommended = '0x00000000'; DefaultAbsent = $true }
             )
 
         # ---- 5) Prefetcher y WPBT -----------------------------------
@@ -362,7 +359,7 @@ Register-Category @{
         New-Setting -Name 'Activity History' `
             -Description 'Turn off the activity feed' `
             -WhatItDoes 'Policy that turns off the activity feed: Windows stops keeping the list of apps, files and pages you have used' `
-            -Values '0x00000001 (allowed, default) - 0x00000000 (blocked)' `
+            -Values 'Not set (allowed, default) - 0x00000000 (blocked)' `
             -GamingOptimal 'na' `
             -GamingNote 'Privacy; no effect on game performance' `
             -Link 'https://learn.microsoft.com/en-us/windows/privacy/manage-connections-from-windows-operating-system-components-to-microsoft-services' `
@@ -370,13 +367,13 @@ Register-Category @{
             -Registry @(
                 @{ Path = 'HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Windows\System'
                    Name = 'EnableActivityFeed'; Type = 'DWord'; Display = 'hex'
-                   Recommended = '0x00000000'; Default = '0x00000001' }
+                   Recommended = '0x00000000'; DefaultAbsent = $true }
             )
 
         New-Setting -Name 'Publish User Activities' `
             -Description 'Stop Windows from recording user activities' `
             -WhatItDoes 'Policy that stops apps from publishing what you do to the activity history' `
-            -Values '0x00000001 (allowed, default) - 0x00000000 (blocked)' `
+            -Values 'Not set (allowed, default) - 0x00000000 (blocked)' `
             -GamingOptimal 'na' `
             -GamingNote 'Privacy; no effect on game performance' `
             -Link 'https://learn.microsoft.com/en-us/windows/privacy/manage-connections-from-windows-operating-system-components-to-microsoft-services' `
@@ -384,13 +381,13 @@ Register-Category @{
             -Registry @(
                 @{ Path = 'HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Windows\System'
                    Name = 'PublishUserActivities'; Type = 'DWord'; Display = 'hex'
-                   Recommended = '0x00000000'; Default = '0x00000001' }
+                   Recommended = '0x00000000'; DefaultAbsent = $true }
             )
 
         New-Setting -Name 'Upload User Activities' `
             -Description 'Stop uploading activity history to Microsoft' `
             -WhatItDoes 'Policy that stops the activity history from being sent to Microsoft and synced to your other devices' `
-            -Values '0x00000001 (allowed, default) - 0x00000000 (blocked)' `
+            -Values 'Not set (allowed, default) - 0x00000000 (blocked)' `
             -GamingOptimal 'na' `
             -GamingNote 'Privacy; no effect on game performance' `
             -Link 'https://learn.microsoft.com/en-us/windows/privacy/manage-connections-from-windows-operating-system-components-to-microsoft-services' `
@@ -398,13 +395,13 @@ Register-Category @{
             -Registry @(
                 @{ Path = 'HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Windows\System'
                    Name = 'UploadUserActivities'; Type = 'DWord'; Display = 'hex'
-                   Recommended = '0x00000000'; Default = '0x00000001' }
+                   Recommended = '0x00000000'; DefaultAbsent = $true }
             )
 
         New-Setting -Name 'Consumer Features' `
             -Description 'Turn off Microsoft consumer experiences' `
             -WhatItDoes 'Policy that stops Windows from installing suggested apps and showing promotional content. Windows only honours it on Enterprise and Education editions; on Home and Pro it is ignored' `
-            -Values '0x00000000 (allowed, default) - 0x00000001 (turned off)' `
+            -Values 'Not set (allowed, default) - 0x00000001 (turned off)' `
             -GamingOptimal 'na' `
             -GamingNote 'No effect on Home or Pro editions' `
             -Link 'https://learn.microsoft.com/en-us/windows/client-management/mdm/policy-csp-experience' `
@@ -412,10 +409,12 @@ Register-Category @{
             -Registry @(
                 @{ Path = 'HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Windows\CloudContent'
                    Name = 'DisableWindowsConsumerFeatures'; Type = 'DWord'; Display = 'hex'
-                   Recommended = '0x00000001'; Default = '0x00000000' }
+                   Recommended = '0x00000001'; DefaultAbsent = $true }
             )
 
-        # Optimización de distribución: cuatro claves, un ajuste por clave.
+        # Optimización de distribución: tres claves, un ajuste por clave.
+        # La cuarta, la directiva (SOFTWARE\Policies\...\DeliveryOptimization),
+        # es 'Delivery Optimization (P2P)' de la sección Actualizaciones.
 
         New-Setting -Name 'Delivery Optimization' `
             -Description 'Download updates only from Microsoft, not from other PCs' `
@@ -442,20 +441,6 @@ Register-Category @{
             -Registry @(
                 @{ Path = 'HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\DeliveryOptimization\Config'
                    Name = 'DownloadMode'; Type = 'DWord'; Display = 'hex'
-                   Recommended = '0x00000000'; Default = '0x00000001' }
-            )
-
-        New-Setting -Name 'Delivery Optimization (Policy)' `
-            -Description 'Force HTTP-only update downloads by policy' `
-            -WhatItDoes 'Group policy for the Delivery Optimization download mode. It wins over the switch in Settings, which then shows as managed by your organization' `
-            -Values '0x00000001 (PCs on the local network, default) - 0x00000000 (HTTP only)' `
-            -GamingOptimal 'yes' `
-            -GamingNote 'Stops update uploads to other PCs from using your connection' `
-            -Link 'https://learn.microsoft.com/en-us/windows/deployment/do/waas-delivery-optimization-reference' `
-            -Badge 'NEW' `
-            -Registry @(
-                @{ Path = 'HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Windows\DeliveryOptimization'
-                   Name = 'DODownloadMode'; Type = 'DWord'; Display = 'hex'
                    Recommended = '0x00000000'; Default = '0x00000001' }
             )
 
@@ -516,19 +501,8 @@ Register-Category @{
                    Recommended = '0x00000004'; Default = '0x00000003' }
             )
 
-        New-Setting -Name 'Telemetry Service' `
-            -Description 'Disable Connected User Experiences and Telemetry (DiagTrack)' `
-            -WhatItDoes 'Disables the service that collects and sends diagnostic data to Microsoft. Windows Update and Defender keep working. Applies after a restart' `
-            -Values '0x00000002 (automatic, default) - 0x00000004 (disabled)' `
-            -GamingOptimal 'na' `
-            -GamingNote 'Privacy; removes a small background load' `
-            -Link 'https://learn.microsoft.com/en-us/windows/privacy/configure-windows-diagnostic-data-in-your-organization' `
-            -Badge 'NEW' `
-            -Registry @(
-                @{ Path = 'HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\DiagTrack'
-                   Name = 'Start'; Type = 'DWord'; Display = 'hex'
-                   Recommended = '0x00000004'; Default = '0x00000002' }
-            )
+        # 'Telemetry Service' (DiagTrack) vive en Servicios y tareas
+        # (Services.ps1), igual que SysMain.
 
         New-Setting -Name 'Downloaded Maps Manager' `
             -Description 'Disable the offline maps service (MapsBroker)' `
@@ -709,10 +683,25 @@ Register-Category @{
                    Recommended = '0x00000000'; Default = '0x00000001' }
             )
 
+        # Pese a la rama ...\CurrentVersion\Policies\, NO es una directiva
+        # de grupo (esas cuelgan de SOFTWARE\Policies\Microsoft\Windows\
+        # DataCollection). Es donde guardan el nivel la instalación (OOBE)
+        # y Configuración > Privacidad > Diagnóstico: en un equipo de
+        # fábrica el valor existe. Por eso lleva Default y no DefaultAbsent:
+        # borrarlo dejaría a Windows sin el nivel elegido en vez de
+        # devolverlo.
+        #
+        # El Default es 1 (solo obligatorios) y NO 3, aunque 3 sea lo que
+        # deja la instalación si se aceptan los datos opcionales: el de
+        # fábrica depende de lo que se eligió en la instalación (1 o 3),
+        # y no hay un único valor verdadero. Con Default = 3, apagar el
+        # ajuste SUBÍA la telemetría a quien eligió "solo obligatorios".
+        # Con 1, OFF nunca sube el nivel: como mucho deja en 1 a quien
+        # tenía 3, y ese puede volver a 3 desde Configuración.
         New-Setting -Name 'Diagnostic Data Level' `
             -Description 'Send Microsoft the least diagnostic data the edition allows' `
             -WhatItDoes 'Sets the diagnostic data level. 0 (Security) is only honoured on Enterprise and Education; on Home and Pro Windows treats it as 1 (Required data only)' `
-            -Values '0x00000003 (optional data, default if accepted at setup) - 0x00000001 (required only) - 0x00000000 (security, Enterprise/Education)' `
+            -Values '0x00000001 (required only, restored with OFF) - 0x00000003 (optional data, if accepted at setup) - 0x00000000 (security, Enterprise/Education)' `
             -GamingOptimal 'na' `
             -GamingNote 'Privacy; no effect on game performance' `
             -Link 'https://learn.microsoft.com/en-us/windows/privacy/configure-windows-diagnostic-data-in-your-organization' `
@@ -720,7 +709,7 @@ Register-Category @{
             -Registry @(
                 @{ Path = 'HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\DataCollection'
                    Name = 'AllowTelemetry'; Type = 'DWord'; Display = 'hex'
-                   Recommended = '0x00000000'; Default = '0x00000003' }
+                   Recommended = '0x00000000'; Default = '0x00000001' }
             )
 
         New-Setting -Name 'Track App Launches' `
@@ -734,6 +723,26 @@ Register-Category @{
                 @{ Path = 'HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced'
                    Name = 'Start_TrackProgs'; Type = 'DWord'; Display = 'hex'
                    Recommended = '0x00000000'; Default = '0x00000001' }
+            )
+
+        # Frecuencia de las peticiones de comentarios (SIUF, "System
+        # Initiated User Feedback"). Es lo que escribe Configuración >
+        # Privacidad > Diagnóstico > "Frecuencia de comentarios" junto con
+        # PeriodInNanoSeconds; aquí solo va el número de peticiones, que
+        # con 0 basta para que no pregunte (un ajuste por clave). De
+        # fábrica el valor NO existe -Windows decide-, así que lleva
+        # DefaultAbsent: OFF lo borra en vez de inventar un número.
+        New-Setting -Name 'Feedback Frequency' `
+            -Description 'Stop Windows from asking for your feedback' `
+            -WhatItDoes 'Sets how many times Windows may ask for your feedback (the Feedback Hub surveys and pop-ups). 0 means never. You can still send feedback yourself' `
+            -Values 'Not set (Windows decides, default) - 0x00000000 (never)' `
+            -GamingOptimal 'na' `
+            -GamingNote 'Privacy; no effect on game performance' `
+            -Badge 'NEW' `
+            -Registry @(
+                @{ Path = 'HKEY_CURRENT_USER\Software\Microsoft\Siuf\Rules'
+                   Name = 'NumberOfSIUFInPeriod'; Type = 'DWord'; Display = 'hex'
+                   Recommended = '0x00000000'; DefaultAbsent = $true }
             )
     )
 }

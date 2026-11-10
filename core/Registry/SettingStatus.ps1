@@ -24,6 +24,12 @@
 # El estado se calcula SIEMPRE que se lee (ver CategoryState.ps1), así
 # que entrar en la sección y pulsar refrescar lo dejan al día solos.
 #
+# Vale igual para los servicios (-Service) y las tareas programadas
+# (-ScheduledTask): sus entradas traen los mismos campos y se comparan
+# con las mismas funciones. Ver Get-SettingTargets, abajo. Vive en
+# core/Registry/ porque nació aquí; es el pegamento de los tres
+# mecanismos, y no habla con Windows.
+#
 # Como todo lo de core/: no sabe de interfaz -devuelve palabras en
 # inglés, sin traducir ni colores- y no lanza nunca.
 # ============================================================
@@ -33,6 +39,45 @@
 $SettingStatusNames = @('optimized', 'factory', 'custom', 'unknown')
 
 function Get-SettingStatusNames { $SettingStatusNames }
+
+<#
+    LOS OBJETIVOS DE UN AJUSTE: lo que toca en el equipo.
+
+    Un ajuste puede declarar tres clases, cada una con su mecanismo en
+    core/ y su lista blanca:
+
+        -Registry       'registry'  una clave (core/Registry/Writer.ps1)
+        -Service        'service'   el tipo de inicio de un servicio
+                                    (core/Services/ServiceStartup.ps1)
+        -ScheduledTask  'task'      si una tarea programada está
+                                    habilitada (core/ScheduledTasks/)
+
+    Las tres entradas son hashtables con el MISMO contrato para el
+    estado: Recommended, Default (o DefaultAbsent, solo en el
+    registro), y lo que deja la lectura -State, Current, Status-. Por
+    eso el estado de una clave, de un servicio y de una tarea se
+    calcula con la misma función (Get-RegistryKeyStatus): 'missing'
+    es 'factory', lo que no se pudo leer es 'unknown', y lo demás se
+    compara con Recommended y Default.
+
+    Devuelve un objeto por objetivo: { Kind; Entry }. La entrada es la
+    hashtable declarada: quien la rellene la rellena en el sitio.
+#>
+function Get-SettingTargets {
+    param($Setting)
+
+    if (-not $Setting) { return }
+    foreach ($e in @($Setting.Registry))      { if ($e) { [PSCustomObject]@{ Kind = 'registry'; Entry = $e } } }
+    foreach ($e in @($Setting.Service))       { if ($e) { [PSCustomObject]@{ Kind = 'service';  Entry = $e } } }
+    foreach ($e in @($Setting.ScheduledTask)) { if ($e) { [PSCustomObject]@{ Kind = 'task';     Entry = $e } } }
+}
+
+# ¿Toca algo del equipo? Es lo que decide si la tarjeta lee el estado
+# real y si su interruptor escribe.
+function Test-SettingHasTargets {
+    param($Setting)
+    @(Get-SettingTargets $Setting).Count -gt 0
+}
 
 <#
     Un valor de registro escrito como texto, pasado a número. Si no
@@ -133,15 +178,16 @@ function Get-RegistryKeyStatus {
         todas de acuerdo    ->  ese estado
         unas y otras        ->  'custom'    aplicado a medias
 
-    Hoy todos los ajustes de Regedit declaran una sola clave, pero la
-    regla ya vale para los que declaren varias.
+    Hoy todos los ajustes declaran un solo objetivo -una clave, un
+    servicio o una tarea-, pero la regla ya vale para los que declaren
+    varios. Cuentan los tres (Get-SettingTargets).
 #>
 function Get-SettingStatus {
     param($Setting)
 
     if (-not $Setting) { return $null }
 
-    $keys = @($Setting.Registry)
+    $keys = @(Get-SettingTargets $Setting | ForEach-Object { $_.Entry })
     if ($keys.Count -eq 0) { return $null }
 
     $seen = @{}
@@ -171,7 +217,7 @@ function Update-SettingStatus {
 
     if (-not $Setting) { return $null }
 
-    foreach ($key in @($Setting.Registry)) { $key['Status'] = Get-RegistryKeyStatus $key }
+    foreach ($target in @(Get-SettingTargets $Setting)) { $target.Entry['Status'] = Get-RegistryKeyStatus $target.Entry }
 
     $status = Get-SettingStatus $Setting
 
@@ -201,12 +247,31 @@ function Write-SettingEvalLog {
 
     if (-not $Setting) { return }
 
-    foreach ($key in @($Setting.Registry)) {
+    foreach ($target in @(Get-SettingTargets $Setting)) {
+        $key = $target.Entry
         $current = if ($null -ne $key.Current) { [string]$key.Current } else { "($($key.State))" }
         $default = if ($key.DefaultAbsent) { '(absent)' } else { $key.Default }
+
+        switch ($target.Kind) {
+            'service' {
+                $source  = 'services'
+                $message = "service $($key.Name)"
+                $type    = 'StartMode'
+            }
+            'task' {
+                $source  = 'tasks'
+                $message = "task $($key.Path)$($key.Name)"
+                $type    = 'Enabled'
+            }
+            default {
+                $source  = 'registry'
+                $message = "$($key.Path)\$($key.Name)"
+                $type    = $key.Type
+            }
+        }
+
         $detail = 'type={0} | current={1} | recommended={2} | default={3} | status={4}' -f `
-            $key.Type, $current, $key.Recommended, $default, $key.Status
-        Write-AppLog -Source 'registry' -Level 'info' -Status 'checked' `
-            -Message "$($key.Path)\$($key.Name)" -Detail $detail
+            $type, $current, $key.Recommended, $default, $key.Status
+        Write-AppLog -Source $source -Level 'info' -Status 'checked' -Message $message -Detail $detail
     }
 }

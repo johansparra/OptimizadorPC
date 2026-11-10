@@ -1,9 +1,10 @@
 # ============================================================
 # .github/workflows/ci.yml
 #
-# PSScriptAnalyzer y la suite de pruebas en un runner de Windows
-# (riesgo 5 de SECURITY.md §11). Semgrep va aparte, en
-# semgrep.yml, porque corre en un contenedor de Linux.
+# PSScriptAnalyzer, la suite de pruebas y la prueba de humo del
+# .exe compilado en un runner de Windows (riesgo 5 de SECURITY.md
+# §11). Semgrep va aparte, en semgrep.yml, porque corre en un
+# contenedor de Linux.
 #
 # Todo en Windows: la aplicación es WPF sobre .NET Framework y
 # las pruebas construyen controles de verdad y leen/escriben el
@@ -188,4 +189,62 @@ jobs:
         HOST_EXE: ${{ matrix.exe }}
       run: |
         & $env:HOST_EXE -STA -NoProfile -ExecutionPolicy Bypass -File ./tests/Run-Tests.ps1 -Timing
+        exit $LASTEXITCODE
+
+  # ----------------------------------------------------------
+  # Prueba de humo del .exe compilado, ELEVADO y sin nadie delante
+  # ----------------------------------------------------------
+  # Compila con build.ps1 -lo mismo que en local, sin firmar: aquí
+  # no hay certificado- y arranca el .exe con
+  # tests/Smoke/Invoke-Smoke.ps1 -Exe: que sale la ventana con su
+  # título, que corre elevado, que el menú trae sus cuatro entradas
+  # y que se cierra limpio.
+  #
+  # UAC no se salta: el .exe lleva -requireAdmin y el runner de
+  # Windows ya es administrador sin UAC, así que arranca elevado sin
+  # diálogo. Si algún día el runner dejara de estar elevado, la
+  # prueba sale con 2 (SALTADO) y este paso falla igual: aquí
+  # tiene que correr de verdad.
+  #
+  # NO pulsa nada: arrancar solo lee el registro.
+  humo:
+    name: Prueba de humo del .exe (elevado)
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+    - name: Finales de línea como en desarrollo
+      run: git config --global core.autocrlf true
+
+    - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      with:
+        persist-credentials: false
+
+    # En Windows PowerShell 5.1, como en local: ps2exe compila para
+    # 5.1. build.ps1 instala ps2exe 1.0.18 (fijado) en CurrentUser
+    # desde PSGallery. Antes se asegura el proveedor NuGet, que
+    # Install-Module de 5.1 pide y, sin consola, no puede preguntar.
+    # Se borra el .exe versionado antes de compilar: así es seguro
+    # que lo que se prueba es lo recién compilado.
+    - name: Compilar con build.ps1 (sin firmar)
+      shell: powershell
+      run: |
+        $ErrorActionPreference = 'Stop'
+        # PSGallery solo habla TLS 1.2+; 5.1 no siempre lo ofrece de serie.
+        [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+        if (-not (Get-PackageProvider -ListAvailable -Name NuGet -ErrorAction SilentlyContinue |
+                  Where-Object { $_.Version -ge [version]'2.8.5.201' })) {
+            Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Scope CurrentUser -Force | Out-Null
+        }
+        Remove-Item -Path ./build/OptimizadorPC.exe -Force -ErrorAction SilentlyContinue
+        & ./build.ps1
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        if (-not (Test-Path ./build/OptimizadorPC.exe)) { throw 'build.ps1 no ha dejado build/OptimizadorPC.exe' }
+
+    # Código de salida de Invoke-Smoke.ps1: 0 bien, 1 falla,
+    # 2 saltado (sin elevar). Cualquier cosa que no sea 0 tumba el
+    # paso.
+    - name: Invoke-Smoke.ps1 -Exe
+      shell: powershell
+      run: |
+        powershell -STA -NoProfile -ExecutionPolicy Bypass -File ./tests/Smoke/Invoke-Smoke.ps1 -Exe -TimeoutSeconds 120
         exit $LASTEXITCODE

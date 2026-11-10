@@ -303,6 +303,122 @@ Describe 'seguridad - ejecución de comandos (SECURITY.md §12)' {
     }
 }
 
+# Todas las entradas de -Service y -ScheduledTask de TODAS las secciones
+# registradas (también las ocultas), como Get-AllRegistryKeys.
+function Get-AllSystemTargets {
+    $out = New-Object System.Collections.Generic.List[object]
+    foreach ($cat in $CategoryList) {
+        foreach ($setting in @($cat.Items)) {
+            foreach ($t in @(Get-SettingTargets $setting)) {
+                if ($t.Kind -eq 'registry') { continue }
+                $out.Add([PSCustomObject]@{ Category = $cat.Id; Setting = $setting.Name; Kind = $t.Kind; Entry = $t.Entry })
+            }
+        }
+    }
+    $out.ToArray()
+}
+
+# Lo que NUNCA puede tocar el programa: servicios de seguridad, de
+# Windows Update y del núcleo, y las carpetas de tareas de lo mismo.
+# Es la denylist de SECURITY.md §3.4 llevada a servicios y tareas
+# (§14). Se comprueba contra las dos listas de core/: la blanca no
+# puede tener nada de aquí, y la de protegidos tiene que tenerlo todo.
+$SecurityDeniedServices = @(
+    'WinDefend', 'WdNisSvc', 'WdNisDrv', 'WdFilter', 'WdBoot', 'Sense', 'MDCoreSvc',
+    'SecurityHealthService', 'wscsvc', 'SgrmBroker', 'webthreatdefsvc', 'webthreatdefusersvc',
+    'mpssvc', 'BFE', 'IKEEXT', 'PolicyAgent',
+    'wuauserv', 'UsoSvc', 'WaaSMedicSvc', 'BITS', 'DoSvc', 'TrustedInstaller',
+    'BDESVC', 'CryptSvc', 'KeyIso', 'VaultSvc', 'SamSs', 'Netlogon', 'EFS', 'TBS', 'AppIDSvc',
+    'EventLog', 'RpcSs', 'RpcEptMapper', 'DcomLaunch', 'LSM', 'Schedule', 'Winmgmt', 'gpsvc'
+)
+$SecurityDeniedTaskFolders = 'WindowsUpdate|UpdateOrchestrator|WaaSMedic|InstallService|Windows Defender|ExploitGuard|BitLocker|AppID|\\TPM\\|CertificateServicesClient|SystemRestore'
+
+Describe 'seguridad - servicios y tareas programadas (SECURITY.md §14)' {
+
+    It 'todo -Service y -ScheduledTask declarado pasa la lista blanca de su mecanismo' {
+        # Como las claves del registro: uno fuera de la lista acabaría en
+        # 'blocked' al pulsar, en silencio. Se caza al declararlo.
+        $revisados = 0
+        foreach ($t in Get-AllSystemTargets) {
+            $donde = "'$($t.Setting)' ($($t.Category))"
+            if ($t.Kind -eq 'service') {
+                Assert-True (Test-ServiceWriteAllowed ([string]$t.Entry.Name)) "servicio fuera de la lista blanca en ${donde}: $($t.Entry.Name)"
+            }
+            else {
+                Assert-True (Test-ScheduledTaskWriteAllowed -Path ([string]$t.Entry.Path) -Name ([string]$t.Entry.Name)) `
+                    "tarea fuera de la lista blanca en ${donde}: $($t.Entry.Path)$($t.Entry.Name)"
+            }
+            $revisados++
+        }
+        Assert-True ($revisados -ge 9) "se esperaban los 3 servicios y las 6 tareas de la sección; hay $revisados"
+    }
+
+    It 'la lista blanca de servicios no tiene nada de seguridad, Update ni el núcleo' {
+        foreach ($s in $ServiceWriteAllowlist) {
+            Assert-False ($SecurityDeniedServices -contains $s) "'$s' baja la seguridad del equipo y no puede estar en la lista blanca"
+            Assert-False (Test-ServiceProtected $s) "'$s' está a la vez en la blanca y en la de protegidos"
+        }
+    }
+
+    It 'la lista de servicios protegidos de core/ cubre toda la denylist' {
+        foreach ($s in $SecurityDeniedServices) {
+            Assert-True (Test-ServiceProtected $s) "'$s' debería estar en `$ServiceProtectedNames (core/Services/ServiceStartup.ps1)"
+        }
+    }
+
+    It 'la lista blanca de tareas no tiene nada de Update, Defender, BitLocker...' {
+        foreach ($t in $ScheduledTaskWriteAllowlist) {
+            $full = [string]$t.Path + [string]$t.Name
+            Assert-False ($full -match $SecurityDeniedTaskFolders) "'$full' cuelga de una carpeta de seguridad"
+            Assert-False (Test-ScheduledTaskProtected ([string]$t.Path)) "'$full' está en una carpeta protegida"
+        }
+        foreach ($p in '\Microsoft\Windows\WindowsUpdate\', '\Microsoft\Windows\UpdateOrchestrator\',
+                       '\Microsoft\Windows\Windows Defender\', '\Microsoft\Windows\BitLocker\') {
+            Assert-True (Test-ScheduledTaskProtected $p) "'$p' debería estar protegida"
+        }
+    }
+
+    It 'cada servicio y cada tarea declara a dónde vuelve OFF, y nunca DefaultAbsent' {
+        # Un servicio o una tarea no se borran: OFF escribe siempre el
+        # Default, que es el de fábrica de Windows 11.
+        foreach ($t in Get-AllSystemTargets) {
+            $donde = "'$($t.Entry.Name)' de '$($t.Setting)' ($($t.Category))"
+            Assert-False ([string]::IsNullOrWhiteSpace([string]$t.Entry.Default)) "$donde no declara Default"
+            Assert-False ([string]::IsNullOrWhiteSpace([string]$t.Entry.Recommended)) "$donde no declara Recommended"
+            Assert-False ($t.Entry.DefaultAbsent -eq $true) "$donde declara DefaultAbsent: un servicio o una tarea no se borra"
+        }
+    }
+
+    It 'un ajuste toca UNA cosa: una clave, un servicio o una tarea' {
+        foreach ($cat in $CategoryList) {
+            foreach ($setting in @($cat.Items)) {
+                $n = @(Get-SettingTargets $setting).Count
+                Assert-True ($n -le 1) "'$($setting.Name)' ($($cat.Id)) declara $n objetivos: uno por ajuste"
+            }
+        }
+    }
+
+    It 'solo core/Services/ cambia servicios y solo core/ScheduledTasks/ cambia tareas, sin sc.exe ni schtasks' {
+        $propios = @{
+            'Set-Service'            = 'core/Services/ServiceStartup.ps1'
+            'Disable-ScheduledTask'  = 'core/ScheduledTasks/ScheduledTaskState.ps1'
+            'Enable-ScheduledTask'   = 'core/ScheduledTasks/ScheduledTaskState.ps1'
+        }
+        foreach ($archivo in Get-GuardedSourceFiles) {
+            $texto = Get-Content -Path $archivo.FullName -Raw
+            $rel = Get-GuardedRelPath $archivo
+            foreach ($cmd in $propios.Keys) {
+                if ($texto -match ('(?m)^[^#\r\n]*\b' + [regex]::Escape($cmd) + '\b')) {
+                    Assert-Equal $propios[$cmd] $rel "$cmd fuera de su mecanismo, en $rel"
+                }
+            }
+            foreach ($patron in '\bsc(\.exe)?\s+(config|stop|delete|create)\b', '\bschtasks(\.exe)?\b', 'Stop-Service', 'Remove-Service', 'Unregister-ScheduledTask', 'Register-ScheduledTask') {
+                Assert-False ($texto -match ('(?m)^[^#\r\n]*' + $patron)) "$patron en $rel"
+            }
+        }
+    }
+}
+
 Describe 'seguridad - enlaces externos' {
 
     It 'ExternalLink solo abre http y https' {

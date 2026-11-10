@@ -4,12 +4,18 @@
         Title="Optimizador PC" Height="780" Width="1320" MinHeight="560" MinWidth="960"
         WindowStartupLocation="CenterScreen"
         WindowStyle="None" ResizeMode="CanResize"
-        TextOptions.TextFormattingMode="Ideal"
+        TextOptions.TextFormattingMode="Display"
         TextOptions.TextRenderingMode="ClearType"
         UseLayoutRounding="True" SnapsToDevicePixels="True"
         RenderOptions.ClearTypeHint="Enabled"
         Background="{DynamicResource Bg0}"
         FontFamily="Segoe UI Variable Text, Segoe UI">
+
+    <!-- TextFormattingMode="Display", NUNCA "Ideal" (regla 29). En Ideal,
+         cualquier texto que cambia de sitio -entrada en cascada, elevación de
+         tarjeta, cajones- se pinta en baja calidad y tarda en reafilarse:
+         borroso al pasar el ratón y "al rato" nítido. Display lo ajusta
+         al píxel siempre. Medido, no supuesto: ver la regla en CLAUDE.md. -->
 
     <!-- Bordes de redimension nativos + esquinas redondeadas de Windows 11 -->
     <shell:WindowChrome.WindowChrome>

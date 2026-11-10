@@ -130,6 +130,37 @@ Describe 'ui/Design/Theme.ps1 - entrada en cascada' {
         Assert-Equal 'Warn' $tarjeta.Tag
     }
 
+    It 'la sombra va en una placa detrás, nunca en la tarjeta (texto nítido)' {
+        # Un Effect pinta su subárbol en un mapa de bits aparte: el
+        # texto pierde ClearType y se ve borroso mientras la tarjeta
+        # sube. La placa lleva la sombra y comparte el desplazamiento.
+        $tarjeta = New-Object System.Windows.Controls.Border
+        $envoltorio = Add-HoverLift $tarjeta -Glow 'Accent'
+        $placa = Get-LiftPlate $envoltorio
+
+        Assert-True ($null -eq $tarjeta.Effect) 'la tarjeta no puede llevar efecto: emborrona su texto'
+        Assert-True ($null -ne $placa) 'falta la placa de la sombra'
+        Assert-True ($placa.Effect -is [System.Windows.Media.Effects.DropShadowEffect]) 'la placa tendría que llevar la sombra'
+        Assert-True ([object]::ReferenceEquals($placa.RenderTransform, $tarjeta.RenderTransform)) 'la placa tiene que subir con la tarjeta'
+        Assert-True ([System.Windows.Controls.Panel]::GetZIndex($placa) -lt [System.Windows.Controls.Panel]::GetZIndex($tarjeta)) 'la placa tiene que quedar detrás'
+        Assert-Equal $tarjeta $envoltorio.Children[0] 'la tarjeta sigue siendo el primer hijo'
+        Assert-Equal 'Accent' $placa.Tag
+    }
+
+    It 'el hover sube la tarjeta por Margin, nunca por RenderTransform (texto nítido)' {
+        # Un transform animado pasa el texto por medios píxeles y WPF
+        # lo pinta borroso hasta que la animación acaba. El Margin se
+        # redondea a píxel entero en cada fotograma.
+        $tarjeta = New-Object System.Windows.Controls.Border
+        $envoltorio = Add-HoverLift $tarjeta -Glow 'Accent'
+
+        Set-LiftState $envoltorio -Up
+        Assert-True (-not $tarjeta.RenderTransform.HasAnimatedProperties) 'el hover no puede animar el transform'
+        Assert-True $tarjeta.HasAnimatedProperties 'el hover tendría que animar el margen de la tarjeta'
+        Assert-True (Get-LiftPlate $envoltorio).HasAnimatedProperties 'la placa tiene que subir con la tarjeta'
+        Assert-NoThrow { Set-LiftState $envoltorio }
+    }
+
     It 'sin ventana, teñir el halo no lanza' {
         $tarjeta = New-Object System.Windows.Controls.Border
         Add-HoverLift $tarjeta -Glow 'Warn' | Out-Null

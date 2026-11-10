@@ -21,7 +21,6 @@ function Show-OptimizationsListView {
     # La barra de búsqueda, no la caja pelada: trae el desplegable de
     # resultados y el Enter que lleva a la página completa.
     Add-PageAction $Window (New-SearchBar -Window $Window)
-    Add-PageAction $Window (New-ChipButton $Window 'Quick Actions' 'Bolt' -Chevron)
     Add-PageAction $Window (New-ViewMenu $Window)
 
     $categories = @(Get-OptimizationCategories)
